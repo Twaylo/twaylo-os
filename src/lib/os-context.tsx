@@ -11,7 +11,6 @@ import {
 } from "react";
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
-import { CAPTURE_CYCLE } from "./labels";
 import type { Capture, Habit, OsData, Task } from "./types";
 
 export const TABS = [
@@ -50,6 +49,8 @@ type OsState = {
   setCaptureText: (v: string) => void;
   captures: Capture[];
   addCapture: () => void;
+  /** Vrai pendant l'aller-retour de tri — sert à désactiver le bouton. */
+  capturing: boolean;
 
   tasks: Task[];
   toggleTask: (i: number) => void;
@@ -69,6 +70,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [revealed, setRevealed] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [captureText, setCaptureText] = useState("");
+  const [capturing, setCapturing] = useState(false);
   const [journalText, setJournalText] = useState("");
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
@@ -101,15 +103,38 @@ export function OsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const addCapture = useCallback(() => {
+  const addCapture = useCallback(async () => {
     const text = captureText.trim();
     if (!text) return;
-    setCaptures((prev) => {
-      // Le vrai classifieur Claude arrive en étape 3 ; ici on fait tourner les types.
-      const type = CAPTURE_CYCLE[prev.length % CAPTURE_CYCLE.length];
-      return [{ text, type }, ...prev].slice(0, 4);
-    });
+
+    // Vidé tout de suite : la capture doit rendre la main en un battement de
+    // cil, la classification arrive derrière.
     setCaptureText("");
+    setCapturing(true);
+
+    // Type provisoire le temps de l'aller-retour ; remplacé à la réponse.
+    const optimiste: Capture = { text, type: "note" };
+    setCaptures((prev) => [optimiste, ...prev].slice(0, 4));
+
+    try {
+      const res = await fetch("/api/capture", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ texte: text, source: "web" }),
+      });
+      if (!res.ok && res.status !== 207) throw new Error(`HTTP ${res.status}`);
+
+      const { classification } = await res.json();
+      setCaptures((prev) =>
+        prev.map((c) => (c === optimiste ? { text, type: classification.type } : c)),
+      );
+    } catch (err) {
+      // Jamais de catch vide (spec Partie 10, bug 3). La capture reste à
+      // l'écran en « note » — le texte n'est jamais perdu.
+      console.error("[capture] tri impossible :", err);
+    } finally {
+      setCapturing(false);
+    }
   }, [captureText]);
 
   const toggleTask = useCallback((i: number) => {
@@ -135,6 +160,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setCaptureText,
       captures,
       addCapture,
+      capturing,
       tasks,
       toggleTask,
       habits,
@@ -152,6 +178,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       captureText,
       captures,
       addCapture,
+      capturing,
       tasks,
       toggleTask,
       habits,

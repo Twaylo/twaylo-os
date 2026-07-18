@@ -11,7 +11,8 @@ import { Panel } from "@/components/Panel";
  * Seule carte à porter le dégradé signature en accent.
  */
 export function CaptureBar() {
-  const { captureText, setCaptureText, addCapture, captures, data } = useOs();
+  const { captureText, setCaptureText, addCapture, capturing, captures, data } =
+    useOs();
 
   return (
     <Panel
@@ -58,10 +59,11 @@ export function CaptureBar() {
         <MicButton />
         <button
           type="submit"
-          className="cursor-pointer rounded-[11px] border-none px-4 py-[9px] text-[13px] font-extrabold text-[#07121d] transition-all hover:brightness-110"
+          disabled={capturing || captureText.trim().length === 0}
+          className="cursor-pointer rounded-[11px] border-none px-4 py-[9px] text-[13px] font-extrabold text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ background: "linear-gradient(90deg,#3ddc84,#22d3ee)" }}
         >
-          Trier
+          {capturing ? "Tri…" : "Trier"}
         </button>
       </form>
 
