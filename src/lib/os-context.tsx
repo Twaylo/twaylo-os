@@ -31,6 +31,8 @@ import {
 } from "./sync";
 import { localDateKey } from "./local-date";
 import type {
+  Blocage,
+  BlocageStocke,
   Capture,
   Contact,
   FaitesDuJour,
@@ -94,6 +96,13 @@ type OsState = {
   /** Format libre : « Nom · Catégorie · Option1, Option2 ». */
   ajouterHabitude: (saisie: string) => Promise<void>;
   supprimerHabitude: (habitId: string) => void;
+
+  /** Ce qui est arrêté et attend quelqu'un. */
+  blocages: Blocage[];
+  /** Format libre : « Ce qui bloque · Chez qui ». */
+  ajouterBlocage: (saisie: string) => Promise<void>;
+  /** Le blocage est levé : on l'enlève. */
+  leverBlocage: (id: string) => void;
 
   /** L'unique chose que Twaylo a décidé de faire aujourd'hui. */
   uneChose: UneChose;
@@ -202,6 +211,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
+  const [blocagesBruts, setBlocagesBruts] = useState<BlocageStocke[]>([]);
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
     "inconnu",
   );
@@ -280,6 +290,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       }
       if (distant.faites) setFaitesDuJour(distant.faites as FaitesDuJour);
       if (typeof distant.serie === "number") setSerie(distant.serie);
+      if (Array.isArray(distant.blocages)) setBlocagesBruts(distant.blocages);
       if (distant.uneChose) setUneChose(distant.uneChose);
       if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
       if (distant.pipeline) setPipeline(distant.pipeline as PipelineColumn[]);
@@ -499,6 +510,65 @@ export function OsProvider({ children }: { children: ReactNode }) {
     },
     [habits],
   );
+
+  /** Enregistre la liste entière : elle est courte, et l'API la revalide. */
+  const enregistrerBlocages = useCallback((suivants: BlocageStocke[]) => {
+    setBlocagesBruts(suivants);
+    if (demoModeRef.current) return;
+    void fetch("/api/blocages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ blocages: suivants }),
+    }).catch((err) => console.error("[blocages] enregistrement impossible :", err));
+  }, []);
+
+  /** Saisie libre : « Devis fixeur jamais revenu · Agence ». */
+  const ajouterBlocage = useCallback(
+    async (saisie: string) => {
+      const [texte, proprietaire = "Toi"] = saisie.split(/[·|]/).map((m) => m.trim());
+      if (!texte) return;
+      enregistrerBlocages([
+        ...blocagesBruts,
+        {
+          id: `b${Date.now().toString(36)}`,
+          texte,
+          proprietaire,
+          depuis: localDateKey(),
+        },
+      ]);
+    },
+    [blocagesBruts, enregistrerBlocages],
+  );
+
+  const leverBlocage = useCallback(
+    (id: string) => {
+      enregistrerBlocages(blocagesBruts.filter((b) => b.id !== id));
+    },
+    [blocagesBruts, enregistrerBlocages],
+  );
+
+  /**
+   * Le nombre de jours se calcule à l'affichage, jamais en base : un compteur
+   * stocké resterait figé, alors que c'est son vieillissement qui alerte.
+   * La chaleur en découle — au-delà de deux semaines, ça devient urgent.
+   */
+  const blocages = useMemo<Blocage[]>(() => {
+    if (demoMode) return DEMO_DATA.blocages;
+    const aujourdhui = Date.parse(`${localDateKey()}T00:00:00Z`);
+    return blocagesBruts.map((b) => {
+      const jours = Math.max(
+        0,
+        Math.round((aujourdhui - Date.parse(`${b.depuis}T00:00:00Z`)) / 86_400_000),
+      );
+      return {
+        id: b.id,
+        texte: b.texte,
+        proprietaire: b.proprietaire,
+        depuisJours: jours,
+        chaleur: jours >= 14 ? "chaud" : jours >= 7 ? "tiede" : "froid",
+      };
+    });
+  }, [blocagesBruts, demoMode]);
 
   /**
    * Déplacement optimiste : la carte bouge sous le doigt, la base suit.
@@ -737,6 +807,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      blocages,
+      ajouterBlocage,
+      leverBlocage,
       uneChose,
       setUneChose,
       journalText,
@@ -780,6 +853,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      blocages,
+      ajouterBlocage,
+      leverBlocage,
       uneChose,
       journalText,
       repas,

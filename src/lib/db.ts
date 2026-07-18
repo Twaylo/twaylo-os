@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { REAL_DATA } from "./data-real";
-import type { Contact, Habit, Task, UneChose } from "./types";
+import type { BlocageStocke, Contact, Habit, Task, UneChose } from "./types";
 
 /**
  * L'accès aux données, côté serveur uniquement.
@@ -662,13 +662,55 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
   return HABITUDES_DEFAUT;
 }
 
-export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
-  const { error } = await supabaseAdmin()
+/**
+ * La ligne sentinelle héberge plusieurs réglages (habitudes, blocages).
+ * Écrire l'un ne doit pas effacer l'autre : on relit avant de fusionner.
+ */
+async function majSentinelle(patch: Record<string, unknown>): Promise<void> {
+  const db = supabaseAdmin();
+
+  const { data, error: erreurLecture } = await db
     .from("daily_logs")
-    .upsert(
-      { user_id: USER_ID, jour: JOUR_SENTINELLE, habitudes: { definitions } },
-      { onConflict: "user_id,jour" },
-    );
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (erreurLecture) throw erreurLecture;
+
+  const { error } = await db.from("daily_logs").upsert(
+    {
+      user_id: USER_ID,
+      jour: JOUR_SENTINELLE,
+      habitudes: { ...((data?.habitudes ?? {}) as object), ...patch },
+    },
+    { onConflict: "user_id,jour" },
+  );
 
   if (error) throw error;
+}
+
+export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
+  await majSentinelle({ definitions });
+}
+
+
+export type { BlocageStocke };
+
+export async function lireBlocages(): Promise<BlocageStocke[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const blocages = (data?.habitudes as { blocages?: BlocageStocke[] } | null)?.blocages;
+  return Array.isArray(blocages) ? blocages : [];
+}
+
+export async function ecrireBlocages(blocages: BlocageStocke[]): Promise<void> {
+  await majSentinelle({ blocages });
 }

@@ -58,7 +58,21 @@ export type Habit = {
 export type FaitesDuJour = Record<string, string[]>;
 
 /** Ce qui bloque, et depuis combien de temps (Miles : KEY BLOCKERS). */
+/**
+ * Un blocage tel qu'il est stocké : une date, pas un nombre de jours. Un
+ * compteur figé en base ne vieillirait pas, alors que c'est justement son
+ * vieillissement qui doit alerter.
+ */
+export type BlocageStocke = {
+  id: string;
+  texte: string;
+  proprietaire: string;
+  /** Jour où ça s'est arrêté, au format AAAA-MM-JJ. */
+  depuis: string;
+};
+
 export type Blocage = {
+  id?: string;
   texte: string;
   /** « Toi » ou le nom de la personne dont ça dépend. */
   proprietaire: string;

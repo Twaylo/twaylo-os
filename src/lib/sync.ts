@@ -44,6 +44,7 @@ export type EtatDistant = {
   faites?: Record<string, string[]>;
   /** Jours d'affilée réellement remplis, calculé en base. */
   serie?: number;
+  blocages?: { id: string; texte: string; proprietaire: string; depuis: string }[];
   journal?: string;
   uneChose?: { texte: string; fait: boolean };
   nutrition?: { repas: unknown[] };

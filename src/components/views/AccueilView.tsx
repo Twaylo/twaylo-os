@@ -28,6 +28,17 @@ export function AccueilView() {
       <HabitudesCard />
       <BlocagesCard />
 
+      {/*
+        L'ordre compte : sur une grille à quatre colonnes, une rangée qui n'en
+        remplit que trois laisse un vide de la hauteur de toute la rangée.
+        C'était le cas ici — Blocages (1) + Pipeline (2) laissaient un trou de
+        294 × 497 px à droite. Nutrition le comble, et chaque rangée fait
+        maintenant exactement quatre colonnes :
+
+          Blocages 1 + Pipeline 2 + Nutrition 1
+          Semaine 2  + Objectifs 2
+          Journal 4
+      */}
       <Panel accent="var(--color-cya)" className="col-span-full md:col-span-2">
         <div className="mb-[11px] flex items-center justify-between gap-3">
           <Eyebrow color="var(--color-cya-soft)" dot="var(--color-cya)">
@@ -40,8 +51,8 @@ export function AccueilView() {
         <PipelineGrid compact />
       </Panel>
 
-      <SemaineCard />
       <NutritionCard />
+      <SemaineCard />
       <ObjectifsCard />
       <JournalCard />
     </div>

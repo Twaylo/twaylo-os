@@ -9,7 +9,7 @@ export function ObjectifsCard() {
   const { data } = useOs();
 
   return (
-    <Panel accent="var(--color-amb)" className="col-span-1">
+    <Panel accent="var(--color-amb)" className="col-span-full md:col-span-2">
       <Eyebrow color="var(--color-amb-soft)" dot="var(--color-amb)">
         OBJECTIFS
       </Eyebrow>

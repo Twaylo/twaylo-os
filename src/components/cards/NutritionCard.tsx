@@ -120,7 +120,7 @@ export function NutritionCard() {
   }
 
   return (
-    <Panel accent="var(--color-ver)" className="col-span-full md:col-span-2">
+    <Panel accent="var(--color-ver)" className="col-span-full md:col-span-2 xl:col-span-1">
       <div className="mb-3 flex items-center justify-between gap-3">
         <Eyebrow color="var(--color-ver-soft)" dot="var(--color-ver)">
           NUTRITION

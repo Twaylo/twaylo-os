@@ -40,7 +40,7 @@ export function JournalCard() {
   return (
     <Panel
       accent="var(--color-cor)"
-      className="col-span-full flex flex-wrap gap-[18px] md:col-span-2 xl:col-span-3"
+      className="col-span-full flex flex-wrap gap-[18px]"
     >
       <div className="min-w-[280px] flex-[1_1_400px]">
         <Eyebrow color="var(--color-cor-soft)" dot="var(--color-cor)">

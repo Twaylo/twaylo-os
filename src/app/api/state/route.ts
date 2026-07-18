@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   calculerSerie,
+  lireBlocages,
   lireCaptures,
   lireContacts,
   lireDeals,
@@ -33,18 +34,19 @@ export async function GET(req: Request) {
   }
 
   try {
-    // En parallèle : ces trois lectures ne dépendent pas les unes des autres.
-    const [taches, journee, captures, videos, contacts, deals, habitudes, serie] =
+    // En parallèle : ces lectures ne dépendent pas les unes des autres.
+    const [taches, journee, captures, videos, contacts, deals, habitudes, serie, blocages] =
       await Promise.all([
-      lireTaches(),
-      lireJour(jour),
-      lireCaptures(),
-      lireVideos(),
-      lireContacts(),
-      lireDeals(),
-      lireHabitudesDef(),
-      calculerSerie(jour),
-    ]);
+        lireTaches(),
+        lireJour(jour),
+        lireCaptures(),
+        lireVideos(),
+        lireContacts(),
+        lireDeals(),
+        lireHabitudesDef(),
+        calculerSerie(jour),
+        lireBlocages(),
+      ]);
 
     return NextResponse.json({
       connecte: true,
@@ -52,6 +54,7 @@ export async function GET(req: Request) {
       taches: versTaches(taches),
       habitudes,
       serie,
+      blocages,
       faites: journee.etat.faites ?? {},
       journal: journee.journal,
       uneChose: journee.etat.une_chose,
