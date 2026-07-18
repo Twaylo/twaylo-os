@@ -5,7 +5,7 @@ import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
 export function OperateurCard() {
-  const { data } = useOs();
+  const { data, uneChose, setUneChose } = useOs();
   const op = data.operator;
 
   return (
@@ -30,8 +30,12 @@ export function OperateurCard() {
       </div>
 
       <div className="mt-3 flex gap-2">
-        <div className="stat-box flex-1">
-          <div className="text-[10px] text-white/45">Série</div>
+        <div
+          className="stat-box flex-1"
+          title="Jours d'affilée avec au moins une habitude cochée ou une entrée de journal"
+        >
+          {/* « Série » tout court ne disait pas de quoi. */}
+          <div className="text-[10px] leading-[1.2] text-white/45">Jours d&apos;affilée</div>
           <div
             className="font-mono text-[16px] font-extrabold"
             style={{ color: "var(--color-mag-soft)" }}
@@ -41,23 +45,41 @@ export function OperateurCard() {
           </div>
         </div>
         <div className="stat-box flex-1">
-          <div className="text-[10px] text-white/45">Statut</div>
+          <div className="text-[10px] leading-[1.2] text-white/45">Statut</div>
           <div className="mt-[2px] text-[13px] font-extrabold">{op.status}</div>
         </div>
       </div>
 
-      <div
-        className="mt-[10px] rounded-[11px] px-[11px] py-[9px]"
+      {/*
+        Le focus était un texte figé dans le code : impossible à changer, donc
+        faux dès le lendemain. Il pointe maintenant sur « l'unique chose » du
+        jour — la même donnée que la barre de capture, modifiable des deux
+        côtés et enregistrée avec la journée.
+      */}
+      <label
+        className="mt-[10px] block cursor-text rounded-[11px] px-[11px] py-[9px] transition-colors focus-within:border-[rgba(255,61,139,0.45)]"
         style={{
           background: "rgba(255,61,139,0.08)",
           border: "1px solid rgba(255,61,139,0.18)",
         }}
       >
-        <div className="text-[10px] font-extrabold" style={{ color: "var(--color-mag-soft)" }}>
+        <span
+          className="block text-[10px] font-extrabold"
+          style={{ color: "var(--color-mag-soft)" }}
+        >
           FOCUS DU JOUR
-        </div>
-        <div className="mt-[2px] text-[12.5px] font-bold leading-[1.35]">{op.focus}</div>
-      </div>
+        </span>
+        <input
+          value={uneChose.texte}
+          onChange={(e) => setUneChose((p) => ({ ...p, texte: e.target.value }))}
+          placeholder="Sur quoi tu te concentres aujourd'hui ?"
+          className="mt-[2px] w-full border-none bg-transparent text-[12.5px] font-bold leading-[1.35] outline-none placeholder:text-white/25"
+          style={{
+            color: uneChose.fait ? "rgba(255,255,255,0.4)" : "var(--color-fg)",
+            textDecoration: uneChose.fait ? "line-through" : "none",
+          }}
+        />
+      </label>
     </Panel>
   );
 }

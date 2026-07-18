@@ -29,15 +29,9 @@ export const REAL_DATA: OsData = {
     { text: "Trouver un fournisseur", done: false, categorie: "Business" },
   ],
 
-  // Habitudes à la façon de Miles : catégorie + objectif de séances.
-  habits: [
-    { name: 'Sport', categorie: 'Corps', cible: 5, fait: 0 },
-    { name: 'Sommeil', categorie: 'Corps', fait: 0 },
-    { name: 'Session créative', categorie: 'Création', cible: 6, fait: 0 },
-    { name: 'Veille / recherche', categorie: 'Création', cible: 4, fait: 0 },
-    { name: 'Communauté', categorie: 'Audience', cible: 5, fait: 0 },
-    { name: 'Point finance', categorie: 'Business', fait: 0 },
-  ],
+  // Les habitudes vivent en base (date sentinelle) et sont modifiables par
+  // Twaylo — ce tableau ne sert plus qu'au repli hors ligne.
+  habits: [],
 
   pipeline: [
     {

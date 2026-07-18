@@ -30,14 +30,9 @@ export const DEMO_DATA: OsData = {
     { text: "Appeler l'agence de fixing (Congo)", done: false, categorie: "Business" },
   ],
 
-  habits: [
-    { name: 'Sport', categorie: 'Corps', cible: 5, fait: 4 },
-    { name: 'Sommeil', categorie: 'Corps', fait: 1 },
-    { name: 'Session créative', categorie: 'Création', cible: 6, fait: 5 },
-    { name: 'Veille / recherche', categorie: 'Création', cible: 4, fait: 2 },
-    { name: 'Communauté', categorie: 'Audience', cible: 5, fait: 1 },
-    { name: 'Point finance', categorie: 'Business', fait: 0 },
-  ],
+  // Les habitudes vivent en base (date sentinelle) et sont modifiables par
+  // Twaylo — ce tableau ne sert plus qu au repli hors ligne.
+  habits: [],
 
   pipeline: [
     {

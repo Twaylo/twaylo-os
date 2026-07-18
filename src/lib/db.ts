@@ -22,13 +22,14 @@ import type { Contact, Habit, Task, UneChose } from "./types";
  * nommage, assumée et documentée plutôt que subie.
  */
 export type EtatJour = {
-  compteurs: Record<string, number>;
+  /** id d habitude -> options cochees aujourd hui. */
+  faites: Record<string, string[]>;
   une_chose: UneChose;
   nutrition: { repas: unknown[] };
 };
 
 const ETAT_VIDE: EtatJour = {
-  compteurs: {},
+  faites: {},
   une_chose: { texte: "", fait: false },
   nutrition: { repas: [] },
 };
@@ -179,6 +180,54 @@ export async function lireJour(
     etat: { ...ETAT_VIDE, ...((data.habitudes ?? {}) as Partial<EtatJour>) },
     journal: data.journal_texte ?? "",
   };
+}
+
+/**
+ * Le nombre de jours d'affilée où Twaylo a fait vivre son OS.
+ *
+ * Un jour compte s'il porte une trace réelle : du texte dans le journal, ou au
+ * moins une habitude cochée. Ouvrir l'app sans rien y mettre ne compte pas —
+ * une série qui s'incrémente toute seule ne veut plus rien dire.
+ *
+ * La journée en cours n'interrompt pas la série tant qu'elle est vide : à 9 h
+ * du matin on n'a encore rien fait, et remettre le compteur à zéro chaque nuit
+ * serait absurde. On repart donc d'hier si aujourd'hui est vierge.
+ */
+export async function calculerSerie(aujourdhui: string): Promise<number> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("jour, habitudes, journal_texte")
+    .eq("user_id", USER_ID)
+    .neq("jour", JOUR_SENTINELLE)
+    .lte("jour", aujourdhui)
+    .order("jour", { ascending: false })
+    .limit(400);
+
+  if (error) throw error;
+  if (!data) return 0;
+
+  const remplis = new Set<string>();
+  for (const ligne of data) {
+    const etat = (ligne.habitudes ?? {}) as Partial<EtatJour>;
+    const aHabitude = Object.values(etat.faites ?? {}).some((o) => o.length > 0);
+    if (aHabitude || (ligne.journal_texte ?? "").trim().length > 0) {
+      remplis.add(ligne.jour as string);
+    }
+  }
+  if (remplis.size === 0) return 0;
+
+  // On avance jour par jour vers le passé en construisant les dates en UTC :
+  // soustraire 24 h à une date locale saute ou répète un jour aux changements
+  // d'heure.
+  const curseur = new Date(`${aujourdhui}T00:00:00Z`);
+  if (!remplis.has(aujourdhui)) curseur.setUTCDate(curseur.getUTCDate() - 1);
+
+  let serie = 0;
+  while (remplis.has(curseur.toISOString().slice(0, 10))) {
+    serie += 1;
+    curseur.setUTCDate(curseur.getUTCDate() - 1);
+  }
+  return serie;
 }
 
 /**
@@ -427,14 +476,6 @@ export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
   }));
 }
 
-/**
- * Les habitudes elles-mêmes (noms, catégories, objectifs) restent définies
- * dans le code : ce sont des rituels choisis, pas des données saisies. Seuls
- * leurs compteurs du jour viennent de la base.
- */
-export function versHabitudes(compteurs: Record<string, number>): Habit[] {
-  return REAL_DATA.habits.map((h) => ({ ...h, fait: compteurs[h.name] ?? 0 }));
-}
 
 /**
  * Reconstruit les colonnes du pipeline à partir des lignes de la base.
@@ -566,4 +607,68 @@ export function statsDeals(deals: DealDB[]) {
       color: "#ff6ba3",
     },
   ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Habitudes — définitions et relevé du jour                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les définitions d'habitudes ne sont pas quotidiennes : elles vivent sur une
+ * date sentinelle, comme le recommande la spec de Miles pour les objectifs
+ * (« store on a SENTINEL date so they never auto-clear »).
+ *
+ * Le 1er janvier 2000 n'est le jour de personne : impossible de le confondre
+ * avec une vraie journée de Twaylo.
+ */
+const JOUR_SENTINELLE = "2000-01-01";
+
+/** Ce que Twaylo pratique réellement, à défaut d'avoir encore choisi. */
+const HABITUDES_DEFAUT: HabitudeDef[] = [
+  { id: "sport", nom: "Sport", categorie: "Corps", options: ["Gym", "Étirements", "Vélo"] },
+  { id: "sommeil", nom: "Sommeil", categorie: "Corps", options: [] },
+  { id: "creatif", nom: "Session créative", categorie: "Création", options: ["Écriture", "Montage", "Tournage"] },
+  { id: "veille", nom: "Veille / recherche", categorie: "Création", options: [] },
+  { id: "communaute", nom: "Communauté", categorie: "Audience", options: ["Commentaires", "DM", "Stories"] },
+  { id: "finance", nom: "Point finance", categorie: "Business", options: [] },
+];
+
+export type HabitudeDef = {
+  id: string;
+  nom: string;
+  categorie: string;
+  options: string[];
+};
+
+export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
+  const db = supabaseAdmin();
+
+  const { data, error } = await db
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const definitions = (data?.habitudes as { definitions?: HabitudeDef[] } | null)
+    ?.definitions;
+
+  if (Array.isArray(definitions) && definitions.length > 0) return definitions;
+
+  // Premier démarrage : on sème les habitudes par défaut.
+  await ecrireHabitudesDef(HABITUDES_DEFAUT);
+  return HABITUDES_DEFAUT;
+}
+
+export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("daily_logs")
+    .upsert(
+      { user_id: USER_ID, jour: JOUR_SENTINELLE, habitudes: { definitions } },
+      { onConflict: "user_id,jour" },
+    );
+
+  if (error) throw error;
 }

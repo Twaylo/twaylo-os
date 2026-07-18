@@ -35,18 +35,27 @@ export type Capture = { text: string; type: CaptureType };
 export type Task = { text: string; done: boolean; categorie?: string };
 
 /**
- * Une habitude, à la façon de l'OS de Miles : soit une simple bascule, soit
- * un compteur de séances avec un objectif hebdomadaire.
+ * Une habitude.
  *
- * `cible` absent  → bascule : fait vaut 0 ou 1
- * `cible` présent → séances : fait va de 0 à cible, incrémenté au clic
+ * Deux formes, et c'est la présence d'options qui décide :
+ *   - sans options : une simple case à cocher (« Sommeil »)
+ *   - avec options : un clic déplie les variantes réellement pratiquées
+ *     (« Sport » → Gym, Étirements, Vélo). On coche ce qu'on a fait.
+ *
+ * Le compteur « 0/5 » de la version précédente ne disait rien : cliquer cinq
+ * fois sur « Sport » n'apprend pas ce qu'on a fait. Cocher « Gym », si.
  */
 export type Habit = {
-  name: string;
+  /** Identifiant stable : renommer une habitude ne perd pas son historique. */
+  id: string;
+  nom: string;
   categorie: string;
-  cible?: number;
-  fait: number;
+  /** Variantes cochables. Vide = simple bascule. */
+  options: string[];
 };
+
+/** Ce qui a été fait aujourd'hui : identifiant d'habitude → options cochées. */
+export type FaitesDuJour = Record<string, string[]>;
 
 /** Ce qui bloque, et depuis combien de temps (Miles : KEY BLOCKERS). */
 export type Blocage = {

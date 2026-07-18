@@ -28,8 +28,17 @@ function useClock() {
 }
 
 function Logo() {
+  const { setActiveTab } = useOs();
   return (
-    <div className="flex cursor-pointer items-center gap-[11px]">
+    <button
+      type="button"
+      onClick={() => {
+        setActiveTab("Accueil");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
+      title="Retour à l'accueil"
+      className="flex cursor-pointer items-center gap-[11px] bg-transparent"
+    >
       <div className="logo-mark relative h-[38px] w-[38px] overflow-hidden rounded-xl">
         <svg width="38" height="38" viewBox="0 0 38 38" className="block">
           <defs>
@@ -54,7 +63,7 @@ function Logo() {
       <span className="logo-word inline-block text-[22px] font-black tracking-[-0.02em]">
         twaylo
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -143,6 +152,107 @@ function DemoToggle() {
   );
 }
 
+/**
+ * L'avatar ouvre le panneau de compte.
+ *
+ * Il ne servait à rien jusqu'ici : cliquer dessus ne montrait aucune
+ * information. Il rassemble maintenant ce qui n'a pas sa place dans un onglet —
+ * qui est connecté, où vivent les données, et la déconnexion.
+ */
+function Compte() {
+  const { data, sync } = useOs();
+  const [ouvert, setOuvert] = useState(false);
+
+  // Fermer sur Échap : un panneau qu'on ne sait pas fermer est une impasse.
+  useEffect(() => {
+    if (!ouvert) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOuvert(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ouvert]);
+
+  const lignes: { label: string; valeur: string }[] = [
+    { label: "Rôle", valeur: data.operator.role },
+    {
+      label: "Série en cours",
+      valeur: `${data.operator.streakDays} jour${data.operator.streakDays > 1 ? "s" : ""}`,
+    },
+    {
+      label: "Données",
+      valeur: sync === "connecte" ? "Base Supabase" : "Ce navigateur seulement",
+    },
+  ];
+
+  return (
+    <div className="relative flex-none">
+      <button
+        type="button"
+        onClick={() => setOuvert((v) => !v)}
+        aria-expanded={ouvert}
+        aria-haspopup="dialog"
+        title="Mon compte"
+        className="block h-[38px] w-[38px] cursor-pointer rounded-full p-[2px] transition-all hover:brightness-125"
+        style={{ background: "var(--grad)" }}
+      >
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-[#07121d] text-[15px] font-black">
+          {data.operator.name.charAt(0).toUpperCase()}
+        </span>
+      </button>
+
+      {ouvert && (
+        <>
+          {/* Cliquer à côté referme — réflexe attendu de tout menu. */}
+          <div className="fixed inset-0 z-40" onClick={() => setOuvert(false)} />
+          <div
+            role="dialog"
+            aria-label="Mon compte"
+            className="absolute right-0 top-[46px] z-50 w-[248px] rounded-[14px] p-[14px] shadow-2xl"
+            style={{
+              background: "rgba(11,24,38,0.98)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              backdropFilter: "blur(18px)",
+            }}
+          >
+            <div className="text-[15px] font-black">{data.operator.name}</div>
+            <div className="mt-[2px] text-[11px] text-white/40">{data.operator.status}</div>
+
+            <div className="mt-[11px] flex flex-col gap-[7px]">
+              {lignes.map((l) => (
+                <div key={l.label} className="flex items-baseline justify-between gap-3">
+                  <span className="text-[10px] font-bold tracking-[0.06em] text-white/30">
+                    {l.label.toUpperCase()}
+                  </span>
+                  <span className="truncate text-[11.5px] font-bold">{l.valeur}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-[13px]">
+              <button
+                type="button"
+                onClick={async () => {
+                  // La route renvoie du JSON : on redirige nous-mêmes plutôt
+                  // que d'atterrir sur `{"ok":true}` à l'écran.
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  window.location.href = "/login";
+                }}
+                className="w-full cursor-pointer rounded-[9px] py-[7px] text-[11.5px] font-extrabold transition-all hover:brightness-125"
+                style={{
+                  color: "var(--color-mag-soft)",
+                  background: "rgba(255,61,139,0.12)",
+                  border: "1px solid rgba(255,61,139,0.25)",
+                }}
+              >
+                Se déconnecter
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TopRail() {
   const { activeTab, setActiveTab, data } = useOs();
   const { dateStr, timeStr } = useClock();
@@ -227,14 +337,7 @@ export function TopRail() {
             <div className="text-[12.5px] font-extrabold capitalize">{dateStr || " "}</div>
             <div className="font-mono text-[11px] text-white/40">{timeStr || " "}</div>
           </div>
-          <div
-            className="h-[38px] w-[38px] flex-none rounded-full p-[2px]"
-            style={{ background: "var(--grad)" }}
-          >
-            <div className="flex h-full w-full items-center justify-center rounded-full bg-[#07121d] text-[15px] font-black">
-              T
-            </div>
-          </div>
+          <Compte />
         </div>
       </div>
     </header>

@@ -40,7 +40,10 @@ export function surChangementSync(f: (e: Etat) => void): () => void {
 export type EtatDistant = {
   connecte: boolean;
   taches?: { id: string; text: string; done: boolean; categorie?: string }[];
-  habitudes?: { name: string; categorie: string; cible?: number; fait: number }[];
+  habitudes?: { id: string; nom: string; categorie: string; options: string[] }[];
+  faites?: Record<string, string[]>;
+  /** Jours d'affilée réellement remplis, calculé en base. */
+  serie?: number;
   journal?: string;
   uneChose?: { texte: string; fait: boolean };
   nutrition?: { repas: unknown[] };

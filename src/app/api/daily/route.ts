@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
   let corps: {
     jour?: string;
-    compteurs?: Record<string, number>;
+    faites?: Record<string, string[]>;
     journal?: string;
     uneChose?: { texte: string; fait: boolean };
     nutrition?: { repas: unknown[] };
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   // On ne construit le patch qu'avec ce qui a été fourni : un champ absent
   // ne doit pas être écrasé par une valeur vide.
   const etat: Record<string, unknown> = {};
-  if (corps.compteurs !== undefined) etat.compteurs = corps.compteurs;
+  if (corps.faites !== undefined) etat.faites = corps.faites;
   if (corps.uneChose !== undefined) etat.une_chose = corps.uneChose;
   if (corps.nutrition !== undefined) etat.nutrition = corps.nutrition;
 

@@ -33,6 +33,7 @@ import { localDateKey } from "./local-date";
 import type {
   Capture,
   Contact,
+  FaitesDuJour,
   Habit,
   OsData,
   PipelineColumn,
@@ -84,8 +85,15 @@ type OsState = {
   sync: "inconnu" | "connecte" | "hors_ligne" | "erreur";
 
   habits: Habit[];
-  /** Incrémente une habitude à compteur ; boucle à zéro une fois l'objectif atteint. */
-  bumpHabit: (i: number) => void;
+  /** Ce qui a été coché aujourd'hui : id d'habitude → options faites. */
+  faitesDuJour: FaitesDuJour;
+  /** Coche ou décoche une variante (« Gym » sur « Sport »). */
+  cocherOption: (habitId: string, option: string) => void;
+  /** Pour les habitudes sans variante : coche ou décoche tout court. */
+  basculerHabitude: (habitId: string) => void;
+  /** Format libre : « Nom · Catégorie · Option1, Option2 ». */
+  ajouterHabitude: (saisie: string) => Promise<void>;
+  supprimerHabitude: (habitId: string) => void;
 
   /** L'unique chose que Twaylo a décidé de faire aujourd'hui. */
   uneChose: UneChose;
@@ -155,14 +163,6 @@ function applyDone<T extends { done: boolean }>(
   return items.map((item) => ({ ...item, done: done.has(label(item)) }));
 }
 
-/** Les habitudes stockent un compteur par nom, pas un simple booléen. */
-function applyCounts(items: Habit[], counts: Record<string, number>): Habit[] {
-  return items.map((h) => ({ ...h, fait: counts[h.name] ?? 0 }));
-}
-
-function toCounts(items: Habit[]): Record<string, number> {
-  return Object.fromEntries(items.filter((h) => h.fait > 0).map((h) => [h.name, h.fait]));
-}
 
 export function OsProvider({ children }: { children: ReactNode }) {
   /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
@@ -183,13 +183,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
     { label: string; value: string; color: string }[] | null
   >(null);
 
-  const data = demoMode ? DEMO_DATA : REAL_DATA;
+  /**
+   * La série est calculée en base à partir des journées réellement remplies —
+   * elle n'a donc pas sa place dans les données statiques.
+   */
+  const [serie, setSerie] = useState<number | null>(null);
+
+  const data = useMemo(() => {
+    if (demoMode) return DEMO_DATA;
+    if (serie === null) return REAL_DATA;
+    return { ...REAL_DATA, operator: { ...REAL_DATA.operator, streakDays: serie } };
+  }, [demoMode, serie]);
+
   demoModeRef.current = demoMode;
 
   // Les listes cochables sont éditables, donc copiées dans l'état local.
   const [captures, setCaptures] = useState<Capture[]>(REAL_DATA.captures);
   const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
-  const [habits, setHabits] = useState<Habit[]>(REAL_DATA.habits);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
     "inconnu",
   );
@@ -214,9 +226,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
     );
     // Clé datée : au changement de jour local, la clé n'existe pas encore et
     // les habitudes repartent vierges. Aucun code de remise à zéro.
-    setHabits(
-      applyCounts(REAL_DATA.habits, readJSON<Record<string, number>>(dailyKey("habits"), {})),
-    );
+    setHabits(readJSON<Habit[]>("twaylo-habitudes-def", []));
+    setFaitesDuJour(readJSON<FaitesDuJour>(dailyKey("habits"), {}));
     setJournalText(readJSON<string>(dailyKey("journal"), ""));
     setUneChose(readJSON<UneChose>(dailyKey("unechose"), { texte: "", fait: false }));
     setRepas(readJSON<Repas[]>(dailyKey("nutrition"), []));
@@ -234,7 +245,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setDemoMode(true);
       setCaptures(DEMO_DATA.captures);
       setTasks(DEMO_DATA.tasks);
-      setHabits(DEMO_DATA.habits);
     } else {
       hydrateFromStorage();
     }
@@ -264,7 +274,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (annule || !distant?.connecte) return;
 
       if (distant.taches) setTasks(distant.taches);
-      if (distant.habitudes) setHabits(distant.habitudes as Habit[]);
+      if (distant.habitudes) {
+        setHabits(distant.habitudes as Habit[]);
+        writeJSON("twaylo-habitudes-def", distant.habitudes);
+      }
+      if (distant.faites) setFaitesDuJour(distant.faites as FaitesDuJour);
+      if (typeof distant.serie === "number") setSerie(distant.serie);
       if (distant.uneChose) setUneChose(distant.uneChose);
       if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
       if (distant.pipeline) setPipeline(distant.pipeline as PipelineColumn[]);
@@ -309,10 +324,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
-    const compteurs = toCounts(habits);
-    writeJSON(dailyKey("habits"), compteurs);
-    synchroniserJour({ jour: jourRef.current || localDateKey(), compteurs });
-  }, [habits, demoMode]);
+    writeJSON(dailyKey("habits"), faitesDuJour);
+    synchroniserJour({ jour: jourRef.current || localDateKey(), faites: faitesDuJour });
+  }, [faitesDuJour, demoMode]);
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
@@ -340,7 +354,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (next) {
         setCaptures(DEMO_DATA.captures);
         setTasks(DEMO_DATA.tasks);
-        setHabits(DEMO_DATA.habits);
         setJournalText("");
         setUneChose({ texte: "", fait: false });
         setRepas([]);
@@ -411,19 +424,81 @@ export function OsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  /**
-   * Un clic avance le compteur. Une fois l'objectif atteint, le clic suivant
-   * revient à zéro — corriger une erreur sans ajouter un bouton « moins ».
-   */
-  const bumpHabit = useCallback((i: number) => {
-    setHabits((prev) =>
-      prev.map((h, j) => {
-        if (j !== i) return h;
-        const cible = h.cible ?? 1;
-        return { ...h, fait: h.fait >= cible ? 0 : h.fait + 1 };
-      }),
-    );
+  /** Coche ou décoche une variante. Le clic sur une option déjà cochée l'enlève. */
+  const cocherOption = useCallback((habitId: string, option: string) => {
+    setFaitesDuJour((prev) => {
+      const actuelles = prev[habitId] ?? [];
+      const suivantes = actuelles.includes(option)
+        ? actuelles.filter((o) => o !== option)
+        : [...actuelles, option];
+      return { ...prev, [habitId]: suivantes };
+    });
   }, []);
+
+  /** Habitude sans variante : le marqueur « fait » suffit. */
+  const basculerHabitude = useCallback((habitId: string) => {
+    setFaitesDuJour((prev) => ({
+      ...prev,
+      [habitId]: (prev[habitId] ?? []).length > 0 ? [] : ["fait"],
+    }));
+  }, []);
+
+  /**
+   * Saisie libre : « Course · Corps · 5 km, 10 km ».
+   * Le séparateur « · » est celui que l'interface affiche déjà partout ; on
+   * accepte aussi « | » pour qui n'a pas le caractère sous la main.
+   */
+  const ajouterHabitude = useCallback(
+    async (saisie: string) => {
+      const morceaux = saisie
+        .split(/[·|]/)
+        .map((m) => m.trim())
+        .filter(Boolean);
+      if (morceaux.length === 0 || demoModeRef.current) return;
+
+      const [nom, categorie = "Divers", options = ""] = morceaux;
+      const nouvelle: Habit = {
+        id: `h${Date.now().toString(36)}`,
+        nom,
+        categorie,
+        options: options
+          .split(",")
+          .map((o) => o.trim())
+          .filter(Boolean),
+      };
+
+      const suivantes = [...habits, nouvelle];
+      setHabits(suivantes);
+      writeJSON("twaylo-habitudes-def", suivantes);
+
+      try {
+        const res = await fetch("/api/habitudes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ habitudes: suivantes }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        console.error("[habitudes] ajout impossible :", err);
+      }
+    },
+    [habits],
+  );
+
+  const supprimerHabitude = useCallback(
+    (habitId: string) => {
+      const suivantes = habits.filter((h) => h.id !== habitId);
+      setHabits(suivantes);
+      writeJSON("twaylo-habitudes-def", suivantes);
+      if (demoModeRef.current) return;
+      void fetch("/api/habitudes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ habitudes: suivantes }),
+      }).catch((err) => console.error("[habitudes] suppression impossible :", err));
+    },
+    [habits],
+  );
 
   /**
    * Déplacement optimiste : la carte bouge sous le doigt, la base suit.
@@ -657,7 +732,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       toggleTask,
       sync,
       habits,
-      bumpHabit,
+      faitesDuJour,
+      cocherOption,
+      basculerHabitude,
+      ajouterHabitude,
+      supprimerHabitude,
       uneChose,
       setUneChose,
       journalText,
@@ -696,7 +775,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       toggleTask,
       sync,
       habits,
-      bumpHabit,
+      faitesDuJour,
+      cocherOption,
+      basculerHabitude,
+      ajouterHabitude,
+      supprimerHabitude,
       uneChose,
       journalText,
       repas,
