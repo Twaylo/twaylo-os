@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { lireCaptures, lireJour, lireTaches, versHabitudes, versTaches } from "@/lib/db";
+import {
+  lireCaptures,
+  lireContacts,
+  lireJour,
+  lireTaches,
+  lireVideos,
+  versContacts,
+  versHabitudes,
+  versPipeline,
+  versTaches,
+} from "@/lib/db";
 
 /**
  * L'amorçage du dashboard : tout ce qu'il faut pour peindre l'accueil, en un
@@ -21,10 +31,12 @@ export async function GET(req: Request) {
 
   try {
     // En parallèle : ces trois lectures ne dépendent pas les unes des autres.
-    const [taches, journee, captures] = await Promise.all([
+    const [taches, journee, captures, videos, contacts] = await Promise.all([
       lireTaches(),
       lireJour(jour),
       lireCaptures(),
+      lireVideos(),
+      lireContacts(),
     ]);
 
     return NextResponse.json({
@@ -36,6 +48,8 @@ export async function GET(req: Request) {
       uneChose: journee.etat.une_chose,
       nutrition: journee.etat.nutrition,
       captures: captures.map((c) => ({ id: c.id, text: c.texte, type: c.type })),
+      pipeline: versPipeline(videos),
+      contacts: versContacts(contacts),
     });
   } catch (err) {
     console.error("[state] lecture impossible :", err);

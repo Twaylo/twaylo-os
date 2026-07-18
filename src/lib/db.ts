@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { REAL_DATA } from "./data-real";
-import type { Habit, Task, UneChose } from "./types";
+import type { Contact, Habit, Task, UneChose } from "./types";
 
 /**
  * L'accès aux données, côté serveur uniquement.
@@ -208,6 +208,194 @@ export async function ecrireJour(
 }
 
 /* ------------------------------------------------------------------ */
+/* Vidéos — le pipeline de contenu                                     */
+/* ------------------------------------------------------------------ */
+
+export type VideoDB = {
+  id: string;
+  titre: string;
+  statut: string;
+  format: string;
+  priorite: number;
+};
+
+const COLONNES_VIDEO = "id, titre, statut, format, priorite";
+
+/** L'ordre des étapes. Sert à faire avancer une vidéo d'un cran. */
+export const ETAPES = [
+  "idee",
+  "scenario",
+  "tournage",
+  "montage",
+  "pret",
+  "publie",
+] as const;
+
+export async function lireVideos(): Promise<VideoDB[]> {
+  const db = supabaseAdmin();
+
+  const { data, error } = await db
+    .from("videos")
+    .select(COLONNES_VIDEO)
+    .eq("user_id", USER_ID)
+    .order("priorite", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  if (data.length > 0) return data as VideoDB[];
+
+  // Même amorçage idempotent que les tâches : identifiant déduit du titre,
+  // donc deux semis concurrents écrivent la même ligne.
+  const semences = REAL_DATA.pipeline.flatMap((col) =>
+    col.videos.map((v) => ({
+      id: uuidStable(v.title),
+      user_id: USER_ID,
+      titre: v.title,
+      statut: col.status,
+      format: v.format.toLowerCase() === "short" ? "short" : "long",
+    })),
+  );
+
+  if (semences.length > 0) {
+    const { error: erreurSemis } = await db
+      .from("videos")
+      .upsert(semences, { onConflict: "id", ignoreDuplicates: true });
+    if (erreurSemis) throw erreurSemis;
+  }
+
+  const { data: apres, error: erreurRelecture } = await db
+    .from("videos")
+    .select(COLONNES_VIDEO)
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+
+  if (erreurRelecture) throw erreurRelecture;
+  return apres as VideoDB[];
+}
+
+export async function deplacerVideo(id: string, statut: string): Promise<void> {
+  if (!ETAPES.includes(statut as (typeof ETAPES)[number])) {
+    throw new Error(`Étape inconnue : ${statut}`);
+  }
+  const { error } = await supabaseAdmin()
+    .from("videos")
+    .update({
+      statut,
+      publie_le: statut === "publie" ? new Date().toISOString().slice(0, 10) : null,
+    })
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+export async function creerVideo(titre: string, format = "long"): Promise<VideoDB> {
+  const { data, error } = await supabaseAdmin()
+    .from("videos")
+    .insert({ user_id: USER_ID, titre, statut: "idee", format })
+    .select(COLONNES_VIDEO)
+    .single();
+
+  if (error) throw error;
+  return data as VideoDB;
+}
+
+export async function supprimerVideo(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("videos")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------ */
+/* Contacts                                                            */
+/* ------------------------------------------------------------------ */
+
+export type ContactDB = {
+  id: string;
+  nom: string;
+  type: string;
+  relation: string;
+  role: string | null;
+  prochaine_action: string | null;
+};
+
+const COLONNES_CONTACT = "id, nom, type, relation, role, prochaine_action";
+
+export async function lireContacts(): Promise<ContactDB[]> {
+  const db = supabaseAdmin();
+
+  const { data, error } = await db
+    .from("contacts")
+    .select(COLONNES_CONTACT)
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  if (data.length > 0) return data as ContactDB[];
+
+  const { error: erreurSemis } = await db.from("contacts").upsert(
+    REAL_DATA.contacts.map((c) => ({
+      id: uuidStable(c.nom),
+      user_id: USER_ID,
+      nom: c.nom,
+      type: c.type,
+      relation: c.relation,
+      role: c.role ?? null,
+      prochaine_action: c.prochaineAction ?? null,
+    })),
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+  if (erreurSemis) throw erreurSemis;
+
+  const { data: apres, error: erreurRelecture } = await db
+    .from("contacts")
+    .select(COLONNES_CONTACT)
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+
+  if (erreurRelecture) throw erreurRelecture;
+  return apres as ContactDB[];
+}
+
+export async function majContact(
+  id: string,
+  patch: { relation?: string; prochaine_action?: string | null },
+): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("contacts")
+    .update(patch)
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+export async function creerContact(nom: string, type = "collab"): Promise<ContactDB> {
+  const { data, error } = await supabaseAdmin()
+    .from("contacts")
+    .insert({ user_id: USER_ID, nom, type, relation: "froid" })
+    .select(COLONNES_CONTACT)
+    .single();
+
+  if (error) throw error;
+  return data as ContactDB;
+}
+
+export async function supprimerContact(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("contacts")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------ */
 /* Captures                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -246,4 +434,35 @@ export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
  */
 export function versHabitudes(compteurs: Record<string, number>): Habit[] {
   return REAL_DATA.habits.map((h) => ({ ...h, fait: compteurs[h.name] ?? 0 }));
+}
+
+/**
+ * Reconstruit les colonnes du pipeline à partir des lignes de la base.
+ *
+ * Les étapes (noms, couleurs, ordre) restent définies dans le code : ce sont
+ * des constantes de l'atelier, pas des données. Seules les vidéos viennent de
+ * Postgres.
+ */
+export function versPipeline(lignes: VideoDB[]) {
+  return REAL_DATA.pipeline.map((col) => ({
+    ...col,
+    videos: lignes
+      .filter((v) => v.statut === col.status)
+      .map((v) => ({
+        id: v.id,
+        title: v.titre,
+        format: (v.format === "short" ? "Short" : "Long") as "Short" | "Long",
+      })),
+  }));
+}
+
+export function versContacts(lignes: ContactDB[]) {
+  return lignes.map((c) => ({
+    id: c.id,
+    nom: c.nom,
+    type: c.type as Contact["type"],
+    relation: c.relation as Contact["relation"],
+    role: c.role ?? undefined,
+    prochaineAction: c.prochaine_action ?? undefined,
+  }));
 }

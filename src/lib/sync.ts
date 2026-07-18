@@ -45,6 +45,8 @@ export type EtatDistant = {
   uneChose?: { texte: string; fait: boolean };
   nutrition?: { repas: unknown[] };
   captures?: { id: string; text: string; type: string }[];
+  pipeline?: unknown[];
+  contacts?: unknown[];
 };
 
 export async function chargerEtat(jour: string): Promise<EtatDistant | null> {

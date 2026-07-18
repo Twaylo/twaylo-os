@@ -30,7 +30,16 @@ import {
   synchroniserJour,
 } from "./sync";
 import { localDateKey } from "./local-date";
-import type { Capture, Habit, OsData, Repas, Task, UneChose } from "./types";
+import type {
+  Capture,
+  Contact,
+  Habit,
+  OsData,
+  PipelineColumn,
+  Repas,
+  Task,
+  UneChose,
+} from "./types";
 
 export const TABS = [
   "Accueil",
@@ -88,6 +97,20 @@ type OsState = {
   /** Les repas du jour. Vivent ici pour participer au cycle charge/synchronise. */
   repas: Repas[];
   setRepas: Dispatch<SetStateAction<Repas[]>>;
+
+  /**
+   * Pipeline et contacts venus de la base. Nuls tant que le chargement n'a
+   * pas répondu — les vues retombent alors sur `data`, qui porte le jeu de
+   * démonstration ou les valeurs d'amorçage.
+   */
+  pipeline: PipelineColumn[] | null;
+  contacts: (Contact & { id: string })[] | null;
+
+  /** Fait avancer une vidéo d'une étape, ou la ramène en arrière. */
+  deplacerVideo: (id: string, statut: string) => void;
+  /** Ajoute une idée au pipeline. */
+  ajouterVideo: (titre: string, format?: "short" | "long") => Promise<void>;
+  supprimerVideo: (id: string) => void;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -127,6 +150,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [journalText, setJournalText] = useState("");
   const [uneChose, setUneChose] = useState<UneChose>({ texte: "", fait: false });
   const [repas, setRepas] = useState<Repas[]>([]);
+  const [pipeline, setPipeline] = useState<PipelineColumn[] | null>(null);
+  const [contacts, setContacts] = useState<(Contact & { id: string })[] | null>(null);
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
   demoModeRef.current = demoMode;
@@ -212,6 +237,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (distant.habitudes) setHabits(distant.habitudes as Habit[]);
       if (distant.uneChose) setUneChose(distant.uneChose);
       if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
+      if (distant.pipeline) setPipeline(distant.pipeline as PipelineColumn[]);
+      if (distant.contacts) setContacts(distant.contacts as (Contact & { id: string })[]);
       if (distant.captures) {
         setCaptures(
           distant.captures.map((c) => ({ text: c.text, type: c.type as Capture["type"] })),
@@ -366,6 +393,88 @@ export function OsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * Déplacement optimiste : la carte bouge sous le doigt, la base suit.
+   * Un échec réseau laisse la vidéo à sa nouvelle place et remonte dans
+   * l'indicateur de synchro — annuler le geste serait plus déroutant que de
+   * le laisser et signaler.
+   */
+  const deplacerVideo = useCallback((id: string, statut: string) => {
+    setPipeline((prev) => {
+      if (!prev) return prev;
+      let video: PipelineColumn["videos"][number] | undefined;
+      const sansVideo = prev.map((col) => {
+        const trouvee = col.videos.find((v) => (v as { id?: string }).id === id);
+        if (trouvee) video = trouvee;
+        return { ...col, videos: col.videos.filter((v) => (v as { id?: string }).id !== id) };
+      });
+      if (!video) return prev;
+      return sansVideo.map((col) =>
+        col.status === statut ? { ...col, videos: [...col.videos, video!] } : col,
+      );
+    });
+
+    if (demoModeRef.current) return;
+    void fetch("/api/videos", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, statut }),
+    }).catch((err) => console.error("[pipeline] déplacement impossible :", err));
+  }, []);
+
+  const ajouterVideo = useCallback(
+    async (titre: string, format: "short" | "long" = "long") => {
+      const propre = titre.trim();
+      if (!propre || demoModeRef.current) return;
+      try {
+        const res = await fetch("/api/videos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ titre: propre, format }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { video } = await res.json();
+        setPipeline((prev) =>
+          prev
+            ? prev.map((col) =>
+                col.status === "idee"
+                  ? {
+                      ...col,
+                      videos: [
+                        ...col.videos,
+                        {
+                          id: video.id,
+                          title: video.titre,
+                          format: video.format === "short" ? "Short" : "Long",
+                        } as PipelineColumn["videos"][number],
+                      ],
+                    }
+                  : col,
+              )
+            : prev,
+        );
+      } catch (err) {
+        console.error("[pipeline] ajout impossible :", err);
+      }
+    },
+    [],
+  );
+
+  const supprimerVideo = useCallback((id: string) => {
+    setPipeline((prev) =>
+      prev
+        ? prev.map((col) => ({
+            ...col,
+            videos: col.videos.filter((v) => (v as { id?: string }).id !== id),
+          }))
+        : prev,
+    );
+    if (demoModeRef.current) return;
+    void fetch(`/api/videos?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      (err) => console.error("[pipeline] suppression impossible :", err),
+    );
+  }, []);
+
   const value = useMemo<OsState>(
     () => ({
       activeTab,
@@ -391,6 +500,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setJournalText,
       repas,
       setRepas,
+      pipeline,
+      contacts,
+      deplacerVideo,
+      ajouterVideo,
+      supprimerVideo,
     }),
     [
       activeTab,
@@ -410,6 +524,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       uneChose,
       journalText,
       repas,
+      pipeline,
+      contacts,
+      deplacerVideo,
+      ajouterVideo,
+      supprimerVideo,
     ],
   );
 
