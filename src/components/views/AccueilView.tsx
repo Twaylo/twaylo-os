@@ -1,6 +1,7 @@
 "use client";
 
 import { useOs } from "@/lib/os-context";
+import { useMasonry } from "@/lib/use-masonry";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { CaptureBar } from "@/components/cards/CaptureBar";
@@ -19,8 +20,17 @@ export function AccueilView() {
   const { data } = useOs();
   const videoCount = data.pipeline.reduce((n, c) => n + c.videos.length, 0);
 
+  const grille = useMasonry<HTMLDivElement>();
+
   return (
-    <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2 xl:grid-cols-4">
+    <div
+      ref={grille}
+      // `grid-auto-rows` fin + `items-start` : chaque carte occupe exactement
+      // le nombre de micro-rangées que son contenu réclame (voir useMasonry).
+      // Les micro-rangées n'existent qu'au format large, là où le compactage a
+      // un sens. En dessous, la grille reste une pile normale : appliquer des
+      // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
+      className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-4 xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]">
       <CaptureBar />
       <OperateurCard />
       <TachesCard />

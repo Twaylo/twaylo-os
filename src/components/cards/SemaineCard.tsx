@@ -11,7 +11,7 @@ export function SemaineCard() {
   const connected = data.events.length > 0;
 
   return (
-    <Panel accent="var(--color-ble)" className="col-span-full md:col-span-2">
+    <Panel accent="var(--color-ble)" className="col-span-full md:col-span-2 xl:col-span-1">
       <div className="mb-[11px] flex items-center justify-between gap-3">
         <Eyebrow color="var(--color-ble-soft)" dot="var(--color-ble)">
           SEMAINE

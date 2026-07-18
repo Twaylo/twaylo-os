@@ -27,14 +27,17 @@ function Macro({
 }) {
   const pct = cible > 0 ? Math.min(100, Math.round((valeur / cible) * 100)) : 0;
   return (
-    <div className="flex-1">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[9.5px] font-extrabold tracking-[0.08em] text-white/45">
+    // `min-w-0` : sans lui, un élément flex refuse de descendre sous la
+    // largeur de son contenu, et les trois macros débordaient de la carte
+    // une fois celle-ci ramenée sur une seule colonne.
+    <div className="min-w-0 flex-1">
+      <div className="leading-[1.25]">
+        <div className="truncate text-[9.5px] font-extrabold tracking-[0.08em] text-white/45">
           {label}
-        </span>
-        <span className="font-mono text-[10.5px] font-bold text-white/70">
+        </div>
+        <div className="font-mono text-[10.5px] font-bold text-white/70">
           {valeur}/{cible}g
-        </span>
+        </div>
       </div>
       <div className="bar-track mt-[4px]" style={{ height: 4 }}>
         <div
@@ -150,7 +153,9 @@ export function NutritionCard() {
         />
       </div>
 
-      <div className="mt-3 flex gap-3">
+      {/* Écart resserré : sur une seule colonne, `gap-3` faisait déborder les
+          trois macros de 27 px. */}
+      <div className="mt-3 flex gap-[6px]">
         <Macro label="PROTÉINES" valeur={t.p} cible={obj.p} couleur="var(--color-mag)" />
         <Macro label="GLUCIDES" valeur={t.c} cible={obj.c} couleur="var(--color-amb)" />
         <Macro label="LIPIDES" valeur={t.f} cible={obj.f} couleur="var(--color-cya)" />
