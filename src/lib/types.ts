@@ -180,3 +180,18 @@ export type OsData = {
   journalEntries: JournalEntry[];
   memories: string[];
 };
+
+/** Un repas du jour (carte Nutrition). */
+export type Repas = {
+  id: string;
+  /** Heure HH:MM. */
+  t: string;
+  /** Nom du repas. */
+  n: string;
+  kcal: number;
+  p: number;
+  c: number;
+  f: number;
+  /** Vrai si les macros viennent d une estimation IA plutot que d une saisie. */
+  estimated: boolean;
+};

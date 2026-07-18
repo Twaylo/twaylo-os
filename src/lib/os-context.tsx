@@ -30,7 +30,7 @@ import {
   synchroniserJour,
 } from "./sync";
 import { localDateKey } from "./local-date";
-import type { Capture, Habit, OsData, Task, UneChose } from "./types";
+import type { Capture, Habit, OsData, Repas, Task, UneChose } from "./types";
 
 export const TABS = [
   "Accueil",
@@ -84,6 +84,10 @@ type OsState = {
 
   journalText: string;
   setJournalText: Dispatch<SetStateAction<string>>;
+
+  /** Les repas du jour. Vivent ici pour participer au cycle charge/synchronise. */
+  repas: Repas[];
+  setRepas: Dispatch<SetStateAction<Repas[]>>;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -122,6 +126,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [capturing, setCapturing] = useState(false);
   const [journalText, setJournalText] = useState("");
   const [uneChose, setUneChose] = useState<UneChose>({ texte: "", fait: false });
+  const [repas, setRepas] = useState<Repas[]>([]);
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
   demoModeRef.current = demoMode;
@@ -159,6 +164,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     );
     setJournalText(readJSON<string>(dailyKey("journal"), ""));
     setUneChose(readJSON<UneChose>(dailyKey("unechose"), { texte: "", fait: false }));
+    setRepas(readJSON<Repas[]>(dailyKey("nutrition"), []));
   }, []);
 
   // Lecture initiale, une seule fois.
@@ -205,6 +211,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (distant.taches) setTasks(distant.taches);
       if (distant.habitudes) setHabits(distant.habitudes as Habit[]);
       if (distant.uneChose) setUneChose(distant.uneChose);
+      if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
       if (distant.captures) {
         setCaptures(
           distant.captures.map((c) => ({ text: c.text, type: c.type as Capture["type"] })),
@@ -260,6 +267,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
     synchroniserJour({ jour: jourRef.current || localDateKey(), uneChose });
   }, [uneChose, demoMode]);
 
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(dailyKey("nutrition"), repas);
+    synchroniserJour({ jour: jourRef.current || localDateKey(), nutrition: { repas } });
+  }, [repas, demoMode]);
+
   const toggleDemo = useCallback(() => {
     setDemoMode((on) => {
       const next = !on;
@@ -271,6 +284,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
         setHabits(DEMO_DATA.habits);
         setJournalText("");
         setUneChose({ texte: "", fait: false });
+        setRepas([]);
       } else {
         // Retour au réel : on relit le stockage, rien n'a été perdu pendant
         // la démo.
@@ -375,6 +389,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setUneChose,
       journalText,
       setJournalText,
+      repas,
+      setRepas,
     }),
     [
       activeTab,
@@ -393,6 +409,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       bumpHabit,
       uneChose,
       journalText,
+      repas,
     ],
   );
 

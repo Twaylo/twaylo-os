@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import {
   OBJECTIFS_DEFAUT,
-  ecrireRepas,
   estimerRepas,
   kcalDepuisMacros,
-  lireRepas,
   redistribuerMacros,
   totaux,
-  type Repas,
 } from "@/lib/nutrition";
+import { useOs } from "@/lib/os-context";
+import type { Repas } from "@/lib/types";
 import { Eyebrow, MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -48,21 +47,13 @@ function Macro({
 }
 
 export function NutritionCard() {
-  const [repas, setRepas] = useState<Repas[]>([]);
+  // Les repas vivent dans le contexte : ils participent au cycle
+  // chargement depuis la base / synchronisation vers elle.
+  const { repas, setRepas } = useOs();
   const [saisie, setSaisie] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [ouvert, setOuvert] = useState<string | null>(null);
-  const [hydrate, setHydrate] = useState(false);
 
-  // Lecture après montage : la clé dépend du jour local, inconnu au SSR.
-  useEffect(() => {
-    setRepas(lireRepas());
-    setHydrate(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrate) ecrireRepas(repas);
-  }, [repas, hydrate]);
 
   const t = totaux(repas);
   const obj = OBJECTIFS_DEFAUT;

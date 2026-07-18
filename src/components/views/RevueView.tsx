@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { readJSON, writeJSON } from "@/lib/storage";
+import { localDateKey } from "@/lib/local-date";
 import { REVUE_VIDE, type Revue } from "@/lib/types";
 import { useOs } from "@/lib/os-context";
 import { MicButton } from "@/components/ui";
@@ -27,7 +28,7 @@ function semaineISO(d: Date): { annee: number; semaine: number } {
   return { annee: t.getUTCFullYear(), semaine };
 }
 
-function bornesSemaine(d: Date): { du: string; au: string } {
+function bornesSemaine(d: Date): { du: string; au: string; lundiISO: string } {
   const offset = (d.getDay() + 6) % 7;
   const lundi = new Date(d);
   lundi.setDate(d.getDate() - offset);
@@ -35,7 +36,7 @@ function bornesSemaine(d: Date): { du: string; au: string } {
   dimanche.setDate(lundi.getDate() + 6);
   const fmt = (x: Date) =>
     x.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-  return { du: fmt(lundi), au: fmt(dimanche) };
+  return { du: fmt(lundi), au: fmt(dimanche), lundiISO: localDateKey(lundi) };
 }
 
 type Champ = {
@@ -95,9 +96,12 @@ export function RevueView() {
   const { demoMode } = useOs();
   const [revue, setRevue] = useState<Revue>(REVUE_VIDE);
   const [hydrate, setHydrate] = useState(false);
-  const [meta, setMeta] = useState<{ semaine: number; du: string; au: string } | null>(
-    null,
-  );
+  const [meta, setMeta] = useState<{
+    semaine: number;
+    du: string;
+    au: string;
+    lundiISO: string;
+  } | null>(null);
 
   // La date locale n'est connue qu'après montage (hydratation).
   const cle = useMemo(
@@ -108,16 +112,36 @@ export function RevueView() {
   useEffect(() => {
     const now = new Date();
     const { semaine } = semaineISO(now);
-    const { du, au } = bornesSemaine(now);
-    setMeta({ semaine, du, au });
+    const { du, au, lundiISO } = bornesSemaine(now);
+    setMeta({ semaine, du, au, lundiISO });
     setRevue(readJSON<Revue>(`twaylo-revue-${semaine}`, REVUE_VIDE));
     setHydrate(true);
+
+    // La base corrige ensuite le cache local — même ordre que le dashboard :
+    // afficher tout de suite, rectifier après.
+    void fetch(`/api/revue?lundi=${lundiISO}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.connecte && d.revue) setRevue(d.revue);
+      })
+      .catch((err) => console.error("[revue] chargement impossible :", err));
   }, []);
 
   useEffect(() => {
-    if (!hydrate || !cle || demoMode) return;
+    if (!hydrate || !cle || demoMode || !meta) return;
     writeJSON(cle, revue);
-  }, [revue, hydrate, cle, demoMode]);
+
+    // Une seconde après la dernière frappe : écrire à chaque lettre
+    // enverrait une requête par caractère.
+    const minuteur = setTimeout(() => {
+      void fetch("/api/revue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lundi: meta.lundiISO, revue }),
+      }).catch((err) => console.error("[revue] écriture impossible :", err));
+    }, 1000);
+    return () => clearTimeout(minuteur);
+  }, [revue, hydrate, cle, demoMode, meta]);
 
   const rempli = CHAMPS.filter((c) => revue[c.cle].trim().length > 0).length;
 
