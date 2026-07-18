@@ -6,11 +6,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
+import { KEYS, dailyKey, pruneOldDailyKeys, readJSON, writeJSON } from "./storage";
 import type { Capture, Habit, OsData, Task } from "./types";
 
 export const TABS = [
@@ -24,8 +26,6 @@ export const TABS = [
 ] as const;
 
 export type Tab = (typeof TABS)[number];
-
-const DEMO_KEY = "twaylo-demo-mode";
 
 type OsState = {
   activeTab: Tab;
@@ -64,6 +64,20 @@ type OsState = {
 
 const OsContext = createContext<OsState | null>(null);
 
+/**
+ * Les cases cochées sont stockées par libellé, pas par index : réordonner
+ * ou insérer une tâche ne doit pas décaler ce qui est coché.
+ * C'est aussi la forme de daily_logs.habitudes côté Supabase.
+ */
+function applyDone<T extends { done: boolean }>(
+  items: T[],
+  label: (item: T) => string,
+  doneLabels: string[],
+): T[] {
+  const done = new Set(doneLabels);
+  return items.map((item) => ({ ...item, done: done.has(label(item)) }));
+}
+
 export function OsProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
@@ -76,32 +90,99 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const data = demoMode ? DEMO_DATA : REAL_DATA;
 
   // Les listes cochables sont éditables, donc copiées dans l'état local.
-  // Elles repartent du jeu de données à chaque bascule de mode.
   const [captures, setCaptures] = useState<Capture[]>(REAL_DATA.captures);
   const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
   const [habits, setHabits] = useState<Habit[]>(REAL_DATA.habits);
 
-  // Le choix du mode démo survit au rechargement (spec Partie 3, annexe A17).
-  useEffect(() => {
-    if (localStorage.getItem(DEMO_KEY) !== "1") return;
-    setDemoMode(true);
-    setCaptures(DEMO_DATA.captures);
-    setTasks(DEMO_DATA.tasks);
-    setHabits(DEMO_DATA.habits);
+  /**
+   * Barrière d'hydratation. Les effets de persistance ne doivent pas écrire
+   * tant que la lecture initiale n'a pas eu lieu — sinon le premier rendu
+   * écraserait le stockage avec les valeurs par défaut. Même logique que le
+   * `dirtyRef` de la spec Partie 10, bug 4.
+   */
+  const hydrated = useRef(false);
+
+  /** Relit tout le stockage local et remplit l'état. */
+  const hydrateFromStorage = useCallback(() => {
+    setCaptures(readJSON<Capture[]>(KEYS.captures, REAL_DATA.captures));
+    setTasks(
+      applyDone(REAL_DATA.tasks, (t) => t.text, readJSON<string[]>(KEYS.tasks, [])),
+    );
+    // Clé datée : au changement de jour local, la clé n'existe pas encore et
+    // les habitudes repartent vierges. Aucun code de remise à zéro.
+    setHabits(
+      applyDone(REAL_DATA.habits, (h) => h.name, readJSON<string[]>(dailyKey("habits"), [])),
+    );
+    setJournalText(readJSON<string>(dailyKey("journal"), ""));
   }, []);
+
+  // Lecture initiale, une seule fois.
+  useEffect(() => {
+    pruneOldDailyKeys("habits");
+    pruneOldDailyKeys("journal");
+
+    if (readJSON<string>(KEYS.demo, "0") === "1") {
+      // En démo on n'ouvre jamais le stockage réel.
+      setDemoMode(true);
+      setCaptures(DEMO_DATA.captures);
+      setTasks(DEMO_DATA.tasks);
+      setHabits(DEMO_DATA.habits);
+    } else {
+      hydrateFromStorage();
+    }
+
+    hydrated.current = true;
+  }, [hydrateFromStorage]);
+
+  /*
+   * Persistance. Le garde `demoMode` est ce qui isole la démo : cocher une
+   * habitude en mode démo pour une vidéo ne doit jamais toucher les vraies
+   * données de Twaylo (spec annexe A17).
+   */
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(KEYS.captures, captures);
+  }, [captures, demoMode]);
+
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(
+      KEYS.tasks,
+      tasks.filter((t) => t.done).map((t) => t.text),
+    );
+  }, [tasks, demoMode]);
+
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(
+      dailyKey("habits"),
+      habits.filter((h) => h.done).map((h) => h.name),
+    );
+  }, [habits, demoMode]);
+
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(dailyKey("journal"), journalText);
+  }, [journalText, demoMode]);
 
   const toggleDemo = useCallback(() => {
     setDemoMode((on) => {
       const next = !on;
-      const src = next ? DEMO_DATA : REAL_DATA;
-      setCaptures(src.captures);
-      setTasks(src.tasks);
-      setHabits(src.habits);
-      setJournalText("");
-      localStorage.setItem(DEMO_KEY, next ? "1" : "0");
+      writeJSON(KEYS.demo, next ? "1" : "0");
+
+      if (next) {
+        setCaptures(DEMO_DATA.captures);
+        setTasks(DEMO_DATA.tasks);
+        setHabits(DEMO_DATA.habits);
+        setJournalText("");
+      } else {
+        // Retour au réel : on relit le stockage, rien n'a été perdu pendant
+        // la démo.
+        hydrateFromStorage();
+      }
       return next;
     });
-  }, []);
+  }, [hydrateFromStorage]);
 
   const addCapture = useCallback(async () => {
     const text = captureText.trim();
