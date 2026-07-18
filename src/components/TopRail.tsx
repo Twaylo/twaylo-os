@@ -90,7 +90,7 @@ function DemoToggle() {
 }
 
 export function TopRail() {
-  const { activeTab, setActiveTab } = useOs();
+  const { activeTab, setActiveTab, data } = useOs();
   const { dateStr, timeStr } = useClock();
 
   return (
@@ -140,6 +140,32 @@ export function TopRail() {
         </nav>
 
         <div className="flex items-center gap-[10px]">
+          {/*
+            Les tickers de Miles étaient BTC / NDX / XAU — les chiffres qui
+            comptent pour un investisseur. Ceux de Twaylo sont ses abonnés,
+            ses vues et son RPM.
+          */}
+          <div className="hidden items-center gap-[14px] lg:flex">
+            {data.tickers.map((t) => (
+              <div key={t.label} className="leading-[1.15]">
+                <div className="text-[8px] font-black tracking-[0.1em] text-white/30">
+                  {t.label}
+                </div>
+                <div className="flex items-baseline gap-[4px]">
+                  <span className="font-mono text-[12px] font-extrabold">{t.valeur}</span>
+                  {t.delta && (
+                    <span
+                      className="font-mono text-[9px] font-bold"
+                      style={{ color: "var(--color-ver-soft)" }}
+                    >
+                      {t.delta}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
           <DemoToggle />
           <div className="text-right leading-[1.2]">
             {/* Espace réservé pendant le premier rendu pour éviter un saut. */}

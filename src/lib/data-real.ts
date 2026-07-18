@@ -29,13 +29,14 @@ export const REAL_DATA: OsData = {
     { text: "Trouver un fournisseur", done: false, categorie: "Business" },
   ],
 
+  // Habitudes à la façon de Miles : catégorie + objectif de séances.
   habits: [
-    { name: "Sport", done: false },
-    { name: "Session créative", done: false },
-    { name: "Communauté", done: false },
-    { name: "Veille / recherche", done: false },
-    { name: "Point finance", done: false },
-    { name: "Sommeil", done: false },
+    { name: 'Sport', categorie: 'Corps', cible: 5, fait: 0 },
+    { name: 'Sommeil', categorie: 'Corps', fait: 0 },
+    { name: 'Session créative', categorie: 'Création', cible: 6, fait: 0 },
+    { name: 'Veille / recherche', categorie: 'Création', cible: 4, fait: 0 },
+    { name: 'Communauté', categorie: 'Audience', cible: 5, fait: 0 },
+    { name: 'Point finance', categorie: 'Business', fait: 0 },
   ],
 
   pipeline: [
@@ -133,7 +134,17 @@ export const REAL_DATA: OsData = {
   ideas: [],
   schedule: [],
   events: [],
+  creneaux: [],
   busyDays: {},
+
+  // Rien n'est encore bloqué : Twaylo démarre seul.
+  blocages: [],
+
+  tickers: [
+    { label: 'ABONNÉS', valeur: '—' },
+    { label: 'VUES 30J', valeur: '—' },
+    { label: 'RPM', valeur: '—' },
+  ],
 
   revenue: {
     connected: false,

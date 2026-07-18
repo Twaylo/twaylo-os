@@ -33,7 +33,65 @@ export type VideoStatus =
 
 export type Capture = { text: string; type: CaptureType };
 export type Task = { text: string; done: boolean; categorie?: string };
-export type Habit = { name: string; done: boolean };
+
+/**
+ * Une habitude, à la façon de l'OS de Miles : soit une simple bascule, soit
+ * un compteur de séances avec un objectif hebdomadaire.
+ *
+ * `cible` absent  → bascule : fait vaut 0 ou 1
+ * `cible` présent → séances : fait va de 0 à cible, incrémenté au clic
+ */
+export type Habit = {
+  name: string;
+  categorie: string;
+  cible?: number;
+  fait: number;
+};
+
+/** Ce qui bloque, et depuis combien de temps (Miles : KEY BLOCKERS). */
+export type Blocage = {
+  texte: string;
+  /** « Toi » ou le nom de la personne dont ça dépend. */
+  proprietaire: string;
+  depuisJours: number;
+  chaleur: "chaud" | "tiede" | "froid";
+};
+
+/** Un créneau du calendrier, avec heures et étiquette (Miles : CALENDAR). */
+export type Creneau = {
+  debut: string;
+  fin?: string;
+  titre: string;
+  contexte?: string;
+  tag?: string;
+  color: string;
+};
+
+/** La revue de semaine (Miles : REVIEW). Une par semaine ISO. */
+export type Revue = {
+  gains: string;
+  bouclesOuvertes: string;
+  contenuPublie: string;
+  top3: string;
+  ceQuiADerape: string;
+  personnesARelancer: string;
+  patternSante: string;
+  scelle: boolean;
+};
+
+export const REVUE_VIDE: Revue = {
+  gains: "",
+  bouclesOuvertes: "",
+  contenuPublie: "",
+  top3: "",
+  ceQuiADerape: "",
+  personnesARelancer: "",
+  patternSante: "",
+  scelle: false,
+};
+
+/** Les chiffres qui défilent dans le rail — l'équivalent des tickers de Miles. */
+export type Ticker = { label: string; valeur: string; delta?: string };
 
 export type Video = { title: string; format: Format };
 
@@ -66,6 +124,9 @@ export type Deal = { name: string; amount: string; note: string };
 export type DealColumn = { name: string; color: string; deals: Deal[] };
 
 export type CalendarEvent = { time: string; title: string; color: string };
+
+/** Ce que Twaylo a décidé de faire aujourd'hui — son unique priorité. */
+export type UneChose = { texte: string; fait: boolean };
 
 export type JournalEntry = {
   date: string;
@@ -107,8 +168,14 @@ export type OsData = {
   ideas: { title: string; format: Format; src: string }[];
   schedule: { date: string; title: string; format: Format }[];
   events: CalendarEvent[];
-  /** Jour du mois → couleur de la pastille « journée chargée ». */
+  /** Les créneaux détaillés du jour, avec heures et étiquettes. */
+  creneaux: Creneau[];
+  /** Position dans la semaine (0 = lundi) → couleur de la pastille. */
   busyDays: Record<number, string>;
+  /** Ce qui est bloqué et attend quelqu'un. */
+  blocages: Blocage[];
+  /** Les trois chiffres du rail supérieur. */
+  tickers: Ticker[];
   revenue: Revenue;
   journalEntries: JournalEntry[];
   memories: string[];

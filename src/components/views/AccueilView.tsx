@@ -13,6 +13,7 @@ import { SemaineCard } from "@/components/cards/SemaineCard";
 import { ObjectifsCard } from "@/components/cards/ObjectifsCard";
 import { JournalCard } from "@/components/cards/JournalCard";
 import { NutritionCard } from "@/components/cards/NutritionCard";
+import { BlocagesCard } from "@/components/cards/BlocagesCard";
 
 export function AccueilView() {
   const { data } = useOs();
@@ -25,6 +26,7 @@ export function AccueilView() {
       <TachesCard />
       <RevenusCard />
       <HabitudesCard />
+      <BlocagesCard />
 
       <Panel accent="var(--color-cya)" className="col-span-full md:col-span-2">
         <div className="mb-[11px] flex items-center justify-between gap-3">

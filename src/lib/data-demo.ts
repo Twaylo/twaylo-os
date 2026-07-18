@@ -31,12 +31,12 @@ export const DEMO_DATA: OsData = {
   ],
 
   habits: [
-    { name: "Sport", done: true },
-    { name: "Session créative", done: true },
-    { name: "Communauté", done: false },
-    { name: "Veille / recherche", done: true },
-    { name: "Point finance", done: false },
-    { name: "Sommeil", done: true },
+    { name: 'Sport', categorie: 'Corps', cible: 5, fait: 4 },
+    { name: 'Sommeil', categorie: 'Corps', fait: 1 },
+    { name: 'Session créative', categorie: 'Création', cible: 6, fait: 5 },
+    { name: 'Veille / recherche', categorie: 'Création', cible: 4, fait: 2 },
+    { name: 'Communauté', categorie: 'Audience', cible: 5, fait: 1 },
+    { name: 'Point finance', categorie: 'Business', fait: 0 },
   ],
 
   pipeline: [
@@ -200,13 +200,34 @@ export const DEMO_DATA: OsData = {
     { time: "16:30", title: "Session montage — Vérité #12", color: "var(--color-cya)" },
   ],
 
+  creneaux: [
+    { debut: '09:00', fin: '11:30', titre: 'Tournage extérieur — parc', contexte: 'Plans de coupe + interview passants', tag: 'TOURNAGE', color: 'var(--color-ver)' },
+    { debut: '14:00', fin: '14:45', titre: 'Call sponsor NordVPN', contexte: 'Valider le brief et la date de diffusion', tag: 'BUSINESS', color: 'var(--color-mag)' },
+    { debut: "16:30", fin: "19:00", titre: "Session montage — Vérité #12", contexte: "Finir l'acte 2, exporter une V1", tag: "MONTAGE", color: "var(--color-cya)" },
+    { debut: '21:00', titre: 'Journal du soir', color: 'var(--color-cor)' },
+  ],
+
   /** Positions dans la semaine (0 = lundi) plutôt que des dates figées. */
   busyDays: {
-    1: "var(--color-mag)",
-    3: "var(--color-cya)",
-    4: "var(--color-amb)",
-    5: "var(--color-ble)",
+    1: 'var(--color-mag)',
+    3: 'var(--color-cya)',
+    4: 'var(--color-amb)',
+    5: 'var(--color-ble)',
   },
+
+  blocages: [
+    { texte: 'Montage Vérité #12 — attente du sous-titrage', proprietaire: 'Damien', depuisJours: 4, chaleur: 'chaud' },
+    { texte: 'Devis fixeur Congo jamais revenu', proprietaire: 'Agence', depuisJours: 11, chaleur: 'chaud' },
+    { texte: 'Miniature Short à valider', proprietaire: 'Lou', depuisJours: 2, chaleur: 'tiede' },
+    { texte: 'Contrat Nike — clause exclusivité à relire', proprietaire: 'Toi', depuisJours: 6, chaleur: 'tiede' },
+    { texte: 'Assurance matériel Amérique du Sud', proprietaire: 'Toi', depuisJours: 19, chaleur: 'froid' },
+  ],
+
+  tickers: [
+    { label: 'ABONNÉS', valeur: '87,4 k', delta: '+2,1 k' },
+    { label: 'VUES 30J', valeur: '1,75 M', delta: '+8 %' },
+    { label: 'RPM', valeur: '4,80 €', delta: '+0,30' },
+  ],
 
   revenue: {
     connected: true,

@@ -15,7 +15,7 @@ import {
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
 import { KEYS, dailyKey, pruneOldDailyKeys, readJSON, writeJSON } from "./storage";
-import type { Capture, Habit, OsData, Task } from "./types";
+import type { Capture, Habit, OsData, Task, UneChose } from "./types";
 
 export const TABS = [
   "Accueil",
@@ -25,6 +25,7 @@ export const TABS = [
   "Revenus",
   "Journal",
   "Objectifs",
+  "Revue",
 ] as const;
 
 export type Tab = (typeof TABS)[number];
@@ -55,7 +56,12 @@ type OsState = {
   toggleTask: (i: number) => void;
 
   habits: Habit[];
-  toggleHabit: (i: number) => void;
+  /** Incrémente une habitude à compteur ; boucle à zéro une fois l'objectif atteint. */
+  bumpHabit: (i: number) => void;
+
+  /** L'unique chose que Twaylo a décidé de faire aujourd'hui. */
+  uneChose: UneChose;
+  setUneChose: Dispatch<SetStateAction<UneChose>>;
 
   journalText: string;
   setJournalText: Dispatch<SetStateAction<string>>;
@@ -64,8 +70,8 @@ type OsState = {
 const OsContext = createContext<OsState | null>(null);
 
 /**
- * Les cases cochées sont stockées par libellé, pas par index : réordonner
- * ou insérer une tâche ne doit pas décaler ce qui est coché.
+ * Les états cochés sont stockés par libellé, pas par index : réordonner ou
+ * insérer une ligne ne doit pas décaler ce qui est fait.
  * C'est aussi la forme de daily_logs.habitudes côté Supabase.
  */
 function applyDone<T extends { done: boolean }>(
@@ -77,6 +83,15 @@ function applyDone<T extends { done: boolean }>(
   return items.map((item) => ({ ...item, done: done.has(label(item)) }));
 }
 
+/** Les habitudes stockent un compteur par nom, pas un simple booléen. */
+function applyCounts(items: Habit[], counts: Record<string, number>): Habit[] {
+  return items.map((h) => ({ ...h, fait: counts[h.name] ?? 0 }));
+}
+
+function toCounts(items: Habit[]): Record<string, number> {
+  return Object.fromEntries(items.filter((h) => h.fait > 0).map((h) => [h.name, h.fait]));
+}
+
 export function OsProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
@@ -84,6 +99,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [journalText, setJournalText] = useState("");
+  const [uneChose, setUneChose] = useState<UneChose>({ texte: "", fait: false });
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
 
@@ -109,15 +125,18 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // Clé datée : au changement de jour local, la clé n'existe pas encore et
     // les habitudes repartent vierges. Aucun code de remise à zéro.
     setHabits(
-      applyDone(REAL_DATA.habits, (h) => h.name, readJSON<string[]>(dailyKey("habits"), [])),
+      applyCounts(REAL_DATA.habits, readJSON<Record<string, number>>(dailyKey("habits"), {})),
     );
     setJournalText(readJSON<string>(dailyKey("journal"), ""));
+    setUneChose(readJSON<UneChose>(dailyKey("unechose"), { texte: "", fait: false }));
   }, []);
 
   // Lecture initiale, une seule fois.
   useEffect(() => {
     pruneOldDailyKeys("habits");
     pruneOldDailyKeys("journal");
+    pruneOldDailyKeys("unechose");
+    pruneOldDailyKeys("nutrition");
 
     if (readJSON<string>(KEYS.demo, "0") === "1") {
       // En démo on n'ouvre jamais le stockage réel.
@@ -152,16 +171,18 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
-    writeJSON(
-      dailyKey("habits"),
-      habits.filter((h) => h.done).map((h) => h.name),
-    );
+    writeJSON(dailyKey("habits"), toCounts(habits));
   }, [habits, demoMode]);
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
     writeJSON(dailyKey("journal"), journalText);
   }, [journalText, demoMode]);
+
+  useEffect(() => {
+    if (!hydrated.current || demoMode) return;
+    writeJSON(dailyKey("unechose"), uneChose);
+  }, [uneChose, demoMode]);
 
   const toggleDemo = useCallback(() => {
     setDemoMode((on) => {
@@ -173,6 +194,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
         setTasks(DEMO_DATA.tasks);
         setHabits(DEMO_DATA.habits);
         setJournalText("");
+        setUneChose({ texte: "", fait: false });
       } else {
         // Retour au réel : on relit le stockage, rien n'a été perdu pendant
         // la démo.
@@ -220,8 +242,18 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, done: !t.done } : t)));
   }, []);
 
-  const toggleHabit = useCallback((i: number) => {
-    setHabits((prev) => prev.map((h, j) => (j === i ? { ...h, done: !h.done } : h)));
+  /**
+   * Un clic avance le compteur. Une fois l'objectif atteint, le clic suivant
+   * revient à zéro — corriger une erreur sans ajouter un bouton « moins ».
+   */
+  const bumpHabit = useCallback((i: number) => {
+    setHabits((prev) =>
+      prev.map((h, j) => {
+        if (j !== i) return h;
+        const cible = h.cible ?? 1;
+        return { ...h, fait: h.fait >= cible ? 0 : h.fait + 1 };
+      }),
+    );
   }, []);
 
   const value = useMemo<OsState>(
@@ -241,7 +273,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       tasks,
       toggleTask,
       habits,
-      toggleHabit,
+      bumpHabit,
+      uneChose,
+      setUneChose,
       journalText,
       setJournalText,
     }),
@@ -258,7 +292,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       tasks,
       toggleTask,
       habits,
-      toggleHabit,
+      bumpHabit,
+      uneChose,
       journalText,
     ],
   );
