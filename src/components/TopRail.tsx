@@ -58,6 +58,60 @@ function Logo() {
   );
 }
 
+/**
+ * Où en sont les données : dans la base, ou seulement dans le navigateur.
+ *
+ * Discret quand tout va bien, visible quand ça ne va pas. Twaylo doit pouvoir
+ * savoir d'un coup d'œil si ce qu'il vient d'écrire est réellement à l'abri —
+ * c'est toute la différence entre un carnet et un système.
+ */
+function SyncIndicator() {
+  const { sync } = useOs();
+
+  const etats = {
+    inconnu: { couleur: "rgba(255,255,255,0.2)", texte: "…", titre: "Connexion en cours" },
+    connecte: {
+      couleur: "var(--color-ver)",
+      texte: "BASE",
+      titre: "Tout est enregistré dans ta base de données",
+    },
+    hors_ligne: {
+      couleur: "var(--color-amb)",
+      texte: "LOCAL",
+      titre: "Base non connectée — tes données restent dans ce navigateur",
+    },
+    erreur: {
+      couleur: "var(--color-mag)",
+      texte: "LOCAL",
+      titre: "La base ne répond pas — tes données sont gardées ici en attendant",
+    },
+  } as const;
+
+  const etat = etats[sync];
+
+  return (
+    <div
+      title={etat.titre}
+      className="hidden flex-none items-center gap-[5px] rounded-full px-[9px] py-[4px] sm:flex"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.07)",
+      }}
+    >
+      <span
+        className={`h-[6px] w-[6px] rounded-full ${sync === "inconnu" ? "pulse-dot" : ""}`}
+        style={{ background: etat.couleur }}
+      />
+      <span
+        className="text-[8.5px] font-black tracking-[0.1em]"
+        style={{ color: etat.couleur }}
+      >
+        {etat.texte}
+      </span>
+    </div>
+  );
+}
+
 /** Bascule du mode démo (spec Partie 3). Visible pour que Twaylo sache où il en est. */
 function DemoToggle() {
   const { demoMode, toggleDemo } = useOs();
@@ -166,6 +220,7 @@ export function TopRail() {
             ))}
           </div>
 
+          <SyncIndicator />
           <DemoToggle />
           <div className="text-right leading-[1.2]">
             {/* Espace réservé pendant le premier rendu pour éviter un saut. */}

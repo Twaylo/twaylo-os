@@ -23,6 +23,13 @@ import {
   writeJSONDebounced,
 } from "./storage";
 import { classifyWithRegex } from "./router/regexClassifier";
+import {
+  basculerTacheDistante,
+  chargerEtat,
+  surChangementSync,
+  synchroniserJour,
+} from "./sync";
+import { localDateKey } from "./local-date";
 import type { Capture, Habit, OsData, Task, UneChose } from "./types";
 
 export const TABS = [
@@ -61,8 +68,11 @@ type OsState = {
   /** Vrai pendant l'aller-retour de tri — sert à désactiver le bouton. */
   capturing: boolean;
 
-  tasks: Task[];
+  tasks: (Task & { id?: string })[];
   toggleTask: (i: number) => void;
+
+  /** Où en est la synchro avec la base — affiché dans le rail. */
+  sync: "inconnu" | "connecte" | "hors_ligne" | "erreur";
 
   habits: Habit[];
   /** Incrémente une habitude à compteur ; boucle à zéro une fois l'objectif atteint. */
@@ -102,6 +112,9 @@ function toCounts(items: Habit[]): Record<string, number> {
 }
 
 export function OsProvider({ children }: { children: ReactNode }) {
+  /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
+  const demoModeRef = useRef(false);
+
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -111,11 +124,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [uneChose, setUneChose] = useState<UneChose>({ texte: "", fait: false });
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
+  demoModeRef.current = demoMode;
 
   // Les listes cochables sont éditables, donc copiées dans l'état local.
   const [captures, setCaptures] = useState<Capture[]>(REAL_DATA.captures);
   const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
   const [habits, setHabits] = useState<Habit[]>(REAL_DATA.habits);
+  const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
+    "inconnu",
+  );
+
+  // Le jour local, figé au montage : sert de clé pour la base comme pour le
+  // cache navigateur. Les deux doivent parler du même jour.
+  const jourRef = useRef<string>("");
 
   /**
    * Barrière d'hydratation. Les effets de persistance ne doivent pas écrire
@@ -160,6 +181,48 @@ export function OsProvider({ children }: { children: ReactNode }) {
     hydrated.current = true;
   }, [hydrateFromStorage]);
 
+  useEffect(() => surChangementSync(setSync), []);
+
+  /*
+   * Chargement depuis la base, APRÈS l'hydratation locale.
+   *
+   * L'ordre compte : le cache local peint l'écran immédiatement, la base
+   * corrige ensuite. L'inverse ferait attendre le réseau avant d'afficher
+   * quoi que ce soit.
+   *
+   * Le mode démo ne charge jamais rien : il ne doit pas toucher aux vraies
+   * données, ni en lecture ni en écriture.
+   */
+  useEffect(() => {
+    if (demoMode) return;
+    const jour = localDateKey();
+    jourRef.current = jour;
+
+    let annule = false;
+    void chargerEtat(jour).then((distant) => {
+      if (annule || !distant?.connecte) return;
+
+      if (distant.taches) setTasks(distant.taches);
+      if (distant.habitudes) setHabits(distant.habitudes as Habit[]);
+      if (distant.uneChose) setUneChose(distant.uneChose);
+      if (distant.captures) {
+        setCaptures(
+          distant.captures.map((c) => ({ text: c.text, type: c.type as Capture["type"] })),
+        );
+      }
+      // Le journal distant ne remplace le local que si le local est vide :
+      // sinon une frappe en cours au moment de la réponse serait écrasée
+      // (spec Partie 10, bug 4).
+      if (distant.journal) {
+        setJournalText((local) => (local.trim() ? local : distant.journal ?? ""));
+      }
+    });
+
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
+
   /*
    * Persistance. Le garde `demoMode` est ce qui isole la démo : cocher une
    * habitude en mode démo pour une vidéo ne doit jamais toucher les vraies
@@ -180,17 +243,21 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
-    writeJSON(dailyKey("habits"), toCounts(habits));
+    const compteurs = toCounts(habits);
+    writeJSON(dailyKey("habits"), compteurs);
+    synchroniserJour({ jour: jourRef.current || localDateKey(), compteurs });
   }, [habits, demoMode]);
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
     writeJSONDebounced(dailyKey("journal"), journalText);
+    synchroniserJour({ jour: jourRef.current || localDateKey(), journal: journalText });
   }, [journalText, demoMode]);
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
     writeJSONDebounced(dailyKey("unechose"), uneChose);
+    synchroniserJour({ jour: jourRef.current || localDateKey(), uneChose });
   }, [uneChose, demoMode]);
 
   const toggleDemo = useCallback(() => {
@@ -258,7 +325,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, [captureText]);
 
   const toggleTask = useCallback((i: number) => {
-    setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, done: !t.done } : t)));
+    setTasks((prev) => {
+      const suivant = prev.map((t, j) => (j === i ? { ...t, done: !t.done } : t));
+      const cible = suivant[i] as Task & { id?: string };
+      // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
+      // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
+      // d'annuler le geste sous les doigts de Twaylo.
+      if (cible.id && !demoModeRef.current) {
+        void basculerTacheDistante(cible.id, cible.done);
+      }
+      return suivant;
+    });
   }, []);
 
   /**
@@ -291,6 +368,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       capturing,
       tasks,
       toggleTask,
+      sync,
       habits,
       bumpHabit,
       uneChose,
@@ -310,6 +388,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       capturing,
       tasks,
       toggleTask,
+      sync,
       habits,
       bumpHabit,
       uneChose,
