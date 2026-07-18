@@ -57,6 +57,60 @@ export function writeJSON(key: string, value: unknown): void {
   }
 }
 
+/*
+ * Écriture différée, pour les champs de texte.
+ *
+ * localStorage.setItem est SYNCHRONE : il bloque le fil principal le temps
+ * d'écrire. Écrire à chaque frappe d'une entrée de journal de 8 Ko, c'est
+ * sérialiser et réécrire 8 Ko à chaque lettre — mesuré : 6 écritures et
+ * 41 Ko pour 10 frappes. La frappe rame de plus en plus à mesure que le
+ * texte grossit, ce qui est précisément le cas quand on raconte sa journée.
+ *
+ * On n'écrit donc que lorsque la frappe s'arrête. Le risque — perdre les
+ * dernières lettres si l'onglet ferme brutalement — est couvert par le
+ * vidage sur `pagehide` plus bas.
+ */
+const enAttente = new Map<string, unknown>();
+const minuteurs = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function writeJSONDebounced(key: string, value: unknown, delaiMs = 400): void {
+  if (typeof window === "undefined") return;
+  enAttente.set(key, value);
+
+  const precedent = minuteurs.get(key);
+  if (precedent) clearTimeout(precedent);
+
+  minuteurs.set(
+    key,
+    setTimeout(() => {
+      const valeur = enAttente.get(key);
+      enAttente.delete(key);
+      minuteurs.delete(key);
+      writeJSON(key, valeur);
+    }, delaiMs),
+  );
+}
+
+/** Force l'écriture immédiate de tout ce qui attend. */
+export function viderEcrituresEnAttente(): void {
+  for (const [key, minuteur] of minuteurs) {
+    clearTimeout(minuteur);
+    writeJSON(key, enAttente.get(key));
+  }
+  minuteurs.clear();
+  enAttente.clear();
+}
+
+if (typeof window !== "undefined") {
+  // `pagehide` couvre la fermeture, le rechargement et le passage en
+  // arrière-plan sur mobile — contrairement à `beforeunload`, il est fiable
+  // sur iOS. Sans ça, les dernières lettres dictées seraient perdues.
+  window.addEventListener("pagehide", viderEcrituresEnAttente);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") viderEcrituresEnAttente();
+  });
+}
+
 /**
  * Purge les clés datées d'avant aujourd'hui.
  *

@@ -14,7 +14,15 @@ import {
 } from "react";
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
-import { KEYS, dailyKey, pruneOldDailyKeys, readJSON, writeJSON } from "./storage";
+import {
+  KEYS,
+  dailyKey,
+  pruneOldDailyKeys,
+  readJSON,
+  writeJSON,
+  writeJSONDebounced,
+} from "./storage";
+import { classifyWithRegex } from "./router/regexClassifier";
 import type { Capture, Habit, OsData, Task, UneChose } from "./types";
 
 export const TABS = [
@@ -177,12 +185,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
-    writeJSON(dailyKey("journal"), journalText);
+    writeJSONDebounced(dailyKey("journal"), journalText);
   }, [journalText, demoMode]);
 
   useEffect(() => {
     if (!hydrated.current || demoMode) return;
-    writeJSON(dailyKey("unechose"), uneChose);
+    writeJSONDebounced(dailyKey("unechose"), uneChose);
   }, [uneChose, demoMode]);
 
   const toggleDemo = useCallback(() => {
@@ -214,8 +222,18 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setCaptureText("");
     setCapturing(true);
 
-    // Type provisoire le temps de l'aller-retour ; remplacé à la réponse.
-    const optimiste: Capture = { text, type: "note" };
+    /*
+     * Verdict local immédiat.
+     *
+     * Le même classifieur regex tourne ici, dans le navigateur, en une
+     * fraction de milliseconde. Twaylo voit « Tâche » apparaître au moment
+     * où il lâche la touche, pas 2 secondes plus tard quand Claude a
+     * répondu. Le serveur affine ensuite en arrière-plan et corrige la
+     * pastille si son verdict diffère — ce qui est rare, et invisible
+     * quand ça ne diffère pas.
+     */
+    const local = classifyWithRegex(text);
+    const optimiste: Capture = { text, type: local.type };
     setCaptures((prev) => [optimiste, ...prev].slice(0, 4));
 
     try {
