@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { FORMAT_META } from "@/lib/labels";
 import type { Format } from "@/lib/types";
 import { useOs } from "@/lib/os-context";
+import { useDictation } from "@/lib/use-dictation";
 
 /** Libellé en tête de carte : pastille colorée + texte capitalisé. */
 export function Eyebrow({
@@ -161,27 +162,45 @@ export function Chip({
   );
 }
 
-/** Bouton de dictée. L'état micro est global : tous les boutons le partagent. */
-export function MicButton({ className = "" }: { className?: string }) {
-  const { micOn, toggleMic } = useOs();
+/**
+ * Bouton de dictée. Chaque bouton pilote sa propre reconnaissance et écrit
+ * dans le champ qu'on lui désigne — la barre de capture et le journal ne
+ * partagent plus un état micro global qui ne servait à rien.
+ */
+export function MicButton({
+  onTranscript,
+  className = "",
+}: {
+  onTranscript: (text: string) => void;
+  className?: string;
+}) {
+  const { supported, listening, interim, error, toggle } = useDictation(onTranscript);
+
+  const titre = !supported
+    ? "Dictée indisponible sur ce navigateur (essaie Chrome ou Edge)"
+    : listening
+      ? `Dictée en cours — clique pour arrêter${interim ? ` · « ${interim} »` : ""}`
+      : "Dictée vocale";
+
   return (
     <button
       type="button"
-      onClick={toggleMic}
-      title="Dictée vocale"
+      onClick={toggle}
+      disabled={!supported}
+      title={error ?? titre}
       aria-label="Dictée vocale"
-      aria-pressed={micOn}
-      className={`flex h-[38px] w-[38px] flex-none cursor-pointer items-center justify-center rounded-[11px] transition-all hover:brightness-125 ${className}`}
+      aria-pressed={listening}
+      className={`flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] transition-all disabled:cursor-not-allowed disabled:opacity-30 ${supported ? "cursor-pointer hover:brightness-125" : ""} ${className}`}
       style={{
-        border: `1px solid ${micOn ? "rgba(255,61,139,0.6)" : "rgba(255,255,255,0.14)"}`,
-        background: micOn ? "rgba(255,61,139,0.2)" : "rgba(255,255,255,0.05)",
+        border: `1px solid ${listening ? "rgba(255,61,139,0.6)" : "rgba(255,255,255,0.14)"}`,
+        background: listening ? "rgba(255,61,139,0.2)" : "rgba(255,255,255,0.05)",
       }}
     >
       <span
         className="block h-[11px] w-[11px] rounded-full"
         style={{
-          background: micOn ? "var(--color-mag)" : "rgba(255,255,255,0.5)",
-          animation: micOn ? "pulseDot 1s ease-in-out infinite" : "none",
+          background: listening ? "var(--color-mag)" : "rgba(255,255,255,0.5)",
+          animation: listening ? "pulseDot 1s ease-in-out infinite" : "none",
         }}
       />
     </button>

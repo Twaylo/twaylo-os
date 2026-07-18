@@ -56,7 +56,11 @@ export function CaptureBar() {
           aria-label="Capture rapide"
           className="min-w-0 flex-1 border-none bg-transparent text-[14px] font-semibold text-white outline-none"
         />
-        <MicButton />
+        <MicButton
+          onTranscript={(t) =>
+            setCaptureText((prev) => (prev ? `${prev} ${t}` : t))
+          }
+        />
         <button
           type="submit"
           disabled={capturing || captureText.trim().length === 0}

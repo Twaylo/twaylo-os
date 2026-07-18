@@ -23,12 +23,16 @@ const VIEWS = {
 function ActiveView() {
   const { activeTab } = useOs();
   const View = VIEWS[activeTab];
-  // La clé force le remontage : l'animation d'entrée rejoue à chaque onglet.
-  return (
-    <div key={activeTab} className="view-in">
-      <View />
-    </div>
-  );
+  /*
+   * Pas de `key` ici, volontairement.
+   *
+   * J'avais mis `key={activeTab}` pour rejouer l'animation d'entrée à chaque
+   * onglet. Résultat mesuré : chaque clic détruisait et reconstruisait toute
+   * la vue, puis imposait 320 ms d'animation avant que le contenu se pose —
+   * ce qui donnait la sensation de saccade et d'attente. La navigation doit
+   * être instantanée ; l'animation ne joue qu'au premier affichage.
+   */
+  return <View />;
 }
 
 /** Les trois halos flous en fond. Purement décoratifs (spec Partie 3). */

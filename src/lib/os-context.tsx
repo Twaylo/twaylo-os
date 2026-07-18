@@ -8,7 +8,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
@@ -42,11 +44,8 @@ type OsState = {
   revealed: boolean;
   toggleRevealed: () => void;
 
-  micOn: boolean;
-  toggleMic: () => void;
-
   captureText: string;
-  setCaptureText: (v: string) => void;
+  setCaptureText: Dispatch<SetStateAction<string>>;
   captures: Capture[];
   addCapture: () => void;
   /** Vrai pendant l'aller-retour de tri — sert à désactiver le bouton. */
@@ -59,7 +58,7 @@ type OsState = {
   toggleHabit: (i: number) => void;
 
   journalText: string;
-  setJournalText: (v: string) => void;
+  setJournalText: Dispatch<SetStateAction<string>>;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -82,7 +81,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [micOn, setMicOn] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [journalText, setJournalText] = useState("");
@@ -235,8 +233,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       data,
       revealed,
       toggleRevealed: () => setRevealed((v) => !v),
-      micOn,
-      toggleMic: () => setMicOn((v) => !v),
       captureText,
       setCaptureText,
       captures,
@@ -255,7 +251,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       toggleDemo,
       data,
       revealed,
-      micOn,
       captureText,
       captures,
       addCapture,

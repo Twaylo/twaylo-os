@@ -12,6 +12,7 @@ import { PipelineGrid } from "@/components/cards/PipelineGrid";
 import { SemaineCard } from "@/components/cards/SemaineCard";
 import { ObjectifsCard } from "@/components/cards/ObjectifsCard";
 import { JournalCard } from "@/components/cards/JournalCard";
+import { NutritionCard } from "@/components/cards/NutritionCard";
 
 export function AccueilView() {
   const { data } = useOs();
@@ -38,6 +39,7 @@ export function AccueilView() {
       </Panel>
 
       <SemaineCard />
+      <NutritionCard />
       <ObjectifsCard />
       <JournalCard />
     </div>

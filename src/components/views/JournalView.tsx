@@ -57,7 +57,11 @@ export function JournalView() {
           />
 
           <div className="mt-3 flex flex-wrap items-center gap-[10px]">
-            <MicButton />
+            <MicButton
+              onTranscript={(t) =>
+                setJournalText((prev) => (prev ? `${prev} ${t}` : t))
+              }
+            />
             <button
               type="button"
               className="cursor-pointer rounded-xl border-none px-5 py-[11px] text-[14px] font-extrabold text-[#07121d] transition-all hover:brightness-110"

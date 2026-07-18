@@ -60,7 +60,11 @@ export function JournalCard() {
         />
 
         <div className="mt-[9px] flex flex-wrap items-center gap-[9px]">
-          <MicButton />
+          <MicButton
+            onTranscript={(t) =>
+              setJournalText((prev) => (prev ? `${prev} ${t}` : t))
+            }
+          />
           <button
             type="button"
             className="cursor-pointer rounded-[11px] border-none px-[17px] py-[9px] text-[13px] font-extrabold text-[#07121d] transition-all hover:brightness-110"
