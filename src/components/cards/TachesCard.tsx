@@ -6,10 +6,52 @@ import { useOs } from "@/lib/os-context";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
+/** Les actions d'une ligne : discrètes au repos, lisibles au survol. */
+function BoutonLigne({
+  children,
+  onClick,
+  titre,
+  disabled,
+  danger,
+}: {
+  children: string;
+  onClick: () => void;
+  titre: string;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={titre}
+      aria-label={titre}
+      className="cursor-pointer rounded-[6px] px-[5px] py-[2px] text-[11px] font-black transition-all hover:brightness-150 disabled:cursor-not-allowed disabled:opacity-20"
+      style={{
+        color: danger ? "var(--color-mag-soft)" : "rgba(255,255,255,0.5)",
+        background: danger ? "rgba(255,61,139,0.12)" : "rgba(255,255,255,0.07)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** La carte prioritaire de l'OS (spec Partie 6) — d'où la bordure appuyée. */
 export function TachesCard() {
-  const { tasks, toggleTask, ajouterTache, supprimerTache } = useOs();
+  const {
+    tasks,
+    toggleTask,
+    ajouterTache,
+    supprimerTache,
+    renommerTache,
+    deplacerTache,
+  } = useOs();
   const [nouvelle, setNouvelle] = useState("");
+  /** L'identifiant de la tâche en cours de renommage, s'il y en a une. */
+  const [edition, setEdition] = useState<string | null>(null);
+  const [brouillon, setBrouillon] = useState("");
   const done = tasks.filter((t) => t.done).length;
 
   return (
@@ -45,6 +87,40 @@ export function TachesCard() {
         <div className="mt-[11px] flex flex-col gap-[6px]">
           {tasks.map((t, i) => {
             const id = (t as { id?: string }).id;
+
+            // En cours de renommage : le champ remplace la ligne.
+            if (id && edition === id) {
+              return (
+                <form
+                  key={id}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    renommerTache(id, brouillon);
+                    setEdition(null);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={brouillon}
+                    onChange={(e) => setBrouillon(e.target.value)}
+                    onBlur={() => {
+                      renommerTache(id, brouillon);
+                      setEdition(null);
+                    }}
+                    // Échap annule : sans ça, une correction ratée ne se
+                    // rattrape qu'en retapant l'ancien texte de mémoire.
+                    onKeyDown={(e) => e.key === "Escape" && setEdition(null)}
+                    aria-label={`Renommer ${t.text}`}
+                    className="w-full rounded-[9px] px-[10px] py-[7px] text-[12px] font-semibold text-white outline-none"
+                    style={{
+                      background: "rgba(255,61,139,0.10)",
+                      border: "1px solid rgba(255,61,139,0.35)",
+                    }}
+                  />
+                </form>
+              );
+            }
+
             return (
               <div key={id ?? t.text} className="group relative">
                 <CheckRow
@@ -55,16 +131,38 @@ export function TachesCard() {
                   onToggle={() => toggleTask(i)}
                 />
                 {id && (
-                  <button
-                    type="button"
-                    onClick={() => supprimerTache(id)}
-                    title="Supprimer"
-                    aria-label={`Supprimer ${t.text}`}
-                    className="absolute right-[6px] top-1/2 -translate-y-1/2 cursor-pointer rounded-[6px] px-[6px] py-[2px] text-[11px] font-black opacity-0 transition-opacity group-hover:opacity-100"
-                    style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.12)" }}
-                  >
-                    ×
-                  </button>
+                  <div className="absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center gap-[2px] opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <BoutonLigne
+                      onClick={() => deplacerTache(i, -1)}
+                      disabled={i === 0}
+                      titre="Monter"
+                    >
+                      ↑
+                    </BoutonLigne>
+                    <BoutonLigne
+                      onClick={() => deplacerTache(i, 1)}
+                      disabled={i === tasks.length - 1}
+                      titre="Descendre"
+                    >
+                      ↓
+                    </BoutonLigne>
+                    <BoutonLigne
+                      onClick={() => {
+                        setBrouillon(t.text);
+                        setEdition(id);
+                      }}
+                      titre="Renommer"
+                    >
+                      ✎
+                    </BoutonLigne>
+                    <BoutonLigne
+                      onClick={() => supprimerTache(id)}
+                      titre="Supprimer"
+                      danger
+                    >
+                      ×
+                    </BoutonLigne>
+                  </div>
                 )}
               </div>
             );

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { basculerTache, creerTache, supprimerTache, versTaches } from "@/lib/db";
+import {
+  basculerTache,
+  creerTache,
+  ecrireOrdreTaches,
+  renommerTache,
+  supprimerTache,
+  versTaches,
+} from "@/lib/db";
 
 /** Crée une tâche. */
 export async function POST(req: Request) {
@@ -32,27 +39,50 @@ export async function POST(req: Request) {
   }
 }
 
-/** Coche ou décoche une tâche. */
+/**
+ * Modifie une tâche : la cocher, la renommer, ou réordonner la liste entière.
+ * Les trois passent par le même verbe parce qu'ils décrivent tous une
+ * modification partielle de l'existant.
+ */
 export async function PATCH(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ persiste: false }, { status: 200 });
   }
 
-  let id: unknown;
-  let faite: unknown;
+  let corps: { id?: unknown; faite?: unknown; titre?: unknown; ordre?: unknown };
   try {
-    ({ id, faite } = await req.json());
+    corps = await req.json();
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
   }
 
-  if (typeof id !== "string" || typeof faite !== "boolean") {
-    return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
-  }
-
   try {
-    await basculerTache(id, faite);
-    return NextResponse.json({ persiste: true });
+    // Réordonnancement : une liste d'identifiants, sans id unique.
+    if (Array.isArray(corps.ordre)) {
+      const ids = corps.ordre.filter((x): x is string => typeof x === "string");
+      await ecrireOrdreTaches(ids);
+      return NextResponse.json({ persiste: true });
+    }
+
+    if (typeof corps.id !== "string") {
+      return NextResponse.json({ error: "Paramètre `id` manquant." }, { status: 400 });
+    }
+
+    if (typeof corps.titre === "string") {
+      const titre = corps.titre.trim();
+      if (titre.length === 0) {
+        return NextResponse.json({ error: "Titre vide." }, { status: 400 });
+      }
+      await renommerTache(corps.id, titre.slice(0, 200));
+      return NextResponse.json({ persiste: true });
+    }
+
+    if (typeof corps.faite === "boolean") {
+      await basculerTache(corps.id, corps.faite);
+      return NextResponse.json({ persiste: true });
+    }
+
+    return NextResponse.json({ error: "Rien à modifier." }, { status: 400 });
   } catch (err) {
     console.error("[tasks] mise à jour impossible :", err);
     return NextResponse.json({ error: "Mise à jour impossible." }, { status: 500 });

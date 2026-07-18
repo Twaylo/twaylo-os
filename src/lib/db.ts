@@ -149,6 +149,16 @@ export async function creerTache(titre: string, categorie?: string): Promise<Tac
   return data as TacheDB;
 }
 
+export async function renommerTache(id: string, titre: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .update({ titre })
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
 export async function supprimerTache(id: string): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
@@ -696,6 +706,32 @@ export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<vo
 
 
 export type { BlocageStocke };
+
+/**
+ * L'ordre des tâches clés, comme simple liste d'identifiants.
+ *
+ * La table `tasks` n'a pas de colonne d'ordre et on ne peut plus faire de DDL
+ * (le jeton d'accès a été révoqué). La liste vit donc sur la ligne sentinelle,
+ * à côté des habitudes et des blocages. Les tâches absentes de la liste
+ * viennent après, dans leur ordre de création.
+ */
+export async function lireOrdreTaches(): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const ordre = (data?.habitudes as { ordreTaches?: string[] } | null)?.ordreTaches;
+  return Array.isArray(ordre) ? ordre : [];
+}
+
+export async function ecrireOrdreTaches(ordreTaches: string[]): Promise<void> {
+  await majSentinelle({ ordreTaches });
+}
 
 export async function lireBlocages(): Promise<BlocageStocke[]> {
   const { data, error } = await supabaseAdmin()

@@ -8,6 +8,7 @@ import {
   lireDeals,
   lireHabitudesDef,
   lireJour,
+  lireOrdreTaches,
   lireTaches,
   lireVideos,
   statsDeals,
@@ -15,6 +16,20 @@ import {
   versPipeline,
   versTaches,
 } from "@/lib/db";
+
+/**
+ * Applique l'ordre choisi par Twaylo. Ce que la liste ne mentionne pas —
+ * une tâche créée depuis — vient après, dans son ordre de création.
+ */
+function trierSelon<T extends { id?: string }>(taches: T[], ordre: string[]): T[] {
+  if (ordre.length === 0) return taches;
+  const rang = new Map(ordre.map((id, i) => [id, i]));
+  return [...taches].sort(
+    (a, b) =>
+      (rang.get(a.id ?? "") ?? Number.MAX_SAFE_INTEGER) -
+      (rang.get(b.id ?? "") ?? Number.MAX_SAFE_INTEGER),
+  );
+}
 
 /**
  * L'amorçage du dashboard : tout ce qu'il faut pour peindre l'accueil, en un
@@ -35,7 +50,7 @@ export async function GET(req: Request) {
 
   try {
     // En parallèle : ces lectures ne dépendent pas les unes des autres.
-    const [taches, journee, captures, videos, contacts, deals, habitudes, serie, blocages] =
+    const [taches, journee, captures, videos, contacts, deals, habitudes, serie, blocages, ordreTaches] =
       await Promise.all([
         lireTaches(),
         lireJour(jour),
@@ -46,12 +61,13 @@ export async function GET(req: Request) {
         lireHabitudesDef(),
         calculerSerie(jour),
         lireBlocages(),
+        lireOrdreTaches(),
       ]);
 
     return NextResponse.json({
       connecte: true,
       jour,
-      taches: versTaches(taches),
+      taches: trierSelon(versTaches(taches), ordreTaches),
       habitudes,
       serie,
       blocages,

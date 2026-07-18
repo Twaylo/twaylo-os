@@ -133,6 +133,10 @@ type OsState = {
 
   ajouterTache: (titre: string) => Promise<void>;
   supprimerTache: (id: string) => void;
+  /** Corrige le texte d'une tâche sans la recréer. */
+  renommerTache: (id: string, titre: string) => void;
+  /** Fait monter ou descendre une tâche d'un cran. */
+  deplacerTache: (index: number, sens: -1 | 1) => void;
 
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
@@ -511,6 +515,53 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [habits],
   );
 
+  const renommerTache = useCallback(
+    (id: string, titre: string) => {
+      const propre = titre.trim();
+      if (!propre) return;
+      setTasks((prev) =>
+        prev.map((t) => ((t as { id?: string }).id === id ? { ...t, text: propre } : t)),
+      );
+      if (demoModeRef.current) return;
+      void fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, titre: propre }),
+      }).catch((err) => console.error("[tasks] renommage impossible :", err));
+    },
+    [],
+  );
+
+  /**
+   * Monte ou descend une tâche d'un cran, et enregistre l'ordre complet.
+   *
+   * Des flèches plutôt qu'un glisser-déposer : la liste est courte, et le
+   * glisser-déposer HTML5 ne fonctionne pas au doigt — or Twaylo consulte son
+   * OS sur le terrain, au téléphone.
+   */
+  const deplacerTache = useCallback((index: number, sens: -1 | 1) => {
+    setTasks((prev) => {
+      const cible = index + sens;
+      if (cible < 0 || cible >= prev.length) return prev;
+
+      const suivantes = [...prev];
+      [suivantes[index], suivantes[cible]] = [suivantes[cible], suivantes[index]];
+
+      if (!demoModeRef.current) {
+        const ordre = suivantes
+          .map((t) => (t as { id?: string }).id)
+          .filter((id): id is string => Boolean(id));
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ordre }),
+        }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
+      }
+
+      return suivantes;
+    });
+  }, []);
+
   /** Enregistre la liste entière : elle est courte, et l'API la revalide. */
   const enregistrerBlocages = useCallback((suivants: BlocageStocke[]) => {
     setBlocagesBruts(suivants);
@@ -824,6 +875,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       renommerVideo,
       ajouterTache,
       supprimerTache: supprimerTacheLocale,
+      renommerTache,
+      deplacerTache,
       ajouterContact,
       supprimerContact: supprimerContactLocal,
       deplacerContact,
@@ -867,6 +920,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       renommerVideo,
       ajouterTache,
       supprimerTacheLocale,
+      renommerTache,
+      deplacerTache,
       ajouterContact,
       supprimerContactLocal,
       deplacerContact,
