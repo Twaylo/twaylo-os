@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { CONTACT_TYPE_LABEL, RELATION_META, RELATION_ORDER } from "@/lib/labels";
 import { useOs } from "@/lib/os-context";
 import { Chip, ColumnHead, EmptyState } from "@/components/ui";
@@ -10,14 +12,42 @@ import { ViewHeader } from "@/components/views/ViewHeader";
  * (spec Partie 6). Les sponsors et leurs montants vivent dans l'onglet Sponsors.
  */
 export function ContactsView() {
-  const { data } = useOs();
-  const contacts = data.contacts;
+  const { data, contacts: distants, ajouterContact, supprimerContact, demoMode } = useOs();
+  const [nouveau, setNouveau] = useState("");
+  const contacts = ((!demoMode && distants) || data.contacts) as (typeof data.contacts[number] & { id?: string })[];
 
   return (
     <>
       <ViewHeader
         title="Contacts · Le réseau"
         subtitle={`${contacts.length} ${contacts.length > 1 ? "personnes" : "personne"}`}
+        action={
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void ajouterContact(nouveau);
+              setNouveau("");
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              value={nouveau}
+              onChange={(e) => setNouveau(e.target.value)}
+              placeholder="Nom d'un contact…"
+              aria-label="Ajouter un contact"
+              className="w-[200px] rounded-[10px] px-3 py-[7px] text-[12.5px] font-semibold text-white outline-none transition-colors focus:border-white/25"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }}
+            />
+            <button
+              type="submit"
+              disabled={nouveau.trim().length === 0}
+              className="cursor-pointer rounded-[10px] border-none px-3 py-[7px] text-[12.5px] font-extrabold text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ background: "var(--grad)" }}
+            >
+              Ajouter
+            </button>
+          </form>
+        }
       />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">

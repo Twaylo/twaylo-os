@@ -111,6 +111,14 @@ type OsState = {
   /** Ajoute une idée au pipeline. */
   ajouterVideo: (titre: string, format?: "short" | "long") => Promise<void>;
   supprimerVideo: (id: string) => void;
+  /** Renomme une vidéo sans changer son étape. */
+  renommerVideo: (id: string, titre: string) => void;
+
+  ajouterTache: (titre: string) => Promise<void>;
+  supprimerTache: (id: string) => void;
+
+  ajouterContact: (nom: string, type?: string) => Promise<void>;
+  supprimerContact: (id: string) => void;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -460,6 +468,79 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const renommerVideo = useCallback((id: string, titre: string) => {
+    const propre = titre.trim();
+    if (!propre) return;
+
+    setPipeline((prev) =>
+      prev
+        ? prev.map((col) => ({
+            ...col,
+            videos: col.videos.map((v) =>
+              (v as { id?: string }).id === id ? { ...v, title: propre } : v,
+            ),
+          }))
+        : prev,
+    );
+
+    if (demoModeRef.current) return;
+    void fetch("/api/videos", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, titre: propre }),
+    }).catch((err) => console.error("[pipeline] renommage impossible :", err));
+  }, []);
+
+  const ajouterTache = useCallback(async (titre: string) => {
+    const propre = titre.trim();
+    if (!propre || demoModeRef.current) return;
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ titre: propre }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { tache } = await res.json();
+      setTasks((prev) => [...prev, tache]);
+    } catch (err) {
+      console.error("[taches] ajout impossible :", err);
+    }
+  }, []);
+
+  const supprimerTacheLocale = useCallback((id: string) => {
+    setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== id));
+    if (demoModeRef.current) return;
+    void fetch(`/api/tasks?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      (err) => console.error("[taches] suppression impossible :", err),
+    );
+  }, []);
+
+  const ajouterContact = useCallback(async (nom: string, type = "collab") => {
+    const propre = nom.trim();
+    if (!propre || demoModeRef.current) return;
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nom: propre, type }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { contact } = await res.json();
+      setContacts((prev) => [...(prev ?? []), contact]);
+    } catch (err) {
+      console.error("[contacts] ajout impossible :", err);
+    }
+  }, []);
+
+  const supprimerContactLocal = useCallback((id: string) => {
+    setContacts((prev) => (prev ?? []).filter((c) => c.id !== id));
+    if (demoModeRef.current) return;
+    void fetch(`/api/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      (err) => console.error("[contacts] suppression impossible :", err),
+    );
+  }, []);
+
   const supprimerVideo = useCallback((id: string) => {
     setPipeline((prev) =>
       prev
@@ -505,6 +586,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       deplacerVideo,
       ajouterVideo,
       supprimerVideo,
+      renommerVideo,
+      ajouterTache,
+      supprimerTache: supprimerTacheLocale,
+      ajouterContact,
+      supprimerContact: supprimerContactLocal,
     }),
     [
       activeTab,
@@ -529,6 +615,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       deplacerVideo,
       ajouterVideo,
       supprimerVideo,
+      renommerVideo,
+      ajouterTache,
+      supprimerTacheLocale,
+      ajouterContact,
+      supprimerContactLocal,
     ],
   );
 

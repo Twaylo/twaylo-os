@@ -466,3 +466,14 @@ export function versContacts(lignes: ContactDB[]) {
     prochaineAction: c.prochaine_action ?? undefined,
   }));
 }
+
+/** Renomme une vidéo sans changer son étape. */
+export async function renommerVideo(id: string, titre: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("videos")
+    .update({ titre })
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}

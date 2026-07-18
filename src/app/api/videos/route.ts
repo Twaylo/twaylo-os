@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { creerVideo, deplacerVideo, supprimerVideo } from "@/lib/db";
+import { creerVideo, deplacerVideo, renommerVideo, supprimerVideo } from "@/lib/db";
 
 /** Ajoute une idée au pipeline. */
 export async function POST(req: Request) {
@@ -30,24 +30,32 @@ export async function POST(req: Request) {
   }
 }
 
-/** Déplace une vidéo d'une étape à l'autre. */
+/** Déplace une vidéo, la renomme, ou les deux. */
 export async function PATCH(req: Request) {
   if (!isSupabaseConfigured()) return NextResponse.json({ persiste: false });
 
   let id: unknown;
   let statut: unknown;
+  let titre: unknown;
   try {
-    ({ id, statut } = await req.json());
+    ({ id, statut, titre } = await req.json());
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
   }
 
-  if (typeof id !== "string" || typeof statut !== "string") {
-    return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
+  if (typeof id !== "string") {
+    return NextResponse.json({ error: "`id` invalide." }, { status: 400 });
   }
 
   try {
-    await deplacerVideo(id, statut);
+    // Les deux opérations sont indépendantes : on peut renommer sans
+    // déplacer, déplacer sans renommer, ou faire les deux d'un coup.
+    if (typeof titre === "string" && titre.trim().length > 0) {
+      await renommerVideo(id, titre.trim());
+    }
+    if (typeof statut === "string") {
+      await deplacerVideo(id, statut);
+    }
     return NextResponse.json({ persiste: true });
   } catch (err) {
     console.error("[videos] déplacement impossible :", err);
