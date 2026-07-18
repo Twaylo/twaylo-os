@@ -119,6 +119,24 @@ type OsState = {
 
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
+  /** Change la chaleur d'un contact — c'est ce que fait le glisser-déposer. */
+  deplacerContact: (id: string, relation: string) => void;
+
+  deals: DealVue[] | null;
+  dealStats: { label: string; value: string; color: string }[] | null;
+  ajouterDeal: (nom: string, etape?: string) => Promise<void>;
+  deplacerDeal: (id: string, etape: string) => void;
+  supprimerDeal: (id: string) => void;
+  majMontantDeal: (id: string, montant: number | null) => void;
+};
+
+/** Un deal tel que l'interface le manipule. */
+export type DealVue = {
+  id: string;
+  nom: string;
+  etape: string;
+  montant: number | null;
+  note: string | null;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -160,6 +178,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [repas, setRepas] = useState<Repas[]>([]);
   const [pipeline, setPipeline] = useState<PipelineColumn[] | null>(null);
   const [contacts, setContacts] = useState<(Contact & { id: string })[] | null>(null);
+  const [deals, setDeals] = useState<DealVue[] | null>(null);
+  const [dealStats, setDealStats] = useState<
+    { label: string; value: string; color: string }[] | null
+  >(null);
 
   const data = demoMode ? DEMO_DATA : REAL_DATA;
   demoModeRef.current = demoMode;
@@ -247,6 +269,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
       if (distant.pipeline) setPipeline(distant.pipeline as PipelineColumn[]);
       if (distant.contacts) setContacts(distant.contacts as (Contact & { id: string })[]);
+      if (distant.deals) setDeals(distant.deals as DealVue[]);
+      if (distant.dealStats) setDealStats(distant.dealStats);
       if (distant.captures) {
         setCaptures(
           distant.captures.map((c) => ({ text: c.text, type: c.type as Capture["type"] })),
@@ -556,6 +580,65 @@ export function OsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const deplacerContact = useCallback((id: string, relation: string) => {
+    setContacts((prev) =>
+      (prev ?? []).map((c) =>
+        c.id === id ? { ...c, relation: relation as Contact["relation"] } : c,
+      ),
+    );
+    if (demoModeRef.current) return;
+    void fetch("/api/contacts", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, relation }),
+    }).catch((err) => console.error("[contacts] déplacement impossible :", err));
+  }, []);
+
+  const ajouterDeal = useCallback(async (nom: string, etape = "prospect") => {
+    const propre = nom.trim();
+    if (!propre || demoModeRef.current) return;
+    try {
+      const res = await fetch("/api/deals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nom: propre, etape }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { deal } = await res.json();
+      setDeals((prev) => [...(prev ?? []), deal]);
+    } catch (err) {
+      console.error("[deals] ajout impossible :", err);
+    }
+  }, []);
+
+  const deplacerDeal = useCallback((id: string, etape: string) => {
+    setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, etape } : d)));
+    if (demoModeRef.current) return;
+    void fetch("/api/deals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, etape }),
+    }).catch((err) => console.error("[deals] déplacement impossible :", err));
+  }, []);
+
+  const supprimerDealLocal = useCallback((id: string) => {
+    setDeals((prev) => (prev ?? []).filter((d) => d.id !== id));
+    if (demoModeRef.current) return;
+    void fetch(`/api/deals?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      (err) => console.error("[deals] suppression impossible :", err),
+    );
+  }, []);
+
+  const majMontantDeal = useCallback((id: string, montant: number | null) => {
+    setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, montant } : d)));
+    if (demoModeRef.current) return;
+    void fetch("/api/deals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, montant }),
+    }).catch((err) => console.error("[deals] montant impossible :", err));
+  }, []);
+
   const value = useMemo<OsState>(
     () => ({
       activeTab,
@@ -591,6 +674,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
       supprimerTache: supprimerTacheLocale,
       ajouterContact,
       supprimerContact: supprimerContactLocal,
+      deplacerContact,
+      deals,
+      dealStats,
+      ajouterDeal,
+      deplacerDeal,
+      supprimerDeal: supprimerDealLocal,
+      majMontantDeal,
     }),
     [
       activeTab,
@@ -620,6 +710,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
       supprimerTacheLocale,
       ajouterContact,
       supprimerContactLocal,
+      deplacerContact,
+      deals,
+      dealStats,
+      ajouterDeal,
+      deplacerDeal,
+      supprimerDealLocal,
+      majMontantDeal,
     ],
   );
 

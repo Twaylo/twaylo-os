@@ -477,3 +477,93 @@ export async function renommerVideo(id: string, titre: string): Promise<void> {
 
   if (error) throw error;
 }
+
+/* ------------------------------------------------------------------ */
+/* Sponsors — les deals chiffrés                                       */
+/* ------------------------------------------------------------------ */
+
+export type DealDB = {
+  id: string;
+  nom: string;
+  etape: string;
+  montant: number | null;
+  note: string | null;
+};
+
+const COLONNES_DEAL = "id, nom, etape, montant, note";
+export const ETAPES_DEAL = ["prospect", "negociation", "signe", "livre"] as const;
+
+export async function lireDeals(): Promise<DealDB[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("deals")
+    .select(COLONNES_DEAL)
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data as DealDB[];
+}
+
+export async function creerDeal(nom: string, etape = "prospect"): Promise<DealDB> {
+  const { data, error } = await supabaseAdmin()
+    .from("deals")
+    .insert({ user_id: USER_ID, nom, etape })
+    .select(COLONNES_DEAL)
+    .single();
+
+  if (error) throw error;
+  return data as DealDB;
+}
+
+export async function majDeal(
+  id: string,
+  patch: { etape?: string; montant?: number | null; note?: string | null; nom?: string },
+): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("deals")
+    .update(patch)
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+export async function supprimerDeal(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("deals")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+/**
+ * Les statistiques du haut de page, calculées et non saisies.
+ *
+ * Un chiffre qu'on recopie à la main finit toujours par mentir : celui-ci
+ * découle des deals, donc il ne peut pas diverger.
+ */
+export function statsDeals(deals: DealDB[]) {
+  const somme = (etapes: string[]) =>
+    deals
+      .filter((d) => etapes.includes(d.etape))
+      .reduce((n, d) => n + (d.montant ?? 0), 0);
+
+  const euro = (n: number) =>
+    n === 0 ? "—" : `${n.toLocaleString("fr-FR")} €`;
+
+  const clos = deals.filter((d) => d.etape === "signe" || d.etape === "livre").length;
+  const taux = deals.length > 0 ? Math.round((clos / deals.length) * 100) : null;
+
+  return [
+    { label: "Pipeline total", value: euro(somme([...ETAPES_DEAL])), color: "#5fd39a" },
+    { label: "Signés", value: euro(somme(["signe", "livre"])), color: "#61c9db" },
+    { label: "En négociation", value: euro(somme(["negociation"])), color: "#e6c060" },
+    {
+      label: "Taux de closing",
+      value: taux === null ? "—" : `${taux} %`,
+      color: "#ff6ba3",
+    },
+  ];
+}

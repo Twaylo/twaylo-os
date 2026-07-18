@@ -39,6 +39,8 @@ function bornesSemaine(d: Date): { du: string; au: string; lundiISO: string } {
   return { du: fmt(lundi), au: fmt(dimanche), lundiISO: localDateKey(lundi) };
 }
 
+type Section = { titre: string; couleur: string; champs: Champ[] };
+
 type Champ = {
   cle: keyof Omit<Revue, "scelle">;
   titre: string;
@@ -92,10 +94,38 @@ const CHAMPS: Champ[] = [
   },
 ];
 
+/**
+ * Les champs regroupés par nature. Une revue de sept zones de texte à la
+ * suite décourage ; trois sections repliables se remplissent l'une après
+ * l'autre. La première est ouverte, les autres attendent leur tour.
+ */
+const SECTIONS: Section[] = [
+  {
+    titre: "CETTE SEMAINE",
+    couleur: "var(--color-ver-soft)",
+    champs: CHAMPS.filter((c) =>
+      ["gains", "contenuPublie", "ceQuiADerape"].includes(c.cle),
+    ),
+  },
+  {
+    titre: "CE QUI RESTE OUVERT",
+    couleur: "var(--color-amb-soft)",
+    champs: CHAMPS.filter((c) =>
+      ["bouclesOuvertes", "personnesARelancer"].includes(c.cle),
+    ),
+  },
+  {
+    titre: "CORPS ET ÉNERGIE",
+    couleur: "var(--color-cor-soft)",
+    champs: CHAMPS.filter((c) => c.cle === "patternSante"),
+  },
+];
+
 export function RevueView() {
   const { demoMode } = useOs();
   const [revue, setRevue] = useState<Revue>(REVUE_VIDE);
   const [hydrate, setHydrate] = useState(false);
+  const [ouvertes, setOuvertes] = useState<Set<string>>(new Set([SECTIONS[0].titre]));
   const [meta, setMeta] = useState<{
     semaine: number;
     du: string;
@@ -197,43 +227,101 @@ export function RevueView() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-[14px] lg:grid-cols-2">
-        {CHAMPS.map((champ) => (
-          <Panel key={champ.cle} accent={champ.couleur} size="sm">
-            <div className="mb-[8px] flex items-baseline justify-between gap-2">
-              <span
-                className="text-[10.5px] font-extrabold tracking-[0.12em]"
-                style={{ color: champ.couleur }}
+      <div className="flex flex-col gap-[10px]">
+        {SECTIONS.map((section) => {
+          const ouverte = ouvertes.has(section.titre);
+          const remplis = section.champs.filter(
+            (c) => revue[c.cle].trim().length > 0,
+          ).length;
+
+          return (
+            <div key={section.titre}>
+              <button
+                type="button"
+                onClick={() =>
+                  setOuvertes((prev) => {
+                    const suivant = new Set(prev);
+                    if (suivant.has(section.titre)) suivant.delete(section.titre);
+                    else suivant.add(section.titre);
+                    return suivant;
+                  })
+                }
+                aria-expanded={ouverte}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-[12px] px-4 py-[11px] text-left transition-all hover:brightness-125"
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  borderLeft: `2px solid ${section.couleur}`,
+                }}
               >
-                {champ.titre}
-              </span>
-              <span className="flex-none text-[10px] text-white/25">{champ.aide}</span>
+                <span
+                  className="flex-none text-[11px] transition-transform"
+                  style={{
+                    color: section.couleur,
+                    transform: ouverte ? "rotate(90deg)" : "none",
+                  }}
+                >
+                  ▶
+                </span>
+                <span
+                  className="flex-1 text-[11px] font-extrabold tracking-[0.12em]"
+                  style={{ color: section.couleur }}
+                >
+                  {section.titre}
+                </span>
+                <span className="flex-none font-mono text-[10.5px] text-white/35">
+                  {remplis}/{section.champs.length}
+                </span>
+              </button>
+
+              {ouverte && (
+                <div className="mt-[10px] grid grid-cols-1 gap-[10px] lg:grid-cols-2">
+                  {section.champs.map((champ) => (
+                    <Panel key={champ.cle} accent={champ.couleur} size="sm">
+                      <div className="mb-[8px] flex items-baseline justify-between gap-2">
+                        <span
+                          className="text-[10.5px] font-extrabold tracking-[0.12em]"
+                          style={{ color: champ.couleur }}
+                        >
+                          {champ.titre}
+                        </span>
+                        <span className="flex-none text-[10px] text-white/25">
+                          {champ.aide}
+                        </span>
+                      </div>
+
+                      <textarea
+                        value={revue[champ.cle]}
+                        onChange={(e) => set(champ.cle, e.target.value)}
+                        readOnly={revue.scelle}
+                        aria-label={champ.titre}
+                        className="w-full resize-y rounded-[12px] px-[13px] py-[11px] text-[13px] font-semibold leading-[1.5] text-white outline-none transition-colors focus:border-white/25 read-only:opacity-60"
+                        style={{
+                          minHeight: champ.hauteur,
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.09)",
+                        }}
+                      />
+
+                      {!revue.scelle && (
+                        <div className="mt-[8px]">
+                          <MicButton
+                            onTranscript={(t) =>
+                              set(
+                                champ.cle,
+                                revue[champ.cle] ? `${revue[champ.cle]} ${t}` : t,
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+                    </Panel>
+                  ))}
+                </div>
+              )}
             </div>
-
-            <textarea
-              value={revue[champ.cle]}
-              onChange={(e) => set(champ.cle, e.target.value)}
-              readOnly={revue.scelle}
-              aria-label={champ.titre}
-              className="w-full resize-y rounded-[12px] px-[13px] py-[11px] text-[13px] font-semibold leading-[1.5] text-white outline-none transition-colors focus:border-white/25 read-only:opacity-60"
-              style={{
-                minHeight: champ.hauteur,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.09)",
-              }}
-            />
-
-            {!revue.scelle && (
-              <div className="mt-[8px]">
-                <MicButton
-                  onTranscript={(t) =>
-                    set(champ.cle, revue[champ.cle] ? `${revue[champ.cle]} ${t}` : t)
-                  }
-                />
-              </div>
-            )}
-          </Panel>
-        ))}
+          );
+        })}
 
         {/* Le top 3 occupe toute la largeur : c'est la sortie de la revue. */}
         <Panel accent="var(--grad)" size="sm" className="lg:col-span-2">

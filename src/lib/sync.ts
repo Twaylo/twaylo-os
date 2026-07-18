@@ -47,6 +47,8 @@ export type EtatDistant = {
   captures?: { id: string; text: string; type: string }[];
   pipeline?: unknown[];
   contacts?: unknown[];
+  deals?: unknown[];
+  dealStats?: { label: string; value: string; color: string }[];
 };
 
 export async function chargerEtat(jour: string): Promise<EtatDistant | null> {

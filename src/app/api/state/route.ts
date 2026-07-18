@@ -3,9 +3,11 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   lireCaptures,
   lireContacts,
+  lireDeals,
   lireJour,
   lireTaches,
   lireVideos,
+  statsDeals,
   versContacts,
   versHabitudes,
   versPipeline,
@@ -31,12 +33,13 @@ export async function GET(req: Request) {
 
   try {
     // En parallèle : ces trois lectures ne dépendent pas les unes des autres.
-    const [taches, journee, captures, videos, contacts] = await Promise.all([
+    const [taches, journee, captures, videos, contacts, deals] = await Promise.all([
       lireTaches(),
       lireJour(jour),
       lireCaptures(),
       lireVideos(),
       lireContacts(),
+      lireDeals(),
     ]);
 
     return NextResponse.json({
@@ -50,6 +53,8 @@ export async function GET(req: Request) {
       captures: captures.map((c) => ({ id: c.id, text: c.texte, type: c.type })),
       pipeline: versPipeline(videos),
       contacts: versContacts(contacts),
+      deals,
+      dealStats: statsDeals(deals),
     });
   } catch (err) {
     console.error("[state] lecture impossible :", err);
