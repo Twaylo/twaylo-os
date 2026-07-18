@@ -8,13 +8,21 @@
 -- donc la clé anon ne peut rien lire. Seule la service role (qui contourne RLS)
 -- accède aux données, et elle ne quitte jamais le serveur.
 
-create extension if not exists vector;
+-- L'extension vector est activée dans le schéma extensions (le défaut
+-- Supabase), pas dans public. Sans la ligne search_path ci-dessous, le type
+-- vector(1536) plus bas déclenche « type vector does not exist » : l'éditeur
+-- SQL ne chercherait le type que dans public.
+create extension if not exists vector with schema extensions;
+set search_path = public, extensions;
+
+-- Ce fichier est rejouable : le relancer après un échec partiel ne produit
+-- pas d'erreur « already exists », il complète ce qui manque.
 
 -- ---------------------------------------------------------------------------
 -- captures — la boîte de réception. Tout ce que Twaylo dicte ou tape atterrit
 -- ici d'abord, avant d'être routé vers la bonne table.
 -- ---------------------------------------------------------------------------
-create table captures (
+create table if not exists captures (
   id             uuid primary key default gen_random_uuid(),
   user_id        text not null default 'twaylo',
   texte          text not null,
@@ -34,7 +42,7 @@ create table captures (
 -- videos — le pipeline de contenu, 6 étapes.
 -- Créée avant `tasks`, qui la référence.
 -- ---------------------------------------------------------------------------
-create table videos (
+create table if not exists videos (
   id         uuid primary key default gen_random_uuid(),
   user_id    text not null default 'twaylo',
   titre      text not null,
@@ -54,7 +62,7 @@ create table videos (
 -- ---------------------------------------------------------------------------
 -- contacts — le CRM réseau (onglet Contacts).
 -- ---------------------------------------------------------------------------
-create table contacts (
+create table if not exists contacts (
   id               uuid primary key default gen_random_uuid(),
   user_id          text not null default 'twaylo',
   nom              text not null,
@@ -73,7 +81,7 @@ create table contacts (
 -- ---------------------------------------------------------------------------
 -- tasks — `cle` alimente la carte Tâches clés, la plus importante de l'OS.
 -- ---------------------------------------------------------------------------
-create table tasks (
+create table if not exists tasks (
   id           uuid primary key default gen_random_uuid(),
   user_id      text not null default 'twaylo',
   titre        text not null,
@@ -95,7 +103,7 @@ create table tasks (
 -- deals — les sponsors chiffrés (onglet Sponsors). Absent de la spec d'origine :
 -- ajouté parce que le CRM a été scindé en réseau + business.
 -- ---------------------------------------------------------------------------
-create table deals (
+create table if not exists deals (
   id         uuid primary key default gen_random_uuid(),
   user_id    text not null default 'twaylo',
   nom        text not null,
@@ -111,7 +119,7 @@ create table deals (
 -- ---------------------------------------------------------------------------
 -- goals — jamais d'auto-effacement : Twaylo coche ou supprime à la main.
 -- ---------------------------------------------------------------------------
-create table goals (
+create table if not exists goals (
   id         uuid primary key default gen_random_uuid(),
   user_id    text not null default 'twaylo',
   objectif   text not null,
@@ -129,7 +137,7 @@ create table goals (
 -- pas sur UTC (spec Partie 10, bug 2) : c'est le serveur qui doit s'adapter,
 -- via le helper localDateKey().
 -- ---------------------------------------------------------------------------
-create table daily_logs (
+create table if not exists daily_logs (
   id            uuid primary key default gen_random_uuid(),
   user_id       text not null default 'twaylo',
   jour          date not null,
@@ -148,7 +156,7 @@ create table daily_logs (
 -- revenue_snapshots — écrits par le cron quotidien. La page LIT le dernier
 -- snapshot, elle n'appelle jamais l'API YouTube au chargement (spec Partie 8).
 -- ---------------------------------------------------------------------------
-create table revenue_snapshots (
+create table if not exists revenue_snapshots (
   id               uuid primary key default gen_random_uuid(),
   user_id          text not null default 'twaylo',
   periode          text not null,
@@ -167,7 +175,7 @@ create table revenue_snapshots (
 -- memory_chunks — la mémoire vectorielle (étape 6).
 -- 1536 dimensions = OpenAI text-embedding-3-small.
 -- ---------------------------------------------------------------------------
-create table memory_chunks (
+create table if not exists memory_chunks (
   id          uuid primary key default gen_random_uuid(),
   user_id     text not null default 'twaylo',
   source_type text not null,
@@ -177,7 +185,7 @@ create table memory_chunks (
   created_at  timestamptz not null default now()
 );
 
-create table audit_log (
+create table if not exists audit_log (
   id            uuid primary key default gen_random_uuid(),
   user_id       text not null default 'twaylo',
   action        text not null,
@@ -194,18 +202,18 @@ create table audit_log (
 -- ivfflat en cosinus, comme le prévoit la spec. À noter : ivfflat n'est
 -- efficace qu'une fois la table peuplée — il faudra le reconstruire quand la
 -- mémoire aura quelques milliers de lignes.
-create index memory_chunks_embedding_idx
+create index if not exists memory_chunks_embedding_idx
   on memory_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 
-create index captures_inbox_idx    on captures (user_id, traite, created_at desc);
-create index tasks_open_idx        on tasks (user_id, statut, urgence, cle);
-create index videos_pipeline_idx   on videos (user_id, statut, priorite desc);
-create index contacts_relation_idx on contacts (user_id, relation);
-create index deals_etape_idx       on deals (user_id, etape);
-create index goals_portee_idx      on goals (user_id, portee, statut);
-create index daily_logs_jour_idx   on daily_logs (user_id, jour desc);
-create index revenue_date_idx      on revenue_snapshots (user_id, date desc);
-create index audit_log_recent_idx  on audit_log (user_id, created_at desc);
+create index if not exists captures_inbox_idx    on captures (user_id, traite, created_at desc);
+create index if not exists tasks_open_idx        on tasks (user_id, statut, urgence, cle);
+create index if not exists videos_pipeline_idx   on videos (user_id, statut, priorite desc);
+create index if not exists contacts_relation_idx on contacts (user_id, relation);
+create index if not exists deals_etape_idx       on deals (user_id, etape);
+create index if not exists goals_portee_idx      on goals (user_id, portee, statut);
+create index if not exists daily_logs_jour_idx   on daily_logs (user_id, jour desc);
+create index if not exists revenue_date_idx      on revenue_snapshots (user_id, date desc);
+create index if not exists audit_log_recent_idx  on audit_log (user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
 -- RLS : deny-all. Aucune policy = aucun accès, sauf service role.
@@ -229,6 +237,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists daily_logs_touch on daily_logs;
 create trigger daily_logs_touch
   before update on daily_logs
   for each row execute function touch_updated_at();
