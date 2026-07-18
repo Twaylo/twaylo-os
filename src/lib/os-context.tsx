@@ -26,6 +26,7 @@ export const TABS = [
   "Journal",
   "Objectifs",
   "Revue",
+  "Fichiers",
 ] as const;
 
 export type Tab = (typeof TABS)[number];

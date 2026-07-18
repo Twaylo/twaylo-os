@@ -10,6 +10,7 @@ import { RevenusView } from "@/components/views/RevenusView";
 import { JournalView } from "@/components/views/JournalView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { RevueView } from "@/components/views/RevueView";
+import { FichiersView } from "@/components/views/FichiersView";
 
 const VIEWS = {
   Accueil: AccueilView,
@@ -20,6 +21,7 @@ const VIEWS = {
   Journal: JournalView,
   Objectifs: ObjectifsView,
   Revue: RevueView,
+  Fichiers: FichiersView,
 } as const;
 
 function ActiveView() {
