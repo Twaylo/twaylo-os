@@ -11,9 +11,11 @@ import { JournalView } from "@/components/views/JournalView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { RevueView } from "@/components/views/RevueView";
 import { FichiersView } from "@/components/views/FichiersView";
+import { BrainView } from "@/components/views/BrainView";
 
 const VIEWS = {
   Accueil: AccueilView,
+  Brain: BrainView,
   Contacts: ContactsView,
   Sponsors: SponsorsView,
   Contenu: ContenuView,
