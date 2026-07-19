@@ -44,6 +44,9 @@ type TelegramUpdate = {
   };
 };
 
+/** Les seules valeurs que la contrainte `check` de la base accepte. */
+const URGENCES_VALIDES = ["aujourdhui", "semaine", "mois", "un_jour"];
+
 const LABEL_URGENCE: Record<string, string> = {
   aujourdhui: "aujourd'hui",
   semaine: "cette semaine",
@@ -204,7 +207,23 @@ async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>)
       return NextResponse.json({ ok: true, ignore: "pas une tâche" });
     }
   } else {
-    await db.from("captures").update({ priorite: valeur }).eq("id", captureId);
+    /*
+     * `valeur` vient d'un `callback_query` : c'est une donnée extérieure, et
+     * c'était la seule écriture du projet à la prendre telle quelle. Les
+     * autres routes valident contre une liste blanche ; celle-ci ne le
+     * faisait pas, et il lui manquait aussi le filtre `user_id` que portent
+     * les vingt autres opérations. Cette route étant la seule accessible hors
+     * cookie de session, elle mérite au moins autant de méfiance qu'elles.
+     */
+    if (!URGENCES_VALIDES.includes(valeur)) {
+      await answerCallbackQuery(query.id, "Urgence inconnue");
+      return NextResponse.json({ ok: true, ignore: "urgence invalide" });
+    }
+    await db
+      .from("captures")
+      .update({ priorite: valeur })
+      .eq("id", captureId)
+      .eq("user_id", USER_ID);
     libelle = LABEL_URGENCE[valeur] ?? valeur;
   }
 
