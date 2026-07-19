@@ -61,7 +61,14 @@ export function FichiersView() {
     );
 
     const cible = (await lireDossiersMemorises()).find((d) => d.id === id);
-    if (!cible) return;
+    if (!cible) {
+      // Sans cette remise à zéro, le dossier restait affiché « indexation en
+      // cours » jusqu'au rechargement de la page.
+      setDossiers((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, indexation: false } : d)),
+      );
+      return;
+    }
 
     // L'autorisation doit être (re)demandée depuis le clic, pas au chargement.
     if (!(await autorisationOk(cible.handle, true))) {

@@ -127,6 +127,7 @@ export function RevueView() {
   const [hydrate, setHydrate] = useState(false);
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set([SECTIONS[0].titre]));
   const [meta, setMeta] = useState<{
+    annee: number;
     semaine: number;
     du: string;
     au: string;
@@ -134,25 +135,61 @@ export function RevueView() {
   } | null>(null);
 
   // La date locale n'est connue qu'après montage (hydratation).
+  /*
+   * L'année fait partie de la clé.
+   *
+   * Sans elle, la semaine 29 de 2026 et celle de 2027 partageaient le même
+   * emplacement : la revue de l'an dernier serait réapparue comme brouillon
+   * de cette semaine, puis réécrite par-dessus. Pour un outil censé tenir des
+   * années, c'était une bombe à retardement à douze mois.
+   */
   const cle = useMemo(
-    () => (meta ? `twaylo-revue-${meta.semaine}` : null),
+    () => (meta ? `twaylo-revue-${meta.annee}-${String(meta.semaine).padStart(2, "0")}` : null),
     [meta],
   );
 
   useEffect(() => {
     const now = new Date();
-    const { semaine } = semaineISO(now);
+    const { annee, semaine } = semaineISO(now);
     const { du, au, lundiISO } = bornesSemaine(now);
-    setMeta({ semaine, du, au, lundiISO });
-    setRevue(readJSON<Revue>(`twaylo-revue-${semaine}`, REVUE_VIDE));
+    setMeta({ annee, semaine, du, au, lundiISO });
+
+    const local = readJSON<Revue>(
+      `twaylo-revue-${annee}-${String(semaine).padStart(2, "0")}`,
+      REVUE_VIDE,
+    );
+    setRevue(local);
     setHydrate(true);
+
+    /*
+     * Bug 4b : le distant n'écrase plus le local sans condition.
+     *
+     * `GET /api/revue` renvoie TOUJOURS un objet complet, même quand rien
+     * n'est stocké — la garde `d.revue` n'en était donc pas une. Si la base
+     * était indisponible au moment où la revue a été écrite, la réponse vide
+     * revenait par-dessus, écrasait l'état, et l'effet d'enregistrement
+     * renvoyait ce vide en base. Sept champs perdus des deux côtés.
+     *
+     * On ne prend maintenant du distant que les champs que le local n'a pas.
+     */
 
     // La base corrige ensuite le cache local — même ordre que le dashboard :
     // afficher tout de suite, rectifier après.
     void fetch(`/api/revue?lundi=${lundiISO}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.connecte && d.revue) setRevue(d.revue);
+        if (!d?.connecte || !d.revue) return;
+        setRevue((actuel) => {
+          const fusion = { ...actuel } as Revue;
+          for (const [champ, valeur] of Object.entries(d.revue as Revue)) {
+            const mien = (actuel as Record<string, unknown>)[champ];
+            const vide = typeof mien === "string" ? mien.trim() === "" : mien === undefined;
+            if (vide) (fusion as Record<string, unknown>)[champ] = valeur;
+          }
+          // Un scellé distant fait foi : il est définitif par nature.
+          if ((d.revue as Revue).scelle) fusion.scelle = true;
+          return fusion;
+        });
       })
       .catch((err) => console.error("[revue] chargement impossible :", err));
   }, []);

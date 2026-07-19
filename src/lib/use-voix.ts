@@ -83,6 +83,26 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
   /** Vrai tant que la conversation est active — survit aux coupures du navigateur. */
   const actifRef = useRef(false);
 
+  /**
+   * Vrai quand c'est NOUS qui avons fermé le micro, parce que le brain
+   * réfléchit ou parle.
+   *
+   * Sans cette distinction, `onend` ne pouvait pas savoir qui avait coupé :
+   * il rouvrait dans les deux cas, y compris juste avant que la voix de
+   * synthèse ne démarre. Le micro transcrivait alors la réponse du brain et
+   * la lui renvoyait comme une nouvelle question.
+   */
+  const pauseRef = useRef(false);
+
+  /**
+   * Vrai quand la réponse est entièrement arrivée.
+   *
+   * La file de lecture peut se vider un instant entre deux phrases, quand le
+   * réseau est plus lent que la voix. Rouvrir le micro à ce moment-là
+   * l'ouvrirait au milieu de la réponse — même écho, autre cause.
+   */
+  const lectureFinieRef = useRef(true);
+
   const onQuestionRef = useRef(onQuestion);
   onQuestionRef.current = onQuestion;
 
@@ -106,6 +126,7 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
 
   const ouvrirEcoute = useCallback(() => {
     if (recRef.current) return;
+    pauseRef.current = false;
     const Ctor = constructeurReconnaissance();
     if (!Ctor) return;
 
@@ -132,6 +153,9 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
         tamponRef.current = "";
         setEntendu("");
         if (!question) return;
+        // Pause avant de couper : sinon `onend` rouvrirait le micro.
+        pauseRef.current = true;
+        lectureFinieRef.current = false;
         couperEcoute();
         setEtat("reflechit");
         onQuestionRef.current(question);
@@ -153,12 +177,13 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
 
     rec.onend = () => {
       recRef.current = null;
-      // Le navigateur coupe de lui-même après un long silence. Ici, contrairement
-      // à la dictée, on relance : dans une conversation, un micro qui s'éteint
-      // tout seul casse l'échange.
-      if (actifRef.current) {
+      // Le navigateur coupe de lui-même après un long silence : là on relance,
+      // parce qu'un micro qui s'éteint seul casse la conversation. Mais on ne
+      // relance JAMAIS pendant une pause voulue — c'est ce qui provoquait
+      // l'écho.
+      if (actifRef.current && !pauseRef.current) {
         setTimeout(() => {
-          if (actifRef.current && !recRef.current) ouvrirEcoute();
+          if (actifRef.current && !pauseRef.current && !recRef.current) ouvrirEcoute();
         }, 200);
       }
     };
@@ -192,8 +217,14 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
 
       enonce.onstart = () => setEtat("parle");
       enonce.onend = () => {
-        // Dernière phrase de la file : on rend la parole.
-        if (!window.speechSynthesis.pending && !window.speechSynthesis.speaking) {
+        // On ne rend la parole que si la réponse est entièrement arrivée ET
+        // entièrement lue. Se fier à la seule file de lecture la trouverait
+        // vide entre deux phrases quand le réseau traîne.
+        if (
+          lectureFinieRef.current &&
+          !window.speechSynthesis.pending &&
+          !window.speechSynthesis.speaking
+        ) {
           if (actifRef.current) ouvrirEcoute();
           else setEtat("arret");
         }
@@ -224,9 +255,17 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
   const finirLecture = useCallback(() => {
     const reste = resteRef.current;
     resteRef.current = "";
+    // Marqué AVANT d'énoncer : la dernière phrase doit pouvoir rendre la
+    // parole quand elle se termine.
+    lectureFinieRef.current = true;
+
     if (reste.trim()) {
       enoncer(reste);
-    } else if (!window.speechSynthesis.speaking && actifRef.current) {
+    } else if (
+      !window.speechSynthesis.speaking &&
+      !window.speechSynthesis.pending &&
+      actifRef.current
+    ) {
       // Réponse vide ou déjà entièrement lue : on rouvre le micro.
       ouvrirEcoute();
     }
@@ -236,6 +275,8 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
 
   const arreter = useCallback(() => {
     actifRef.current = false;
+    pauseRef.current = false;
+    lectureFinieRef.current = true;
     couperEcoute();
     window.speechSynthesis.cancel();
     tamponRef.current = "";

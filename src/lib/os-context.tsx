@@ -231,6 +231,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const [serie, setSerie] = useState<number | null>(null);
 
+  /** Le jour affiché. Change au passage de minuit et relance les calculs qui en dépendent. */
+  const [jourCourant, setJourCourant] = useState("");
+
   const data = useMemo(() => {
     if (demoMode) return DEMO_DATA;
     if (serie === null) return REAL_DATA;
@@ -245,12 +248,41 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
   const [blocagesBruts, setBlocagesBruts] = useState<BlocageStocke[]>([]);
+
+  /**
+   * Ce que Twaylo a modifié avant que la réponse du serveur n'arrive.
+   *
+   * `GET /api/state` est lancé au montage ; sa réponse a été calculée AVANT
+   * un ajout fait pendant le chargement. L'appliquer telle quelle faisait
+   * disparaître de l'écran le blocage ou l'habitude qu'on venait de créer —
+   * et si on en supprimait un autre dans la foulée, la liste amputée était
+   * renvoyée en base et la perte devenait définitive.
+   */
+  const touchePendantChargement = useRef({ habitudes: false, blocages: false });
+
+  /*
+   * Miroirs de l'état, rafraîchis à chaque rendu.
+   *
+   * Un gestionnaire d'événement lit toujours la valeur courante ici, alors
+   * qu'une variable capturée par la closure date du rendu où elle a été
+   * créée. C'est la façon propre de résoudre le problème : glisser un
+   * `fetch` dans un updater `setState` le ferait partir deux fois en mode
+   * strict, puisque React y invoque les updaters deux fois pour débusquer les
+   * effets de bord.
+   */
+  const habitsRef = useRef<Habit[]>([]);
+  const blocagesRef = useRef<BlocageStocke[]>([]);
   const [objectifs, setObjectifs] = useState<ObjectifVue[] | null>(null);
   const [agenda, setAgenda] = useState<EvenementAgenda[]>([]);
   const [agendaConnecte, setAgendaConnecte] = useState(false);
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
     "inconnu",
   );
+
+  const tasksRef = useRef<(Task & { id?: string })[]>([]);
+  tasksRef.current = tasks;
+  habitsRef.current = habits;
+  blocagesRef.current = blocagesBruts;
 
   // Le jour local, figé au montage : sert de clé pour la base comme pour le
   // cache navigateur. Les deux doivent parler du même jour.
@@ -295,8 +327,14 @@ export function OsProvider({ children }: { children: ReactNode }) {
   /** Relit tout le stockage local et remplit l'état. */
   const hydrateFromStorage = useCallback(() => {
     setCaptures(readJSON<Capture[]>(KEYS.captures, REAL_DATA.captures));
+    // Les tâches d'amorçage n'ont pas encore d'identifiant : le libellé sert
+    // de repli tant que la base n'a pas répondu.
     setTasks(
-      applyDone(REAL_DATA.tasks, (t) => t.text, readJSON<string[]>(KEYS.tasks, [])),
+      applyDone(
+        REAL_DATA.tasks,
+        (t) => (t as { id?: string }).id ?? t.text,
+        readJSON<string[]>(KEYS.tasks, []),
+      ),
     );
     // Clé datée : au changement de jour local, la clé n'existe pas encore et
     // les habitudes repartent vierges. Aucun code de remise à zéro.
@@ -328,6 +366,50 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, [hydrateFromStorage]);
 
   useEffect(() => surChangementSync(setSync), []);
+
+  /*
+   * Le passage de minuit.
+   *
+   * Un onglet resté ouvert toute la nuit continuait d'écrire dans la journée
+   * de la veille, tandis que la clé locale, recalculée à chaque appel, pointait
+   * déjà sur le lendemain. Résultat : le journal et les habitudes d'hier se
+   * recopiaient sur aujourd'hui, et la journée démarrait déjà « remplie » —
+   * ce qui faussait aussi la série.
+   *
+   * On surveille donc le changement de date et on repart à zéro. Un minuteur
+   * seul ne suffit pas : un onglet mis en veille sur téléphone est gelé et son
+   * minuteur ne se déclenche jamais — d'où la vérification au retour de
+   * visibilité.
+   */
+  useEffect(() => {
+    if (demoMode) return;
+
+    const verifier = () => {
+      const maintenant = localDateKey();
+      if (maintenant === jourRef.current) return;
+
+      jourRef.current = maintenant;
+      setJourCourant(maintenant);
+      // Rien n'a encore été touché aujourd'hui : sans cette remise à zéro,
+      // les drapeaux « modifié » d'hier autoriseraient une écriture immédiate.
+      modifie.current = { faites: false, journal: false, uneChose: false, repas: false };
+      setFaitesDuJour({});
+      setJournalText("");
+      setUneChose({ texte: "", fait: false });
+      setRepas([]);
+      pruneOldDailyKeys("habits");
+      pruneOldDailyKeys("journal");
+      pruneOldDailyKeys("unechose");
+      pruneOldDailyKeys("nutrition");
+    };
+
+    const minuteur = setInterval(verifier, 30_000);
+    document.addEventListener("visibilitychange", verifier);
+    return () => {
+      clearInterval(minuteur);
+      document.removeEventListener("visibilitychange", verifier);
+    };
+  }, [demoMode]);
 
   /*
    * L'agenda est chargé à part, et son échec est sans conséquence : la carte
@@ -378,19 +460,22 @@ export function OsProvider({ children }: { children: ReactNode }) {
     if (demoMode) return;
     const jour = localDateKey();
     jourRef.current = jour;
+    setJourCourant(jour);
 
     let annule = false;
     void chargerEtat(jour).then((distant) => {
       if (annule || !distant?.connecte) return;
 
       if (distant.taches) setTasks(distant.taches);
-      if (distant.habitudes) {
+      if (distant.habitudes && !touchePendantChargement.current.habitudes) {
         setHabits(distant.habitudes as Habit[]);
         writeJSON("twaylo-habitudes-def", distant.habitudes);
       }
       if (distant.faites) setFaitesDuJour(distant.faites as FaitesDuJour);
       if (typeof distant.serie === "number") setSerie(distant.serie);
-      if (Array.isArray(distant.blocages)) setBlocagesBruts(distant.blocages);
+      if (Array.isArray(distant.blocages) && !touchePendantChargement.current.blocages) {
+        setBlocagesBruts(distant.blocages);
+      }
       if (distant.uneChose) setUneChose(distant.uneChose);
       if (distant.nutrition?.repas) setRepas(distant.nutrition.repas as Repas[]);
       if (distant.pipeline) setPipeline(distant.pipeline as PipelineColumn[]);
@@ -425,11 +510,22 @@ export function OsProvider({ children }: { children: ReactNode }) {
     writeJSON(KEYS.captures, captures);
   }, [captures, demoMode, hydrate]);
 
+  /*
+   * Les tâches cochées sont mémorisées par identifiant, plus par libellé.
+   *
+   * Le commentaire d'origine justifiait le libellé par « réordonner ne doit
+   * pas décaler les coches » — juste, mais le libellé est modifiable depuis
+   * qu'on peut renommer une tâche. Renommer une tâche cochée la faisait donc
+   * réapparaître décochée au chargement suivant, et deux tâches de même nom
+   * partageaient leur état. L'identifiant règle les deux.
+   */
   useEffect(() => {
     if (!hydrate || demoMode) return;
     writeJSON(
       KEYS.tasks,
-      tasks.filter((t) => t.done).map((t) => t.text),
+      tasks
+        .filter((t) => t.done)
+        .map((t) => (t as { id?: string }).id ?? t.text),
     );
   }, [tasks, demoMode, hydrate]);
 
@@ -551,17 +647,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, [captureText]);
 
   const toggleTask = useCallback((i: number) => {
-    setTasks((prev) => {
-      const suivant = prev.map((t, j) => (j === i ? { ...t, done: !t.done } : t));
-      const cible = suivant[i] as Task & { id?: string };
-      // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
-      // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
-      // d'annuler le geste sous les doigts de Twaylo.
-      if (cible.id && !demoModeRef.current) {
-        void basculerTacheDistante(cible.id, cible.done);
-      }
-      return suivant;
-    });
+    /*
+     * L'appel réseau est fait ICI, pas dans l'updater.
+     *
+     * React invoque les updaters deux fois en mode strict pour débusquer les
+     * effets de bord : la requête partait donc en double à chaque clic.
+     * Inoffensif ici parce que la charge est idempotente, mais c'est
+     * exactement le genre de détail qui devient un vrai bug le jour où on y
+     * ajoute autre chose.
+     */
+    const cible = tasksRef.current[i] as (Task & { id?: string }) | undefined;
+    if (!cible) return;
+    const done = !cible.done;
+
+    setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, done } : t)));
+
+    // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
+    // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
+    // d'annuler le geste sous les doigts de Twaylo.
+    if (cible.id && !demoModeRef.current) {
+      void basculerTacheDistante(cible.id, done);
+    }
   }, []);
 
   /** Coche ou décoche une variante. Le clic sur une option déjà cochée l'enlève. */
@@ -609,7 +715,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
           .filter(Boolean),
       };
 
-      const suivantes = [...habits, nouvelle];
+      /*
+       * Updater fonctionnel plutôt que `[...habits, nouvelle]`.
+       *
+       * La liste capturée au rendu est périmée dès qu'on enchaîne deux ajouts
+       * sans laisser React redessiner : la seconde requête partait construite
+       * sur l'ancienne liste, et la première habitude disparaissait — du
+       * navigateur ET de la base.
+       */
+      touchePendantChargement.current.habitudes = true;
+      const suivantes = [...habitsRef.current, nouvelle];
       setHabits(suivantes);
       writeJSON("twaylo-habitudes-def", suivantes);
 
@@ -624,23 +739,24 @@ export function OsProvider({ children }: { children: ReactNode }) {
         console.error("[habitudes] ajout impossible :", err);
       }
     },
-    [habits],
+    [],
   );
 
-  const supprimerHabitude = useCallback(
-    (habitId: string) => {
-      const suivantes = habits.filter((h) => h.id !== habitId);
-      setHabits(suivantes);
-      writeJSON("twaylo-habitudes-def", suivantes);
-      if (demoModeRef.current) return;
-      void fetch("/api/habitudes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ habitudes: suivantes }),
-      }).catch((err) => console.error("[habitudes] suppression impossible :", err));
-    },
-    [habits],
-  );
+  const supprimerHabitude = useCallback((habitId: string) => {
+    // Le garde démo passe AVANT toute écriture : supprimer une habitude pour
+    // une prise de vue ne doit pas amputer la vraie liste en cache.
+    if (demoModeRef.current) return;
+
+    touchePendantChargement.current.habitudes = true;
+    const suivantes = habitsRef.current.filter((h) => h.id !== habitId);
+    setHabits(suivantes);
+    writeJSON("twaylo-habitudes-def", suivantes);
+    void fetch("/api/habitudes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ habitudes: suivantes }),
+    }).catch((err) => console.error("[habitudes] suppression impossible :", err));
+  }, []);
 
   const changerNiveauTache = useCallback((id: string, niveau: Niveau) => {
     setTasks((prev) =>
@@ -683,25 +799,24 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * OS sur le terrain, au téléphone.
    */
   const echangerTaches = useCallback((a: number, b: number) => {
-    setTasks((prev) => {
-      if (a < 0 || b < 0 || a >= prev.length || b >= prev.length || a === b) return prev;
+    // Comme pour `toggleTask` : la requête part d'ici, jamais de l'updater,
+    // que React invoque deux fois en mode strict.
+    const actuelles = tasksRef.current;
+    if (a < 0 || b < 0 || a >= actuelles.length || b >= actuelles.length || a === b) return;
 
-      const suivantes = [...prev];
-      [suivantes[a], suivantes[b]] = [suivantes[b], suivantes[a]];
+    const suivantes = [...actuelles];
+    [suivantes[a], suivantes[b]] = [suivantes[b], suivantes[a]];
+    setTasks(suivantes);
 
-      if (!demoModeRef.current) {
-        const ordre = suivantes
-          .map((t) => (t as { id?: string }).id)
-          .filter((id): id is string => Boolean(id));
-        void fetch("/api/tasks", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ordre }),
-        }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
-      }
-
-      return suivantes;
-    });
+    if (demoModeRef.current) return;
+    const ordre = suivantes
+      .map((t) => (t as { id?: string }).id)
+      .filter((id): id is string => Boolean(id));
+    void fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ordre }),
+    }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
   }, []);
 
   const ajouterObjectif = useCallback(async (libelle: string, portee: string) => {
@@ -759,6 +874,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   /** Enregistre la liste entière : elle est courte, et l'API la revalide. */
   const enregistrerBlocages = useCallback((suivants: BlocageStocke[]) => {
+    touchePendantChargement.current.blocages = true;
     setBlocagesBruts(suivants);
     if (demoModeRef.current) return;
     void fetch("/api/blocages", {
@@ -773,8 +889,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
     async (saisie: string) => {
       const [texte, proprietaire = "Toi"] = saisie.split(/[·|]/).map((m) => m.trim());
       if (!texte) return;
+      // Construit depuis l'état courant, pas depuis celui capturé au rendu :
+      // deux ajouts rapprochés se perdaient l'un l'autre.
       enregistrerBlocages([
-        ...blocagesBruts,
+        ...blocagesRef.current,
         {
           id: `b${Date.now().toString(36)}`,
           texte,
@@ -783,14 +901,14 @@ export function OsProvider({ children }: { children: ReactNode }) {
         },
       ]);
     },
-    [blocagesBruts, enregistrerBlocages],
+    [enregistrerBlocages],
   );
 
   const leverBlocage = useCallback(
     (id: string) => {
-      enregistrerBlocages(blocagesBruts.filter((b) => b.id !== id));
+      enregistrerBlocages(blocagesRef.current.filter((b) => b.id !== id));
     },
-    [blocagesBruts, enregistrerBlocages],
+    [enregistrerBlocages],
   );
 
   /**
@@ -800,7 +918,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const blocages = useMemo<Blocage[]>(() => {
     if (demoMode) return DEMO_DATA.blocages;
-    const aujourdhui = Date.parse(`${localDateKey()}T00:00:00Z`);
+    // `jourRef` est remis à jour au passage de minuit, ce qui recalcule aussi
+    // ce mémo : sans cette dépendance, « depuis 4 jours » restait figé dans un
+    // onglet laissé ouvert plusieurs jours.
+    const aujourdhui = Date.parse(`${jourCourant || localDateKey()}T00:00:00Z`);
     return blocagesBruts.map((b) => {
       const jours = Math.max(
         0,
@@ -814,7 +935,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
         chaleur: jours >= 14 ? "chaud" : jours >= 7 ? "tiede" : "froid",
       };
     });
-  }, [blocagesBruts, demoMode]);
+  }, [blocagesBruts, demoMode, jourCourant]);
 
   /**
    * Déplacement optimiste : la carte bouge sous le doigt, la base suit.

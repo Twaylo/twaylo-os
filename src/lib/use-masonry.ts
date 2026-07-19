@@ -79,7 +79,14 @@ export function useMasonry<T extends HTMLElement>() {
      * recalcul n'y repassait jamais, et les cartes gardaient la taille qu'elles
      * avaient au moment où l'onglet a été masqué.
      */
-    const bientot = () => setTimeout(recalculer, 0);
+    let attente: ReturnType<typeof setTimeout> | null = null;
+    const bientot = () => {
+      if (attente) clearTimeout(attente);
+      attente = setTimeout(() => {
+        attente = null;
+        recalculer();
+      }, 0);
+    };
 
     // Le chargement des polices modifie les hauteurs sans provoquer de rendu.
     void document.fonts?.ready.then(recalculer);
@@ -104,6 +111,9 @@ export function useMasonry<T extends HTMLElement>() {
     for (const enfant of Array.from(grille.children)) tailles.observe(enfant);
 
     return () => {
+      // Le minuteur survivait au démontage : il s'exécutait ensuite sur une
+      // grille détachée. Sans conséquence visible, mais du travail pour rien.
+      if (attente) clearTimeout(attente);
       grille.removeEventListener("click", bientot);
       window.removeEventListener("resize", bientot);
       tailles.disconnect();
