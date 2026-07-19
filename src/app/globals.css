@@ -349,8 +349,26 @@ textarea::placeholder {
   }
 }
 
+/*
+ * L'intensité monte avec la journée.
+ *
+ * Cocher la première tâche du matin et cocher la dernière du soir ne valent
+ * pas la même chose. Quatre paliers, calés sur la proportion de tâches faites :
+ * discret au réveil, spectaculaire quand la journée est pliée. C'est la
+ * demande de Twaylo, et c'est aussi ce qui rend le geste tenable — une
+ * explosion à chaque case deviendrait une punition dès la troisième.
+ */
 .case-cochee {
   animation: coche 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.niveau-1 .case-cochee {
+  animation-duration: 0.5s;
+}
+.niveau-2 .case-cochee {
+  animation: coche 0.58s cubic-bezier(0.34, 1.9, 0.5, 1);
+}
+.niveau-3 .case-cochee {
+  animation: coche 0.7s cubic-bezier(0.34, 2.2, 0.45, 1);
 }
 .case-marque {
   animation: trace 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -367,6 +385,108 @@ textarea::placeholder {
   pointer-events: none;
   animation: onde 0.55s ease-out forwards;
 }
+.niveau-2 .onde-validation {
+  animation-duration: 0.75s;
+}
+.niveau-3 .onde-validation {
+  animation-duration: 0.95s;
+}
+
+/* ---- Éclats ---- */
+
+/*
+ * Chaque éclat part dans sa direction, portée par --dx / --dy posés en ligne.
+ * Tout se joue sur transform et opacity : aucune de ces deux propriétés ne
+ * déclenche de recalcul de mise en page, donc la grille ne peut pas sauter
+ * pendant l'animation.
+ */
+@keyframes eclat {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(var(--rot, 180deg));
+  }
+}
+
+.eclat {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  pointer-events: none;
+  animation: eclat var(--duree, 0.7s) cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+}
+
+/* Le halo qui balaie la ligne entière quand la journée est presque finie. */
+@keyframes balayage {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  40% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.balayage-validation {
+  position: absolute;
+  inset: 0;
+  border-radius: 11px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.balayage-validation::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  animation: balayage 0.7s ease-out forwards;
+}
+
+/* Journée bouclée : le message qui traverse l'écran. */
+@keyframes journeePliee {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+.journee-pliee {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  z-index: 100;
+  pointer-events: none;
+  animation: journeePliee 2.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
@@ -377,11 +497,18 @@ textarea::placeholder {
   .case-cochee,
   .case-marque,
   .ligne-validee,
-  .onde-validation {
+  .onde-validation,
+  .eclat,
+  .balayage-validation,
+  .balayage-validation::after,
+  .journee-pliee {
     animation: none;
   }
-  /* Sans animation, l'onde n'a plus de raison de s'afficher du tout. */
-  .onde-validation {
+  /* Sans animation, ces éléments purement décoratifs n'ont plus d'objet. */
+  .onde-validation,
+  .eclat,
+  .balayage-validation,
+  .journee-pliee {
     display: none;
   }
 }

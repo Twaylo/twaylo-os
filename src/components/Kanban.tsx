@@ -48,7 +48,6 @@ export function Kanban<T>({
   /** Boutons propres à l'écran, ajoutés au menu d'une carte. */
   actionsSupplementaires?: (item: T, fermer: () => void) => ReactNode;
 }) {
-  const [menuOuvert, setMenuOuvert] = useState<string | null>(null);
   const [survolee, setSurvolee] = useState<string | null>(null);
   const [saisies, setSaisies] = useState<Record<string, string>>({});
   const glissee = useRef<string | null>(null);
@@ -98,7 +97,6 @@ export function Kanban<T>({
             <div className="flex flex-1 flex-col" style={{ gap: compact ? 6 : 7 }}>
               {col.items.map((item) => {
                 const id = cleDe(item);
-                const menu = id !== undefined && menuOuvert === id;
 
                 return (
                   <div key={id ?? JSON.stringify(item)}>
@@ -114,88 +112,53 @@ export function Kanban<T>({
                         glissee.current = null;
                         setSurvolee(null);
                       }}
-                      onClick={() => id && setMenuOuvert(menu ? null : id)}
-                      title={id ? "Glisser pour déplacer · cliquer pour les options" : undefined}
-                      className="transition-colors hover:brightness-125"
+                      title={id ? "Glisser pour déplacer" : undefined}
+                      className="group relative transition-colors hover:brightness-125"
                       style={{
-                        background: menu
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(255,255,255,0.045)",
-                        border: `1px solid ${menu ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)"}`,
+                        background: "rgba(255,255,255,0.045)",
+                        border: "1px solid rgba(255,255,255,0.08)",
                         borderRadius: compact ? 9 : 11,
                         padding: compact ? "7px 8px" : "10px 11px",
                         cursor: id ? "grab" : "default",
                       }}
                     >
                       {rendre(item)}
+
+                      {/*
+                        Les actions sont posées sur la carte, pas cachées dans
+                        un menu. Le menu au clic listait « déplacer vers » les
+                        six étapes et enterrait « Supprimer » dessous : pour
+                        jeter une idée il fallait cliquer, chercher, viser.
+                        Le déplacement se fait au glissé, qui est le geste
+                        naturel sur un tableau.
+                      */}
+                      {id && (actionsSupplementaires || onSupprimer) && (
+                        <div className="absolute right-[5px] top-[5px] flex items-center gap-[3px] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          {actionsSupplementaires?.(item, () => {})}
+                          {onSupprimer && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                // Sans ça, le clic remonte à la carte et
+                                // démarre un glissé fantôme.
+                                e.stopPropagation();
+                                onSupprimer(id);
+                              }}
+                              title="Supprimer"
+                              aria-label="Supprimer"
+                              className="cursor-pointer rounded-[6px] px-[5px] py-[1px] text-[11px] font-black transition-all hover:brightness-150"
+                              style={{
+                                color: "var(--color-mag-soft)",
+                                background: "rgba(255,61,139,0.16)",
+                              }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {menu && id && (
-                      <div
-                        className="mt-1 rounded-[10px] p-[7px]"
-                        style={{
-                          background: "rgba(255,255,255,0.03)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        <div className="mb-[5px] text-[8px] font-black tracking-[0.1em] text-white/30">
-                          DÉPLACER VERS
-                        </div>
-                        <div className="flex flex-wrap gap-[4px]">
-                          {colonnes
-                            .filter((c) => c.id !== col.id)
-                            .map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => {
-                                  onDeplacer(id, c.id);
-                                  setMenuOuvert(null);
-                                }}
-                                className="cursor-pointer rounded-[6px] px-[7px] py-[3px] text-[9.5px] font-extrabold transition-all hover:brightness-125"
-                                style={{
-                                  color: c.couleur,
-                                  background: "rgba(255,255,255,0.05)",
-                                  border: "1px solid rgba(255,255,255,0.09)",
-                                }}
-                              >
-                                {c.nom}
-                              </button>
-                            ))}
-                        </div>
-
-                        {/*
-                          Les actions séparées des destinations par un trait.
-                          Mélangées, on cliquait « Renommer » en croyant
-                          choisir une étape.
-                        */}
-                        {(actionsSupplementaires || onSupprimer) && (
-                          <div
-                            className="mt-[7px] flex flex-wrap gap-[4px] pt-[7px]"
-                            style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
-                          >
-                            {actionsSupplementaires?.(item, () => setMenuOuvert(null))}
-                            {onSupprimer && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onSupprimer(id);
-                                  setMenuOuvert(null);
-                                }}
-                                className="ml-auto cursor-pointer rounded-[6px] px-[7px] py-[3px] text-[9.5px] font-extrabold transition-all hover:brightness-125"
-                                style={{
-                                  color: "var(--color-mag-soft)",
-                                  background: "rgba(255,61,139,0.1)",
-                                  border: "1px solid rgba(255,61,139,0.25)",
-                                }}
-                              >
-                                Supprimer
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}

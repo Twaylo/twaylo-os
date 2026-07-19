@@ -27,6 +27,50 @@ export function Eyebrow({
   );
 }
 
+const COULEURS_ECLAT = [
+  "var(--color-mag)",
+  "var(--color-amb)",
+  "var(--color-ver)",
+  "var(--color-cya)",
+  "var(--color-vio)",
+];
+
+/**
+ * Les éclats projetés depuis la case.
+ *
+ * Les directions sont calculées, pas tirées au sort : un tirage aléatoire
+ * donnerait un résultat différent entre le rendu serveur et le rendu
+ * navigateur, et React signalerait une divergence d'hydratation. Un éventail
+ * régulier est de toute façon plus lisible qu'un vrai hasard.
+ */
+function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
+  return (
+    <>
+      {Array.from({ length: nombre }, (_, i) => {
+        const angle = (i / nombre) * Math.PI * 2;
+        // Une alternance de portée évite l'effet « couronne » trop régulier.
+        const rayon = portee * (i % 2 === 0 ? 1 : 0.65);
+        return (
+          <span
+            key={i}
+            className="eclat"
+            aria-hidden
+            style={
+              {
+                background: COULEURS_ECLAT[i % COULEURS_ECLAT.length],
+                "--dx": `${Math.cos(angle) * rayon}px`,
+                "--dy": `${Math.sin(angle) * rayon}px`,
+                "--rot": `${(i % 2 === 0 ? 1 : -1) * 220}deg`,
+                "--duree": `${0.55 + (i % 3) * 0.12}s`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * Ligne de checklist. `accent` colore la case une fois cochée.
  *
@@ -40,13 +84,19 @@ export function CheckRow({
   accent,
   onToggle,
   meta,
+  intensite = 0,
 }: {
   label: string;
   done: boolean;
   accent: string;
   onToggle: () => void;
   meta?: string;
+  /** Proportion de la journée déjà faite, 0 à 1. Règle la démesure. */
+  intensite?: number;
 }) {
+  // Quatre paliers. Le dernier ne s'atteint qu'en fin de journée, ce qui est
+  // exactement le moment où une récompense appuyée a du sens.
+  const palier = intensite >= 0.85 ? 3 : intensite >= 0.6 ? 2 : intensite >= 0.3 ? 1 : 0;
   const [anime, setAnime] = useState(false);
   const precedent = useRef(done);
 
@@ -55,30 +105,38 @@ export function CheckRow({
     // (sinon toute la liste s'agite au chargement de la page).
     if (done && !precedent.current) {
       setAnime(true);
-      const t = setTimeout(() => setAnime(false), 600);
+      // Les éclats du dernier palier durent près d'une seconde : retirer les
+      // éléments à 600 ms les couperait en plein vol.
+      const t = setTimeout(() => setAnime(false), 700 + palier * 250);
       precedent.current = done;
       return () => clearTimeout(t);
     }
     precedent.current = done;
-  }, [done]);
+  }, [done, palier]);
 
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={done}
-      className={`check-row relative hover:brightness-125 ${anime ? "ligne-validee" : ""}`}
+      className={`check-row relative hover:brightness-125 ${anime ? `ligne-validee niveau-${palier}` : ""}`}
       style={{
         background: done ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.045)",
         border: `1px solid ${done ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.08)"}`,
       }}
     >
       {anime && (
-        <span
-          className="onde-validation"
-          aria-hidden
-          style={{ boxShadow: `0 0 0 2px ${accent}, 0 0 22px 4px ${accent}` }}
-        />
+        <>
+          <span
+            className="onde-validation"
+            aria-hidden
+            style={{
+              boxShadow: `0 0 0 ${1 + palier}px ${accent}, 0 0 ${18 + palier * 14}px ${2 + palier * 3}px ${accent}`,
+            }}
+          />
+          {palier >= 1 && <Eclats nombre={palier === 1 ? 6 : palier === 2 ? 12 : 20} portee={palier === 1 ? 34 : palier === 2 ? 58 : 88} />}
+          {palier >= 2 && <span className="balayage-validation" aria-hidden />}
+        </>
       )}
 
       <span

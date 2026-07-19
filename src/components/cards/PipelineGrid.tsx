@@ -10,11 +10,9 @@ type VideoVue = PipelineColumn["videos"][number] & { id?: string };
 
 /**
  * Le pipeline de production, bâti sur le même tableau que les contacts et les
- * sponsors : glisser au bureau, menu au clic sur téléphone, saisie en pied de
- * colonne.
- *
- * « Renommer » est séparé des destinations par un trait. Mélangé aux étapes,
- * on cliquait dessus en croyant choisir « Montage ».
+ * sponsors : on glisse une carte d'une colonne à l'autre, on la renomme ou on
+ * la jette par les deux icônes qui apparaissent dessus au survol, et on ajoute
+ * en pied de colonne.
  */
 export function PipelineGrid({ compact = false }: { compact?: boolean }) {
   const {
@@ -62,22 +60,21 @@ export function PipelineGrid({ compact = false }: { compact?: boolean }) {
         });
       }}
       placeholderAjout="Nouvelle vidéo…"
-      actionsSupplementaires={(v, fermer) =>
+      actionsSupplementaires={(v) =>
         v.id ? (
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setBrouillon(v.title);
               setEnEdition(v.id!);
-              fermer();
             }}
-            className="cursor-pointer rounded-[6px] px-[7px] py-[3px] text-[9.5px] font-extrabold text-white/55 transition-all hover:brightness-125"
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.09)",
-            }}
+            title="Renommer"
+            aria-label="Renommer"
+            className="cursor-pointer rounded-[6px] px-[5px] py-[1px] text-[11px] font-black text-white/50 transition-all hover:brightness-150"
+            style={{ background: "rgba(255,255,255,0.09)" }}
           >
-            Renommer
+            ✎
           </button>
         ) : null
       }

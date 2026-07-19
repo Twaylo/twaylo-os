@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
@@ -68,6 +68,38 @@ export function TachesCard() {
 
   const done = tasks.filter((t) => t.done).length;
 
+  /*
+   * L'intensité de la fête, c'est l'avancement de la journée.
+   *
+   * On la mesure sur le focus principal et le secondaire seulement : les
+   * annexes sont ce qu'on sort de sa tête, pas ce qui fait la journée. Les
+   * compter diluerait le signal — vingt annexes en attente empêcheraient
+   * d'atteindre le dernier palier même en ayant tout bouclé.
+   */
+  const compte = tasks.filter((t) => (t.niveau ?? "secondaire") !== "annexe");
+  const intensite = compte.length
+    ? compte.filter((t) => t.done).length / compte.length
+    : 0;
+  const toutFait = compte.length > 0 && intensite === 1;
+
+  /*
+   * La journée bouclée ne se célèbre qu'une fois, à l'instant où la dernière
+   * case tombe. Sans le garde sur l'état précédent, le message reviendrait à
+   * chaque rendu tant que tout est coché — et donc au rechargement de la page
+   * le lendemain matin, ce qui serait absurde.
+   */
+  const [celebre, setCelebre] = useState(false);
+  const toutFaitAvant = useRef(toutFait);
+  useEffect(() => {
+    if (toutFait && !toutFaitAvant.current) {
+      setCelebre(true);
+      const t = setTimeout(() => setCelebre(false), 2200);
+      toutFaitAvant.current = toutFait;
+      return () => clearTimeout(t);
+    }
+    toutFaitAvant.current = toutFait;
+  }, [toutFait]);
+
   // L'index d'origine est conservé : `toggleTask` et `deplacerTache`
   // travaillent sur la liste complète, pas sur le sous-ensemble affiché.
   const parNiveau = ORDRE_NIVEAUX.map((niveau) => ({
@@ -87,6 +119,34 @@ export function TachesCard() {
         boxShadow: "0 14px 34px -22px rgba(255,61,139,0.45)",
       }}
     >
+      {celebre && (
+        <div className="journee-pliee" aria-live="polite">
+          <div
+            className="whitespace-nowrap rounded-[18px] px-[26px] py-[16px] text-center"
+            style={{
+              background: "rgba(11,24,38,0.95)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              boxShadow: "0 24px 70px -20px rgba(0,0,0,0.9)",
+              backdropFilter: "blur(18px)",
+            }}
+          >
+            <div
+              className="text-[30px] font-black tracking-[-0.02em]"
+              style={{
+                background: "var(--grad)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              Journée pliée
+            </div>
+            <div className="mt-[3px] text-[12px] font-bold text-white/40">
+              {compte.length} tâches — tout est fait
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div
           className="eyebrow tracking-[0.14em]"
@@ -186,6 +246,7 @@ export function TachesCard() {
                         meta={t.categorie}
                         done={t.done}
                         accent={meta.couleur}
+                        intensite={intensite}
                         onToggle={() => toggleTask(index)}
                       />
                       {id && (
