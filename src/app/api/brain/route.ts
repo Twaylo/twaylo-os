@@ -90,8 +90,15 @@ export async function POST(req: Request) {
     const client = new Anthropic({ apiKey: cle });
 
     const flux = client.messages.stream({
-      model: "claude-opus-4-8",
-      max_tokens: 2048,
+      // Opus par défaut, comme partout ailleurs dans le projet. Pour dépenser
+      // moins, poser ANTHROPIC_MODEL=claude-haiku-4-5 dans .env.local : cinq
+      // fois moins cher, largement suffisant pour « qu'est-ce que je fais
+      // maintenant ». Le choix reste celui de Twaylo, pas le mien.
+      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8",
+      // Les réponses du brain sont courtes par consigne. Ce plafond n'est pas
+      // une cible : il empêche seulement une réponse partie en vrille de
+      // coûter dix fois le prix d'une réponse normale.
+      max_tokens: 1536,
       thinking: { type: "adaptive" },
       system: [
         {
