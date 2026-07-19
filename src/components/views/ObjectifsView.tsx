@@ -7,6 +7,9 @@ import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 import { COULEUR_PORTEE, LIBELLE_PORTEE, ORDRE_PORTEES } from "@/lib/portees";
 
+/** Le serveur tronque au-delà : on l'annonce au lieu de le subir. */
+const MAX_ETAPES = 12;
+
 /**
  * OBJECTIFS — les quatre horizons côte à côte.
  *
@@ -153,10 +156,23 @@ function CarteObjectif({
    */
   function majEtapes(etapes: { texte: string; fait: boolean }[]) {
     const faites = etapes.filter((e) => e.fait).length;
+
+    if (etapes.length === 0) {
+      /*
+       * Plus aucune étape : le libellé « 2/5 » n'a plus de sens.
+       *
+       * Il était conservé tel quel, et la carte de l'accueil affichait donc un
+       * compteur d'étapes qui n'existaient plus. On repasse au pourcentage,
+       * que le curseur reprend la main.
+       */
+      onMaj({ etapes, valeur: `${objectif.pct}%` });
+      return;
+    }
+
     onMaj({
       etapes,
-      pct: etapes.length ? Math.round((faites / etapes.length) * 100) : objectif.pct,
-      valeur: etapes.length ? `${faites}/${etapes.length}` : objectif.valeur,
+      pct: Math.round((faites / etapes.length) * 100),
+      valeur: `${faites}/${etapes.length}`,
     });
   }
 
@@ -274,7 +290,9 @@ function CarteObjectif({
             onSubmit={(ev) => {
               ev.preventDefault();
               const texte = nouvelleEtape.trim();
-              if (!texte) return;
+              // Même plafond que le serveur : au-delà, il tronquait en
+              // silence et l'étape disparaissait au rechargement suivant.
+              if (!texte || objectif.etapes.length >= MAX_ETAPES) return;
               majEtapes([...objectif.etapes, { texte, fait: false }]);
               setNouvelleEtape("");
             }}
@@ -283,7 +301,13 @@ function CarteObjectif({
             <input
               value={nouvelleEtape}
               onChange={(ev) => setNouvelleEtape(ev.target.value)}
-              placeholder="+ étape"
+              disabled={objectif.etapes.length >= MAX_ETAPES}
+              maxLength={160}
+              placeholder={
+                objectif.etapes.length >= MAX_ETAPES
+                  ? `${MAX_ETAPES} étapes maximum`
+                  : "+ étape"
+              }
               aria-label={`Ajouter une étape à ${objectif.objectif}`}
               className="w-full rounded-[7px] px-[8px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
               style={{

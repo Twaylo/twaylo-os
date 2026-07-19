@@ -59,7 +59,18 @@ export function BrainView() {
 
   async function demander(question: string, vocal = false) {
     const propre = question.trim();
-    if (!propre || enCours) return;
+    if (!propre || enCours) {
+      /*
+       * Sortir sans rien faire laissait la conversation vocale morte.
+       *
+       * Le hook a déjà coupé le micro et affiché « JE CHERCHE » avant
+       * d'appeler ici. Si on renonce — question vide, ou requête déjà en
+       * vol — plus personne ne rouvre le micro : l'échange restait figé
+       * jusqu'à ce qu'on clique pour tout arrêter.
+       */
+      if (vocal) voix.finirLecture();
+      return;
+    }
 
     setErreur(null);
     setSaisie("");

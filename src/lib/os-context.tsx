@@ -830,6 +830,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { objectif } = await res.json();
+      // Sans cette garde, une réponse sans champ `objectif` poussait
+      // `undefined` dans la liste et la vue plantait au rendu suivant.
+      if (!objectif?.id) throw new Error("réponse sans objectif");
       setObjectifs((prev) => [...(prev ?? []), objectif]);
     } catch (err) {
       console.error("[objectifs] ajout impossible :", err);
@@ -855,11 +858,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
       if (demoModeRef.current || !apres) return;
       const cible = { pct: apres.pct, valeur: apres.valeur, etapes: apres.etapes };
+      /*
+       * On réapplique ce que le serveur dit avoir écrit.
+       *
+       * Il tronque à douze étapes et coupe les textes trop longs. Ignorer sa
+       * réponse laissait l'écran afficher treize étapes quand la base n'en
+       * gardait que douze — divergence invisible jusqu'au rechargement, où la
+       * treizième avait disparu.
+       */
       void fetch("/api/objectifs", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, objectif: apres.objectif, cible, statut: apres.statut }),
-      }).catch((err) => console.error("[objectifs] mise à jour impossible :", err));
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d?.cible) return;
+          setObjectifs((prev) =>
+            prev ? prev.map((o) => (o.id === id ? { ...o, ...d.cible } : o)) : prev,
+          );
+        })
+        .catch((err) => console.error("[objectifs] mise à jour impossible :", err));
     },
     [],
   );

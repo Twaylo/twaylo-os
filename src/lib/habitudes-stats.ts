@@ -38,8 +38,15 @@ export type HabitudeStat = {
   taux30: number;
   /** Points de pourcentage gagnés ou perdus entre les deux dernières semaines. */
   tendance: number;
-  /** Dernier jour où elle a été cochée, ou null. */
+  /** Dernier jour où elle a été cochée dans la fenêtre lue, ou null. */
   dernierJour: string | null;
+  /**
+   * Vrai si la série touche le bord de la fenêtre de lecture.
+   *
+   * Au-delà, on ne sait pas : la série est peut-être plus longue. L'affichage
+   * doit dire « 120+ » plutôt que d'annoncer un chiffre qu'on sait faux.
+   */
+  serieTronquee: boolean;
   /** Les options les plus souvent choisies (« Gym » plutôt que « Vélo »). */
   variantes: { nom: string; fois: number }[];
 };
@@ -165,10 +172,13 @@ function statsUneHabitude(
    */
   let serie = 0;
   let curseur = faitLe(aujourdhui) ? aujourdhui : decaler(aujourdhui, -1);
+  const borne = jours.length ? jours[0].jour : aujourdhui;
   while (faitLe(curseur)) {
     serie += 1;
     curseur = decaler(curseur, -1);
   }
+  // La boucle s'arrête faute de données, pas parce que la série est finie.
+  const serieTronquee = serie > 0 && curseur < borne;
 
   let meilleureSerie = 0;
   let courante = 0;
@@ -187,6 +197,16 @@ function statsUneHabitude(
   const sept = jours.slice(-7);
   const septPrecedents = jours.slice(-14, -7);
   const trente = jours.slice(-30);
+
+  /*
+   * Pas de tendance tant qu'il n'y a pas deux semaines pleines à comparer.
+   *
+   * Sans ce garde-fou, la première semaine de suivi affichait « +100 » ou
+   * « recule » selon le hasard, parce que la fenêtre précédente était vide ou
+   * tronquée. Une fausse alerte au démarrage décourage exactement au moment
+   * où l'habitude est la plus fragile.
+   */
+  const tendanceLisible = septPrecedents.length === 7 && sept.length === 7;
 
   let dernierJour: string | null = null;
   for (let i = jours.length - 1; i >= 0; i--) {
@@ -210,10 +230,11 @@ function statsUneHabitude(
     nom: h.nom,
     categorie: h.categorie,
     serie,
+    serieTronquee,
     meilleureSerie,
     taux7: taux(sept),
     taux30: taux(trente),
-    tendance: Math.round((taux(sept) - taux(septPrecedents)) * 100),
+    tendance: tendanceLisible ? Math.round((taux(sept) - taux(septPrecedents)) * 100) : 0,
     dernierJour,
     variantes: [...compte.entries()]
       .map(([nom, fois]) => ({ nom, fois }))
@@ -229,7 +250,6 @@ function statsUneHabitude(
  * pouvoir relire pour comprendre ce qui s'est passé cette semaine-là.
  */
 function detecterCreux(jours: JourStat[]): Creux[] {
-  const SEUIL = 0.25;
   const MINIMUM = 3;
 
   const creux: Creux[] = [];
@@ -249,8 +269,17 @@ function detecterCreux(jours: JourStat[]): Creux[] {
     debut = null;
   };
 
+  /*
+   * Un creux, c'est zéro habitude cochée — pas « moins de 25 % ».
+   *
+   * Le dénominateur est le nombre d'habitudes définies AUJOURD'HUI, faute
+   * d'historique des définitions. En ajouter trois faisait donc replonger
+   * rétroactivement le ratio de toutes les journées passées, et fabriquait des
+   * creux sur des jours qui avaient été parfaits. Un jour à zéro, lui, reste
+   * un jour à zéro quel que soit le nombre d'habitudes.
+   */
   jours.forEach((j, i) => {
-    if (j.ratio < SEUIL) {
+    if (j.faites === 0) {
       if (debut === null) debut = i;
     } else {
       fermer(i);

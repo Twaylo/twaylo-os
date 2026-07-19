@@ -63,7 +63,17 @@ function cibleValide(brut: unknown): ContenuCible {
 
 export async function POST(req: Request) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ persiste: false }, { status: 200 });
+    /*
+     * 503 et non 200.
+     *
+     * Un 200 sans champ `objectif` faisait pousser `undefined` dans la liste
+     * côté navigateur, et la vue Objectifs plantait au rendu suivant. Une
+     * création qui n'a pas eu lieu doit se dire comme telle.
+     */
+    return NextResponse.json(
+      { error: "Base non configurée : impossible de créer un objectif." },
+      { status: 503 },
+    );
   }
 
   let corps: { objectif?: unknown; portee?: unknown; cible?: unknown };
@@ -106,17 +116,28 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Paramètre `id` manquant." }, { status: 400 });
   }
 
+  /*
+   * La cible réellement écrite est renvoyée au navigateur.
+   *
+   * `cibleValide` tronque à douze étapes et coupe les textes à 160 caractères.
+   * Ces limites sont raisonnables, mais elles s'appliquaient en silence : la
+   * réponse annonçait `persiste: true`, le client gardait ses treize étapes,
+   * et la treizième disparaissait au rechargement suivant. Une troncature
+   * n'est défendable que si le client la voit.
+   */
+  const cible = corps.cible !== undefined ? cibleValide(corps.cible) : undefined;
+
   try {
     await majObjectif(corps.id, {
       objectif:
         typeof corps.objectif === "string" ? corps.objectif.trim().slice(0, 160) : undefined,
-      cible: corps.cible !== undefined ? cibleValide(corps.cible) : undefined,
+      cible,
       statut:
         corps.statut === "en_cours" || corps.statut === "atteint" || corps.statut === "abandonne"
           ? corps.statut
           : undefined,
     });
-    return NextResponse.json({ persiste: true });
+    return NextResponse.json({ persiste: true, cible });
   } catch (err) {
     console.error("[objectifs] mise à jour impossible :", err);
     return NextResponse.json({ error: "Mise à jour impossible." }, { status: 500 });

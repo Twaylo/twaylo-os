@@ -20,3 +20,16 @@ export const COULEUR_PORTEE: Record<string, string> = {
   trimestre: "var(--color-cya)",
   annee: "var(--color-mag)",
 };
+
+/**
+ * Ramène un libellé affiché vers la clé stockée : « ANNÉE » → « annee ».
+ *
+ * Les clés de la base sont sans accent (contrainte `check` de `goals`), alors
+ * que l'affichage en porte. Un simple `toLowerCase()` ne suffit donc pas.
+ */
+export function sansAccent(texte: string): string {
+  return texte
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}

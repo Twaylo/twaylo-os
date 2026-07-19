@@ -3,7 +3,7 @@
 import { useOs } from "@/lib/os-context";
 import { Eyebrow, EmptyState, ProgressBar } from "@/components/ui";
 import { Panel } from "@/components/Panel";
-import { COULEUR_PORTEE, LIBELLE_PORTEE, ORDRE_PORTEES } from "@/lib/portees";
+import { COULEUR_PORTEE, LIBELLE_PORTEE, ORDRE_PORTEES, sansAccent } from "@/lib/portees";
 
 /**
  * Le résumé de l'accueil. La page Objectifs détaille les sous-étapes.
@@ -18,7 +18,10 @@ export function ObjectifsCard() {
   const liste = demoMode
     ? data.objectives.map((o) => ({
         id: o.period,
-        portee: o.period.toLowerCase(),
+        // « ANNÉE ».toLowerCase() donne « année », qui ne correspond à
+        // aucune clé : l'objectif annuel remontait en tête et prenait la
+        // mauvaise couleur.
+        portee: sansAccent(o.period),
         objectif: o.label,
         valeur: o.value,
         pct: o.pct,

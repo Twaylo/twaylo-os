@@ -30,6 +30,8 @@ type HabitudeStat = {
   taux30: number;
   tendance: number;
   dernierJour: string | null;
+  /** Vrai si la série touche le bord de la fenêtre lue : on affiche « 120+ ». */
+  serieTronquee: boolean;
   variantes: { nom: string; fois: number }[];
 };
 
@@ -114,7 +116,21 @@ export function HabitudesView() {
     void fetch("/api/habitudes/stats?jours=120")
       .then((r) => r.json())
       .then((d) => {
-        if (!annule) setStats(d);
+        if (annule) return;
+        /*
+         * Une erreur serveur n'est pas une absence de données.
+         *
+         * Un 500 renvoie `{error}` sans `jours`, et la vue affichait alors
+         * « Rien à montrer encore » — Twaylo aurait cru avoir perdu son
+         * historique alors que la base était simplement injoignable.
+         */
+        if (d?.error || d?.connecte === false) {
+          setErreur(
+            d?.error ?? "La base ne répond pas — ton historique est intact, mais illisible.",
+          );
+          return;
+        }
+        setStats(d);
       })
       .catch((err) => {
         console.error("[habitudes] stats illisibles :", err);
@@ -158,7 +174,10 @@ export function HabitudesView() {
 
   const semaines = enSemaines(stats.jours);
   const enBaisse = stats.habitudes.filter((h) => h.tendance <= -15);
+  // « Jamais cochée » ne vaut que dans la fenêtre lue : une habitude
+  // abandonnée depuis plus de 120 jours n'a pas « jamais » été pratiquée.
   const jamais = stats.habitudes.filter((h) => h.dernierJour === null);
+  const fenetreJours = stats.jours.length;
   const creuxRecent = stats.creux[0];
 
   return (
@@ -277,7 +296,7 @@ export function HabitudesView() {
             <Constat
               key={h.id}
               couleur="rgba(255,255,255,0.3)"
-              titre={`${h.nom} : jamais cochée`}
+              titre={`${h.nom} : rien depuis ${fenetreJours} jours`}
               detail="Soit elle ne te correspond pas, soit tu l'as oubliée. Les deux se règlent."
             />
           ))}
@@ -357,7 +376,9 @@ export function HabitudesView() {
 
               <Metrique
                 label="SÉRIE"
-                valeur={`${h.serie} j`}
+                // « 120+ » quand la série touche le bord de la fenêtre : on ne
+                // sait pas jusqu'où elle remonte, autant le dire.
+                valeur={`${h.serie}${h.serieTronquee ? "+" : ""} j`}
                 sous={`record ${h.meilleureSerie}`}
                 couleur={h.serie > 0 ? "var(--color-ver)" : "rgba(255,255,255,0.3)"}
               />

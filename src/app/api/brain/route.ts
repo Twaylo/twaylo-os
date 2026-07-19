@@ -83,6 +83,16 @@ export async function POST(req: Request) {
         .slice(-10)
     : [];
 
+  /*
+   * L'API Messages exige que le premier message porte le rôle « user ».
+   *
+   * `slice(-10)` coupe dans une suite qui alterne user/assistant : au bout de
+   * cinq échanges, la fenêtre pouvait commencer par une réponse de
+   * l'assistant, et l'appel partait en erreur 400 — le brain devenait muet
+   * précisément quand la conversation devenait intéressante.
+   */
+  while (historique.length > 0 && historique[0].role !== "user") historique.shift();
+
   try {
     const jour = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
     const contexte = await assemblerContexte(jour);
@@ -104,9 +114,15 @@ export async function POST(req: Request) {
         {
           type: "text",
           text: CONSIGNE_BRAIN,
-          // La consigne ne bouge jamais : la mettre en cache évite de la
-          // refacturer à chaque question.
-          cache_control: { type: "ephemeral" },
+          /*
+           * Pas de `cache_control` ici, contrairement à ce que j'avais écrit.
+           *
+           * La mise en cache exige un préfixe d'au moins 1024 jetons ; la
+           * consigne plus le contexte de Twaylo en font aujourd'hui bien
+           * moins. Le marqueur ne mettait donc rien en cache tout en laissant
+           * croire le contraire — et un cache écrit coûte 25 % de plus qu'une
+           * lecture normale. À reposer quand le journal aura grossi.
+           */
         },
         { type: "text", text: `\n\n# État actuel de l'OS de Twaylo\n\n${contexte}` },
       ],

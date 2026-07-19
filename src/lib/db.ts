@@ -811,8 +811,36 @@ const CIBLE_VIDE: ContenuCible = { pct: 0, valeur: "", etapes: [] };
 
 export function lireCible(brut: string | null): ContenuCible {
   if (!brut) return { ...CIBLE_VIDE };
+
+  let brutParse: unknown;
   try {
-    const o = JSON.parse(brut) as Partial<ContenuCible>;
+    brutParse = JSON.parse(brut);
+  } catch {
+    // Ancienne valeur écrite à la main : on la traite comme un simple libellé.
+    return { ...CIBLE_VIDE, valeur: brut };
+  }
+
+  /*
+   * Un parse réussi ne suffit pas.
+   *
+   * « 100 » est du JSON valide et renvoie le nombre 100, pas un objet : le
+   * `catch` ne se déclenchait donc pas, et la cible chiffrée disparaissait de
+   * l'écran. Pire, la première modification de l'objectif écrasait ensuite ce
+   * « 100 » en base. « null » posait le même problème dans l'autre sens.
+   */
+  if (typeof brutParse === "string" || typeof brutParse === "number") {
+    // Valeur encodée en JSON (`"87k"`) : c'est le contenu qui fait le libellé,
+    // pas le texte brut avec ses guillemets.
+    return { ...CIBLE_VIDE, valeur: String(brutParse) };
+  }
+
+  if (typeof brutParse !== "object" || brutParse === null || Array.isArray(brutParse)) {
+    // `null`, `true`, un tableau : du JSON valide, mais rien d'affichable.
+    return { ...CIBLE_VIDE };
+  }
+
+  {
+    const o = brutParse as Partial<ContenuCible>;
     return {
       pct: typeof o.pct === "number" ? Math.min(100, Math.max(0, o.pct)) : 0,
       valeur: typeof o.valeur === "string" ? o.valeur : "",
@@ -823,9 +851,6 @@ export function lireCible(brut: string | null): ContenuCible {
             .slice(0, 12)
         : [],
     };
-  } catch {
-    // Ancienne valeur écrite à la main : on la traite comme un simple libellé.
-    return { ...CIBLE_VIDE, valeur: brut };
   }
 }
 
