@@ -49,6 +49,7 @@ import type {
 export const TABS = [
   "Accueil",
   "Brain",
+  "Habitudes",
   "Contacts",
   "Sponsors",
   "Contenu",
