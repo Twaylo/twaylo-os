@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOs } from "@/lib/os-context";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
@@ -39,6 +39,19 @@ function Ligne({
   const faite = faites.length > 0;
   const aOptions = habit.options.length > 0;
 
+  // Même règle que sur les tâches : on célèbre l'avancée, pas le retour.
+  const [anime, setAnime] = useState(false);
+  const precedent = useRef(faite);
+  useEffect(() => {
+    if (faite && !precedent.current) {
+      setAnime(true);
+      const t = setTimeout(() => setAnime(false), 600);
+      precedent.current = faite;
+      return () => clearTimeout(t);
+    }
+    precedent.current = faite;
+  }, [faite]);
+
   return (
     <div>
       <button
@@ -46,20 +59,30 @@ function Ligne({
         onClick={aOptions ? onDeplier : onBasculer}
         aria-pressed={faite}
         aria-expanded={aOptions ? deplie : undefined}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-[10px] px-[10px] py-[7px] text-left transition-all hover:brightness-125"
+        className={`relative flex w-full cursor-pointer items-center gap-2 rounded-[10px] px-[10px] py-[7px] text-left transition-all hover:brightness-125 ${anime ? "ligne-validee" : ""}`}
         style={{
           background: faite ? "rgba(176,107,255,0.10)" : "rgba(255,255,255,0.04)",
           border: `1px solid ${faite ? "rgba(176,107,255,0.30)" : "rgba(255,255,255,0.07)"}`,
         }}
       >
+        {anime && (
+          <span
+            className="onde-validation"
+            aria-hidden
+            style={{
+              boxShadow: "0 0 0 2px var(--color-vio), 0 0 22px 4px var(--color-vio)",
+            }}
+          />
+        )}
+
         <span
-          className="flex h-[16px] w-[16px] flex-none items-center justify-center rounded-[5px] text-[9px] font-black text-[#07121d]"
+          className={`flex h-[16px] w-[16px] flex-none items-center justify-center rounded-[5px] text-[9px] font-black text-[#07121d] ${anime ? "case-cochee" : ""}`}
           style={{
             background: faite ? "var(--color-vio)" : "transparent",
             border: `2px solid ${faite ? "var(--color-vio)" : "rgba(255,255,255,0.22)"}`,
           }}
         >
-          {faite ? "✓" : ""}
+          {faite && <span className={anime ? "case-marque" : ""}>✓</span>}
         </span>
 
         <span

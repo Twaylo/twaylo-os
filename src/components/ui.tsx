@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { FORMAT_META } from "@/lib/labels";
 import type { Format } from "@/lib/types";
@@ -26,7 +27,13 @@ export function Eyebrow({
   );
 }
 
-/** Ligne de checklist. `accent` colore la case une fois cochée. */
+/**
+ * Ligne de checklist. `accent` colore la case une fois cochée.
+ *
+ * Cocher déclenche une animation : à-coup sur la case, tracé du ✓, onde qui
+ * se dissipe, et la ligne qui se décale d'un cheveu. Décocher n'anime rien —
+ * on récompense l'avancée, pas le retour en arrière.
+ */
 export function CheckRow({
   label,
   done,
@@ -40,25 +47,48 @@ export function CheckRow({
   onToggle: () => void;
   meta?: string;
 }) {
+  const [anime, setAnime] = useState(false);
+  const precedent = useRef(done);
+
+  useEffect(() => {
+    // On n'anime qu'au passage de non-fait à fait, et jamais au premier rendu
+    // (sinon toute la liste s'agite au chargement de la page).
+    if (done && !precedent.current) {
+      setAnime(true);
+      const t = setTimeout(() => setAnime(false), 600);
+      precedent.current = done;
+      return () => clearTimeout(t);
+    }
+    precedent.current = done;
+  }, [done]);
+
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={done}
-      className="check-row hover:brightness-125"
+      className={`check-row relative hover:brightness-125 ${anime ? "ligne-validee" : ""}`}
       style={{
         background: done ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.045)",
         border: `1px solid ${done ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.08)"}`,
       }}
     >
+      {anime && (
+        <span
+          className="onde-validation"
+          aria-hidden
+          style={{ boxShadow: `0 0 0 2px ${accent}, 0 0 22px 4px ${accent}` }}
+        />
+      )}
+
       <span
-        className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[6px] text-[11px] font-black text-[#07121d]"
+        className={`flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[6px] text-[11px] font-black text-[#07121d] ${anime ? "case-cochee" : ""}`}
         style={{
           background: done ? accent : "transparent",
           border: `2px solid ${done ? accent : "rgba(255,255,255,0.22)"}`,
         }}
       >
-        {done ? "✓" : ""}
+        {done && <span className={anime ? "case-marque" : ""}>✓</span>}
       </span>
       <span
         className="flex-1 text-[12.5px] font-bold leading-[1.3]"
