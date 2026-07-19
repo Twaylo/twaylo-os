@@ -34,6 +34,7 @@ import type {
   Blocage,
   BlocageStocke,
   Capture,
+  Niveau,
   Contact,
   FaitesDuJour,
   Habit,
@@ -131,12 +132,14 @@ type OsState = {
   /** Renomme une vidéo sans changer son étape. */
   renommerVideo: (id: string, titre: string) => void;
 
-  ajouterTache: (titre: string) => Promise<void>;
+  ajouterTache: (titre: string, niveau?: Niveau) => Promise<void>;
+  /** Fait passer une tâche du focus principal aux annexes, ou l'inverse. */
+  changerNiveauTache: (id: string, niveau: Niveau) => void;
   supprimerTache: (id: string) => void;
   /** Corrige le texte d'une tâche sans la recréer. */
   renommerTache: (id: string, titre: string) => void;
-  /** Fait monter ou descendre une tâche d'un cran. */
-  deplacerTache: (index: number, sens: -1 | 1) => void;
+  /** Échange deux tâches de place, par leurs index dans `tasks`. */
+  echangerTaches: (a: number, b: number) => void;
 
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
@@ -232,6 +235,34 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const hydrated = useRef(false);
 
+  /**
+   * Le même drapeau, mais en état.
+   *
+   * La ref ne suffisait pas : React exécute tous les effets de montage dans
+   * la même passe, donc les effets de persistance déclarés plus bas
+   * s'exécutaient juste après celui de lecture — avec les valeurs du premier
+   * rendu (journal vide, habitudes vides) et `hydrated.current` déjà à vrai.
+   * Ils écrivaient donc du vide. Un état force un nouveau rendu, ce qui les
+   * décale après l'application des données lues.
+   */
+  const [hydrate, setHydrate] = useState(false);
+
+  /**
+   * Ce que Twaylo a réellement modifié depuis le chargement.
+   *
+   * Sans ça, le simple montage renvoyait le journal local en base. Or une
+   * capture vocale Telegram AJOUTE du texte à `daily_logs.journal_texte` côté
+   * serveur, et le navigateur l'ignore : le renvoi écrasait donc la phrase
+   * dictée sur le terrain. On n'écrit plus un champ tant qu'il n'a pas été
+   * touché ici.
+   */
+  const modifie = useRef({
+    faites: false,
+    journal: false,
+    uneChose: false,
+    repas: false,
+  });
+
   /** Relit tout le stockage local et remplit l'état. */
   const hydrateFromStorage = useCallback(() => {
     setCaptures(readJSON<Capture[]>(KEYS.captures, REAL_DATA.captures));
@@ -264,6 +295,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }
 
     hydrated.current = true;
+    setHydrate(true);
   }, [hydrateFromStorage]);
 
   useEffect(() => surChangementSync(setSync), []);
@@ -325,41 +357,70 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * données de Twaylo (spec annexe A17).
    */
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode) return;
     writeJSON(KEYS.captures, captures);
-  }, [captures, demoMode]);
+  }, [captures, demoMode, hydrate]);
 
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode) return;
     writeJSON(
       KEYS.tasks,
       tasks.filter((t) => t.done).map((t) => t.text),
     );
-  }, [tasks, demoMode]);
+  }, [tasks, demoMode, hydrate]);
 
+  /*
+   * Le jour est relu à chaque écriture, jamais figé au montage.
+   *
+   * `jourRef` était posé une fois pour toutes, alors que `dailyKey` recalcule
+   * la date à chaque appel : dans un onglet resté ouvert après minuit, la clé
+   * locale et la ligne en base ne parlaient plus du même jour, et le journal
+   * de la veille était recopié sur la journée du lendemain.
+   */
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode || !modifie.current.faites) return;
     writeJSON(dailyKey("habits"), faitesDuJour);
-    synchroniserJour({ jour: jourRef.current || localDateKey(), faites: faitesDuJour });
-  }, [faitesDuJour, demoMode]);
+    synchroniserJour({ jour: localDateKey(), faites: faitesDuJour });
+  }, [faitesDuJour, demoMode, hydrate]);
 
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode || !modifie.current.journal) return;
     writeJSONDebounced(dailyKey("journal"), journalText);
-    synchroniserJour({ jour: jourRef.current || localDateKey(), journal: journalText });
-  }, [journalText, demoMode]);
+    synchroniserJour({ jour: localDateKey(), journal: journalText });
+  }, [journalText, demoMode, hydrate]);
 
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode || !modifie.current.uneChose) return;
     writeJSONDebounced(dailyKey("unechose"), uneChose);
-    synchroniserJour({ jour: jourRef.current || localDateKey(), uneChose });
-  }, [uneChose, demoMode]);
+    synchroniserJour({ jour: localDateKey(), uneChose });
+  }, [uneChose, demoMode, hydrate]);
 
   useEffect(() => {
-    if (!hydrated.current || demoMode) return;
+    if (!hydrate || demoMode || !modifie.current.repas) return;
     writeJSON(dailyKey("nutrition"), repas);
-    synchroniserJour({ jour: jourRef.current || localDateKey(), nutrition: { repas } });
-  }, [repas, demoMode]);
+    synchroniserJour({ jour: localDateKey(), nutrition: { repas } });
+  }, [repas, demoMode, hydrate]);
+
+  /*
+   * Les setters exposés passent par ici plutôt que d'être transmis bruts.
+   * C'est le seul endroit où l'on sait qu'une modification vient de Twaylo et
+   * non du montage — et c'est cette distinction qui empêche d'écraser en base
+   * un texte ajouté côté serveur (vocal Telegram) qu'on n'a jamais lu.
+   */
+  const marquerJournal = useCallback<Dispatch<SetStateAction<string>>>((v) => {
+    modifie.current.journal = true;
+    setJournalText(v);
+  }, []);
+
+  const marquerUneChose = useCallback<Dispatch<SetStateAction<UneChose>>>((v) => {
+    modifie.current.uneChose = true;
+    setUneChose(v);
+  }, []);
+
+  const marquerRepas = useCallback<Dispatch<SetStateAction<Repas[]>>>((v) => {
+    modifie.current.repas = true;
+    setRepas(v);
+  }, []);
 
   const toggleDemo = useCallback(() => {
     setDemoMode((on) => {
@@ -441,6 +502,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   /** Coche ou décoche une variante. Le clic sur une option déjà cochée l'enlève. */
   const cocherOption = useCallback((habitId: string, option: string) => {
+    modifie.current.faites = true;
     setFaitesDuJour((prev) => {
       const actuelles = prev[habitId] ?? [];
       const suivantes = actuelles.includes(option)
@@ -452,6 +514,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   /** Habitude sans variante : le marqueur « fait » suffit. */
   const basculerHabitude = useCallback((habitId: string) => {
+    modifie.current.faites = true;
     setFaitesDuJour((prev) => ({
       ...prev,
       [habitId]: (prev[habitId] ?? []).length > 0 ? [] : ["fait"],
@@ -515,6 +578,18 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [habits],
   );
 
+  const changerNiveauTache = useCallback((id: string, niveau: Niveau) => {
+    setTasks((prev) =>
+      prev.map((t) => ((t as { id?: string }).id === id ? { ...t, niveau } : t)),
+    );
+    if (demoModeRef.current) return;
+    void fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, niveau }),
+    }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
+  }, []);
+
   const renommerTache = useCallback(
     (id: string, titre: string) => {
       const propre = titre.trim();
@@ -532,20 +607,23 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  /**
-   * Monte ou descend une tâche d'un cran, et enregistre l'ordre complet.
+/**
+   * Échange deux tâches de place, et enregistre l'ordre complet.
+   *
+   * On reçoit deux index plutôt qu'un index et un sens : la carte affiche les
+   * tâches groupées par niveau, et « monter » doit échanger avec le voisin du
+   * même niveau, qui n'est pas forcément la ligne précédente de la liste.
    *
    * Des flèches plutôt qu'un glisser-déposer : la liste est courte, et le
    * glisser-déposer HTML5 ne fonctionne pas au doigt — or Twaylo consulte son
    * OS sur le terrain, au téléphone.
    */
-  const deplacerTache = useCallback((index: number, sens: -1 | 1) => {
+  const echangerTaches = useCallback((a: number, b: number) => {
     setTasks((prev) => {
-      const cible = index + sens;
-      if (cible < 0 || cible >= prev.length) return prev;
+      if (a < 0 || b < 0 || a >= prev.length || b >= prev.length || a === b) return prev;
 
       const suivantes = [...prev];
-      [suivantes[index], suivantes[cible]] = [suivantes[cible], suivantes[index]];
+      [suivantes[a], suivantes[b]] = [suivantes[b], suivantes[a]];
 
       if (!demoModeRef.current) {
         const ordre = suivantes
@@ -711,14 +789,14 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[pipeline] renommage impossible :", err));
   }, []);
 
-  const ajouterTache = useCallback(async (titre: string) => {
+  const ajouterTache = useCallback(async (titre: string, niveau: Niveau = "secondaire") => {
     const propre = titre.trim();
     if (!propre || demoModeRef.current) return;
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ titre: propre }),
+        body: JSON.stringify({ titre: propre, niveau }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { tache } = await res.json();
@@ -862,11 +940,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterBlocage,
       leverBlocage,
       uneChose,
-      setUneChose,
+      setUneChose: marquerUneChose,
       journalText,
-      setJournalText,
+      setJournalText: marquerJournal,
       repas,
-      setRepas,
+      setRepas: marquerRepas,
       pipeline,
       contacts,
       deplacerVideo,
@@ -876,7 +954,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTache: supprimerTacheLocale,
       renommerTache,
-      deplacerTache,
+      echangerTaches,
+      changerNiveauTache,
       ajouterContact,
       supprimerContact: supprimerContactLocal,
       deplacerContact,
@@ -910,8 +989,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterBlocage,
       leverBlocage,
       uneChose,
+      marquerUneChose,
       journalText,
+      marquerJournal,
       repas,
+      marquerRepas,
       pipeline,
       contacts,
       deplacerVideo,
@@ -921,7 +1003,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTacheLocale,
       renommerTache,
-      deplacerTache,
+      echangerTaches,
+      changerNiveauTache,
       ajouterContact,
       supprimerContactLocal,
       deplacerContact,

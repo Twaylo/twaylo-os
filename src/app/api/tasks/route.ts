@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { NIVEAUX, type Niveau } from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   basculerTache,
+  changerNiveauTache,
   creerTache,
   ecrireOrdreTaches,
   renommerTache,
@@ -17,8 +19,9 @@ export async function POST(req: Request) {
 
   let titre: unknown;
   let categorie: unknown;
+  let niveau: unknown;
   try {
-    ({ titre, categorie } = await req.json());
+    ({ titre, categorie, niveau } = await req.json());
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
   }
@@ -27,10 +30,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Titre manquant." }, { status: 400 });
   }
 
+  const estNiveau = (v: unknown): v is Niveau =>
+    typeof v === "string" && v in NIVEAUX;
+
   try {
     const ligne = await creerTache(
       titre.trim(),
       typeof categorie === "string" ? categorie : undefined,
+      estNiveau(niveau) ? niveau : "secondaire",
     );
     return NextResponse.json({ persiste: true, tache: versTaches([ligne])[0] });
   } catch (err) {
@@ -49,7 +56,13 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ persiste: false }, { status: 200 });
   }
 
-  let corps: { id?: unknown; faite?: unknown; titre?: unknown; ordre?: unknown };
+  let corps: {
+    id?: unknown;
+    faite?: unknown;
+    titre?: unknown;
+    ordre?: unknown;
+    niveau?: unknown;
+  };
   try {
     corps = await req.json();
   } catch {
@@ -66,6 +79,11 @@ export async function PATCH(req: Request) {
 
     if (typeof corps.id !== "string") {
       return NextResponse.json({ error: "Paramètre `id` manquant." }, { status: 400 });
+    }
+
+    if (typeof corps.niveau === "string" && corps.niveau in NIVEAUX) {
+      await changerNiveauTache(corps.id, corps.niveau as Niveau);
+      return NextResponse.json({ persiste: true });
     }
 
     if (typeof corps.titre === "string") {

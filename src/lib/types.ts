@@ -32,7 +32,56 @@ export type VideoStatus =
   | "publie";
 
 export type Capture = { text: string; type: CaptureType };
-export type Task = { text: string; done: boolean; categorie?: string };
+/**
+ * Les trois niveaux d'une journée.
+ *
+ * Une liste à plat ne dit pas où porter son attention : tout y pèse pareil.
+ * Ici le focus principal est ce qui fait la journée, le secondaire ce qui la
+ * soutient, l'annexe ce qui doit sortir de la tête sans l'encombrer.
+ *
+ * Rangés dans la colonne `urgence`, dont l'énumération existe déjà en base
+ * (`aujourdhui` / `semaine` / `mois` / `un_jour`) — la contrainte interdit d'y
+ * mettre d'autres valeurs et aucune migration n'est possible.
+ */
+export type Niveau = "principal" | "secondaire" | "annexe";
+
+export const NIVEAUX: Record<
+  Niveau,
+  { urgence: string; nom: string; sousTitre: string; couleur: string }
+> = {
+  principal: {
+    urgence: "aujourdhui",
+    nom: "FOCUS PRINCIPAL",
+    sousTitre: "CE QUI FAIT LA JOURNÉE",
+    couleur: "var(--color-mag)",
+  },
+  secondaire: {
+    urgence: "semaine",
+    nom: "SECONDAIRE",
+    sousTitre: "CE QUI LA SOUTIENT",
+    couleur: "var(--color-amb)",
+  },
+  annexe: {
+    urgence: "un_jour",
+    nom: "ANNEXES",
+    sousTitre: "À SORTIR DE LA TÊTE",
+    couleur: "var(--color-ble)",
+  },
+};
+
+/** L'inverse : de ce qui est stocké vers le niveau affiché. */
+export function niveauDepuisUrgence(urgence: string): Niveau {
+  if (urgence === "aujourdhui") return "principal";
+  if (urgence === "un_jour" || urgence === "mois") return "annexe";
+  return "secondaire";
+}
+
+export type Task = {
+  text: string;
+  done: boolean;
+  categorie?: string;
+  niveau?: Niveau;
+};
 
 /**
  * Une habitude.

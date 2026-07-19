@@ -9,7 +9,12 @@
 const encoder = new TextEncoder();
 
 export const SESSION_COOKIE = "twaylo_session";
-export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 jours
+/*
+ * Sept jours, et non trente. Sur un dashboard ouvert quotidiennement, une
+ * reconnexion hebdomadaire ne coûte presque rien et divise par quatre la
+ * fenêtre pendant laquelle un cookie volé reste utilisable.
+ */
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -37,13 +42,35 @@ async function hmacKey(secret: string, usages: KeyUsage[]) {
   );
 }
 
+/**
+ * Empreinte du mot de passe courant, embarquée dans le jeton.
+ *
+ * Sans elle, une session ne pouvait pas être révoquée : le payload ne portait
+ * que son expiration, donc un cookie copié sur une machine partagée restait
+ * valide jusqu'au bout, et changer le mot de passe n'y changeait rien —
+ * seul `AUTH_SECRET` entre dans la signature. Avec cette empreinte, changer
+ * le mot de passe invalide d'un coup toutes les sessions ouvertes, sans avoir
+ * à tenir une table de sessions.
+ */
+async function versionSession(secret: string, motDePasse: string): Promise<string> {
+  const key = await hmacKey(secret, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(`v1:${motDePasse}`));
+  return toBase64Url(new Uint8Array(sig)).slice(0, 16);
+}
+
 /** Émet un jeton `<payload>.<signature>` dont la charge utile porte l'expiration. */
 export async function createSessionToken(
   secret: string,
+  motDePasse: string,
   maxAgeSeconds: number = SESSION_MAX_AGE,
 ): Promise<string> {
   const payload = toBase64Url(
-    encoder.encode(JSON.stringify({ exp: Date.now() + maxAgeSeconds * 1000 })),
+    encoder.encode(
+      JSON.stringify({
+        exp: Date.now() + maxAgeSeconds * 1000,
+        v: await versionSession(secret, motDePasse),
+      }),
+    ),
   );
   const key = await hmacKey(secret, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
@@ -54,6 +81,7 @@ export async function createSessionToken(
 export async function verifySessionToken(
   token: string | undefined,
   secret: string,
+  motDePasse: string,
 ): Promise<boolean> {
   if (!token) return false;
 
@@ -72,7 +100,9 @@ export async function verifySessionToken(
     if (!valid) return false;
 
     const decoded = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
-    return typeof decoded.exp === "number" && decoded.exp > Date.now();
+    if (typeof decoded.exp !== "number" || decoded.exp <= Date.now()) return false;
+    // Le mot de passe a changé depuis l'émission : le jeton ne vaut plus rien.
+    return decoded.v === (await versionSession(secret, motDePasse));
   } catch {
     // Jeton illisible : traité comme invalide, jamais comme une erreur serveur.
     return false;

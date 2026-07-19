@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { REAL_DATA } from "./data-real";
-import type { BlocageStocke, Contact, Habit, Task, UneChose } from "./types";
+import { NIVEAUX, niveauDepuisUrgence } from "./types";
+import type { BlocageStocke, Contact, Habit, Niveau, Task, UneChose } from "./types";
 
 /**
  * L'accès aux données, côté serveur uniquement.
@@ -132,14 +133,18 @@ export async function basculerTache(id: string, faite: boolean): Promise<void> {
   if (error) throw error;
 }
 
-export async function creerTache(titre: string, categorie?: string): Promise<TacheDB> {
+export async function creerTache(
+  titre: string,
+  categorie?: string,
+  niveau: Niveau = "secondaire",
+): Promise<TacheDB> {
   const { data, error } = await supabaseAdmin()
     .from("tasks")
     .insert({
       user_id: USER_ID,
       titre,
       categorie: categorie ?? null,
-      urgence: "semaine",
+      urgence: NIVEAUX[niveau].urgence,
       cle: true,
     })
     .select("id, titre, statut, urgence, cle, categorie, completed_at")
@@ -147,6 +152,17 @@ export async function creerTache(titre: string, categorie?: string): Promise<Tac
 
   if (error) throw error;
   return data as TacheDB;
+}
+
+/** Fait passer une tâche d'un niveau à l'autre. */
+export async function changerNiveauTache(id: string, niveau: Niveau): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .update({ urgence: NIVEAUX[niveau].urgence })
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
 }
 
 export async function renommerTache(id: string, titre: string): Promise<void> {
@@ -483,6 +499,7 @@ export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
     text: l.titre,
     done: l.statut === "faite",
     categorie: l.categorie ?? undefined,
+    niveau: niveauDepuisUrgence(l.urgence),
   }));
 }
 
@@ -665,7 +682,15 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
   const definitions = (data?.habitudes as { definitions?: HabitudeDef[] } | null)
     ?.definitions;
 
-  if (Array.isArray(definitions) && definitions.length > 0) return definitions;
+  /*
+   * Une liste vide n'est pas une liste absente.
+   *
+   * Le test précédent (`length > 0`) confondait les deux : supprimer ses six
+   * habitudes une à une les faisait toutes réapparaître au rechargement, et
+   * elles étaient même réécrites en base. Impossible de repartir d'une liste
+   * vide. On ne sème donc que si la clé n'existe pas du tout.
+   */
+  if (Array.isArray(definitions)) return definitions;
 
   // Premier démarrage : on sème les habitudes par défaut.
   await ecrireHabitudesDef(HABITUDES_DEFAUT);

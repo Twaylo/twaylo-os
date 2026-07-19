@@ -2,15 +2,28 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, hasValidApiSecret, verifySessionToken } from "@/lib/auth";
 
 /**
- * Routes ouvertes. Les webhooks doivent rester publics : Telegram s'authentifie
- * avec son propre secret d'en-tête, pas avec le cookie de session.
+ * Routes ouvertes, listées une par une.
+ *
+ * Volontairement des chemins exacts et non des préfixes : avec un
+ * `startsWith("/api/telegram")`, une future `/api/telegram/historique` serait
+ * publique sans que rien ne le signale — aucun test n'échouerait, la route
+ * répondrait simplement à tout le monde. Ouvrir un chemin doit rester un geste
+ * délibéré.
+ *
+ * Le webhook Telegram doit rester public : Telegram s'authentifie avec son
+ * propre secret d'en-tête, pas avec le cookie de session.
  */
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/telegram"];
+const CHEMINS_PUBLICS = new Set([
+  "/login",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/telegram/webhook",
+]);
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (CHEMINS_PUBLICS.has(pathname)) {
     return NextResponse.next();
   }
 
@@ -30,7 +43,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, secret)) {
+  // DASHBOARD_PASSWORD est garanti non vide par le garde ci-dessus. Il entre
+  // dans la validation pour qu'en changer révoque toutes les sessions.
+  const validee = await verifySessionToken(
+    req.cookies.get(SESSION_COOKIE)?.value,
+    secret,
+    process.env.DASHBOARD_PASSWORD,
+  );
+
+  if (validee) {
     return NextResponse.next();
   }
 
