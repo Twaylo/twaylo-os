@@ -101,6 +101,13 @@ type OsState = {
   ajouterHabitude: (saisie: string) => Promise<void>;
   supprimerHabitude: (habitId: string) => void;
 
+  /** Les objectifs, venus de la base. Nuls tant que la lecture n'a pas répondu. */
+  objectifs: ObjectifVue[] | null;
+  ajouterObjectif: (libelle: string, portee: string) => Promise<void>;
+  /** Fait avancer un objectif : progression, chiffre affiché, étapes. */
+  majObjectif: (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => void;
+  supprimerObjectif: (id: string) => void;
+
   /** Les événements de la semaine, venus de Google Agenda. */
   agenda: EvenementAgenda[];
   /** Faux tant que l'URL iCal n'est pas configurée, ou si l'agenda ne répond pas. */
@@ -160,6 +167,17 @@ type OsState = {
   deplacerDeal: (id: string, etape: string) => void;
   supprimerDeal: (id: string) => void;
   majMontantDeal: (id: string, montant: number | null) => void;
+};
+
+/** Un objectif tel que l'interface le manipule. */
+export type ObjectifVue = {
+  id: string;
+  objectif: string;
+  portee: string;
+  statut: string;
+  pct: number;
+  valeur: string;
+  etapes: { texte: string; fait: boolean }[];
 };
 
 /** Un deal tel que l'interface le manipule. */
@@ -227,6 +245,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
   const [blocagesBruts, setBlocagesBruts] = useState<BlocageStocke[]>([]);
+  const [objectifs, setObjectifs] = useState<ObjectifVue[] | null>(null);
   const [agenda, setAgenda] = useState<EvenementAgenda[]>([]);
   const [agendaConnecte, setAgendaConnecte] = useState(false);
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
@@ -315,6 +334,20 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * Semaine se contente d'afficher qu'elle n'est pas connectée. Un agenda
    * injoignable ne doit pas empêcher de cocher ses habitudes.
    */
+  useEffect(() => {
+    if (demoMode) return;
+    let annule = false;
+    void fetch("/api/objectifs")
+      .then((r) => r.json())
+      .then((d: { objectifs?: ObjectifVue[] }) => {
+        if (!annule && Array.isArray(d.objectifs)) setObjectifs(d.objectifs);
+      })
+      .catch((err) => console.error("[objectifs] chargement impossible :", err));
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
+
   useEffect(() => {
     if (demoMode) return;
     let annule = false;
@@ -671,6 +704,59 @@ export function OsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const ajouterObjectif = useCallback(async (libelle: string, portee: string) => {
+    const propre = libelle.trim();
+    if (!propre || demoModeRef.current) return;
+    try {
+      const res = await fetch("/api/objectifs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ objectif: propre, portee, cible: { pct: 0, valeur: "", etapes: [] } }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { objectif } = await res.json();
+      setObjectifs((prev) => [...(prev ?? []), objectif]);
+    } catch (err) {
+      console.error("[objectifs] ajout impossible :", err);
+    }
+  }, []);
+
+  /**
+   * Mise à jour optimiste : la barre bouge sous le doigt, la base suit.
+   * L'écriture porte la cible entière plutôt qu'un champ, parce que la
+   * progression, le chiffre affiché et les étapes vivent dans la même colonne.
+   */
+  const majObjectifLocal = useCallback(
+    (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => {
+      let apres: ObjectifVue | undefined;
+      setObjectifs((prev) => {
+        if (!prev) return prev;
+        return prev.map((o) => {
+          if (o.id !== id) return o;
+          apres = { ...o, ...patch };
+          return apres;
+        });
+      });
+
+      if (demoModeRef.current || !apres) return;
+      const cible = { pct: apres.pct, valeur: apres.valeur, etapes: apres.etapes };
+      void fetch("/api/objectifs", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, objectif: apres.objectif, cible, statut: apres.statut }),
+      }).catch((err) => console.error("[objectifs] mise à jour impossible :", err));
+    },
+    [],
+  );
+
+  const supprimerObjectifLocal = useCallback((id: string) => {
+    setObjectifs((prev) => (prev ? prev.filter((o) => o.id !== id) : prev));
+    if (demoModeRef.current) return;
+    void fetch(`/api/objectifs?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      (err) => console.error("[objectifs] suppression impossible :", err),
+    );
+  }, []);
+
   /** Enregistre la liste entière : elle est courte, et l'API la revalide. */
   const enregistrerBlocages = useCallback((suivants: BlocageStocke[]) => {
     setBlocagesBruts(suivants);
@@ -967,6 +1053,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      objectifs,
+      ajouterObjectif,
+      majObjectif: majObjectifLocal,
+      supprimerObjectif: supprimerObjectifLocal,
       agenda,
       agendaConnecte,
       blocages,
@@ -1018,6 +1108,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      objectifs,
+      ajouterObjectif,
+      majObjectifLocal,
+      supprimerObjectifLocal,
       agenda,
       agendaConnecte,
       blocages,

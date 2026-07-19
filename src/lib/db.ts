@@ -775,3 +775,117 @@ export async function lireBlocages(): Promise<BlocageStocke[]> {
 export async function ecrireBlocages(blocages: BlocageStocke[]): Promise<void> {
   await majSentinelle({ blocages });
 }
+
+/* ------------------------------------------------------------------ */
+/* Objectifs                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Un objectif tel qu'il vit en base.
+ *
+ * La progression et les étapes sont rangées en JSON dans la colonne `cible`,
+ * qui est du texte libre. Ce n'est pas élégant, et c'est assumé : la table
+ * `goals` n'a ni colonne de progression ni colonne d'étapes, et le jeton
+ * d'accès ayant été révoqué, aucune migration n'est possible. Le même
+ * compromis que la ligne sentinelle des habitudes — documenté plutôt que subi.
+ */
+export type ObjectifDB = {
+  id: string;
+  objectif: string;
+  portee: string;
+  statut: string;
+  categorie: string | null;
+  cible: string | null;
+  echeance: string | null;
+};
+
+export type ContenuCible = {
+  /** 0 à 100. */
+  pct: number;
+  /** Le chiffre affiché à côté de la barre : « 2/3 », « 87k »… */
+  valeur: string;
+  etapes: { texte: string; fait: boolean }[];
+};
+
+const CIBLE_VIDE: ContenuCible = { pct: 0, valeur: "", etapes: [] };
+
+export function lireCible(brut: string | null): ContenuCible {
+  if (!brut) return { ...CIBLE_VIDE };
+  try {
+    const o = JSON.parse(brut) as Partial<ContenuCible>;
+    return {
+      pct: typeof o.pct === "number" ? Math.min(100, Math.max(0, o.pct)) : 0,
+      valeur: typeof o.valeur === "string" ? o.valeur : "",
+      etapes: Array.isArray(o.etapes)
+        ? o.etapes
+            .filter((e): e is { texte: string; fait: boolean } =>
+              typeof e?.texte === "string" && typeof e?.fait === "boolean")
+            .slice(0, 12)
+        : [],
+    };
+  } catch {
+    // Ancienne valeur écrite à la main : on la traite comme un simple libellé.
+    return { ...CIBLE_VIDE, valeur: brut };
+  }
+}
+
+export async function lireObjectifs(): Promise<ObjectifDB[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("goals")
+    .select("id, objectif, portee, statut, categorie, cible, echeance")
+    .eq("user_id", USER_ID)
+    .neq("statut", "abandonne")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data as ObjectifDB[];
+}
+
+export async function creerObjectif(
+  objectif: string,
+  portee: string,
+  cible: ContenuCible,
+): Promise<ObjectifDB> {
+  const { data, error } = await supabaseAdmin()
+    .from("goals")
+    .insert({
+      user_id: USER_ID,
+      objectif,
+      portee,
+      cible: JSON.stringify(cible),
+    })
+    .select("id, objectif, portee, statut, categorie, cible, echeance")
+    .single();
+
+  if (error) throw error;
+  return data as ObjectifDB;
+}
+
+export async function majObjectif(
+  id: string,
+  patch: { objectif?: string; cible?: ContenuCible; statut?: string },
+): Promise<void> {
+  const champs: Record<string, unknown> = {};
+  if (patch.objectif !== undefined) champs.objectif = patch.objectif;
+  if (patch.cible !== undefined) champs.cible = JSON.stringify(patch.cible);
+  if (patch.statut !== undefined) champs.statut = patch.statut;
+  if (Object.keys(champs).length === 0) return;
+
+  const { error } = await supabaseAdmin()
+    .from("goals")
+    .update(champs)
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+export async function supprimerObjectif(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("goals")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
