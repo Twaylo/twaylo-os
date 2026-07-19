@@ -189,7 +189,13 @@ export function TachesCard() {
                         onToggle={() => toggleTask(index)}
                       />
                       {id && (
-                        <div className="absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center gap-[2px] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                        // Fond opaque : la barre se superpose à la ligne, et
+                        // sans lui le titre d'une tâche longue passait sous
+                        // les boutons.
+                        <div
+                          className="absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center gap-[2px] rounded-[8px] px-[3px] py-[2px] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+                          style={{ background: "rgba(17,30,44,0.96)" }}
+                        >
                           <BoutonLigne
                             onClick={() => echangerTaches(index, items[rang - 1].index)}
                             disabled={rang === 0}

@@ -70,7 +70,11 @@ export function CheckRow({
         {label}
       </span>
       {meta && (
-        <span className="flex-none text-[9.5px] font-extrabold uppercase tracking-[0.06em] text-white/30">
+        // S'efface quand la ligne est survolée : la barre d'actions vient se
+        // placer exactement ici, et les deux se chevauchaient.
+        // `group-hover` ne s'applique que si un ancêtre porte `.group` — sans
+        // lui, l'étiquette reste simplement visible.
+        <span className="flex-none text-[9.5px] font-extrabold uppercase tracking-[0.06em] text-white/30 transition-opacity group-hover:opacity-0">
           {meta}
         </span>
       )}
