@@ -889,3 +889,68 @@ export async function supprimerObjectif(id: string): Promise<void> {
 
   if (error) throw error;
 }
+
+/* ------------------------------------------------------------------ */
+/* Revenus                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Un relevé mensuel de revenus.
+ *
+ * Saisi à la main, faute de mieux : lire YouTube Analytics demande un parcours
+ * OAuth complet, avec consentement Google et jeton à rafraîchir. Un chiffre
+ * que Twaylo recopie une fois par mois depuis son Studio est vrai ; un
+ * graphique inventé est joli et faux.
+ */
+export type RevenuDB = {
+  id: string;
+  periode: string;
+  date: string;
+  revenu_estime: number | null;
+  rpm: number | null;
+  vues_monetisees: number | null;
+  objectif_mois: number | null;
+  sources: Record<string, number>;
+};
+
+export async function lireRevenus(limite = 24): Promise<RevenuDB[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("revenue_snapshots")
+    .select("id, periode, date, revenu_estime, rpm, vues_monetisees, objectif_mois, sources")
+    .eq("user_id", USER_ID)
+    .order("date", { ascending: false })
+    .limit(limite);
+
+  if (error) throw error;
+  return (data ?? []) as RevenuDB[];
+}
+
+/**
+ * Enregistre le relevé d'un mois. Le même mois saisi deux fois se remplace au
+ * lieu de s'ajouter — la contrainte d'unicité porte sur (user, periode, date).
+ */
+export async function ecrireRevenu(patch: {
+  date: string;
+  revenu_estime: number | null;
+  rpm: number | null;
+  vues_monetisees: number | null;
+  objectif_mois: number | null;
+  sources: Record<string, number>;
+}): Promise<void> {
+  const { error } = await supabaseAdmin().from("revenue_snapshots").upsert(
+    { user_id: USER_ID, periode: "mois", ...patch },
+    { onConflict: "user_id,periode,date" },
+  );
+
+  if (error) throw error;
+}
+
+export async function supprimerRevenu(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("revenue_snapshots")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
