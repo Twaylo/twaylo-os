@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
+import { useVoix, type EtatVoix } from "@/lib/use-voix";
 
 /**
  * TWAYLO BRAIN — parler directement à son OS.
@@ -19,6 +20,14 @@ import { Panel } from "@/components/Panel";
 
 type Message = { role: "user" | "assistant"; contenu: string };
 
+/** Ce que l'état vocal affiche, en clair. */
+const ETIQUETTE_VOIX: Record<EtatVoix, { texte: string; couleur: string }> = {
+  arret: { texte: "VOCAL", couleur: "rgba(255,255,255,0.45)" },
+  ecoute: { texte: "JE T'ÉCOUTE", couleur: "var(--color-ver)" },
+  reflechit: { texte: "JE CHERCHE", couleur: "var(--color-amb)" },
+  parle: { texte: "JE PARLE", couleur: "var(--color-cya)" },
+};
+
 const SUGGESTIONS = [
   "Qu'est-ce que je fais maintenant ?",
   "Qu'est-ce qui traîne depuis trop longtemps ?",
@@ -33,12 +42,22 @@ export function BrainView() {
   const [erreur, setErreur] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
 
+  /*
+   * `demander` est recréé à chaque rendu et le hook vocal a besoin d'une
+   * référence stable — sinon la reconnaissance serait détruite et recréée
+   * pendant que Twaylo parle, ce qui coupe le micro en plein milieu.
+   */
+  const demanderRef = useRef<(q: string, vocal: boolean) => void>(() => {});
+  const voix = useVoix((question) => demanderRef.current(question, true));
+
   // Suivre le bas de la conversation pendant que la réponse s'écrit.
+  demanderRef.current = (q, vocal) => void demander(q, vocal);
+
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  async function demander(question: string) {
+  async function demander(question: string, vocal = false) {
     const propre = question.trim();
     if (!propre || enCours) return;
 
@@ -69,7 +88,11 @@ export function BrainView() {
       for (;;) {
         const { done, value } = await lecteur.read();
         if (done) break;
-        accumule += decodeur.decode(value, { stream: true });
+        const morceau = decodeur.decode(value, { stream: true });
+        accumule += morceau;
+        // Lue au fil de l'eau : attendre la réponse entière avant d'ouvrir la
+        // bouche ajouterait plusieurs secondes de silence.
+        if (vocal) voix.lire(morceau);
         // On réécrit le dernier message à chaque morceau reçu.
         setMessages((prev) => {
           const suivants = [...prev];
@@ -77,11 +100,15 @@ export function BrainView() {
           return suivants;
         });
       }
+
+      if (vocal) voix.finirLecture();
     } catch (err) {
       console.error("[brain] :", err);
       setErreur(err instanceof Error ? err.message : "Le brain n'a pas répondu.");
       // On retire la bulle vide plutôt que de laisser une réponse fantôme.
       setMessages((prev) => prev.slice(0, -1));
+      // Sans ça, la conversation vocale resterait bloquée sur « réfléchit ».
+      if (vocal) voix.arreter();
     } finally {
       setEnCours(false);
     }
@@ -164,7 +191,29 @@ export function BrainView() {
           <div ref={finRef} />
         </div>
 
-        {erreur && (
+        {voix.etat !== "arret" && (
+          <div
+            className="mt-[9px] rounded-[10px] px-[11px] py-[8px] text-[12px] font-semibold"
+            style={{
+              background: "rgba(34,211,238,0.07)",
+              border: "1px solid rgba(34,211,238,0.2)",
+            }}
+          >
+            {voix.entendu ? (
+              <span className="text-white/75">{voix.entendu}</span>
+            ) : (
+              <span className="text-white/35">
+                {voix.etat === "ecoute"
+                  ? "Parle — j'envoie dès que tu marques une pause."
+                  : voix.etat === "reflechit"
+                    ? "Je lis ton OS…"
+                    : "Coupe le son ou clique pour m'arrêter."}
+              </span>
+            )}
+          </div>
+        )}
+
+        {(erreur || voix.erreur) && (
           <div
             className="mt-[9px] rounded-[10px] px-[11px] py-[8px] text-[11.5px] font-bold"
             style={{
@@ -173,7 +222,7 @@ export function BrainView() {
               border: "1px solid rgba(255,61,139,0.25)",
             }}
           >
-            {erreur}
+            {erreur ?? voix.erreur}
           </div>
         )}
 
@@ -196,6 +245,38 @@ export function BrainView() {
               border: "1px solid rgba(255,255,255,0.1)",
             }}
           />
+          {voix.supporte && (
+            <button
+              type="button"
+              onClick={voix.basculer}
+              title={
+                voix.etat === "arret"
+                  ? "Conversation vocale"
+                  : "Couper la conversation vocale"
+              }
+              aria-pressed={voix.etat !== "arret"}
+              className="flex flex-none cursor-pointer items-center gap-[7px] rounded-[12px] px-[13px] py-[11px] text-[12px] font-extrabold tracking-[0.06em] transition-all hover:brightness-125"
+              style={{
+                color: ETIQUETTE_VOIX[voix.etat].couleur,
+                background:
+                  voix.etat === "arret"
+                    ? "rgba(255,255,255,0.04)"
+                    : "rgba(34,211,238,0.12)",
+                border: `1px solid ${
+                  voix.etat === "arret"
+                    ? "rgba(255,255,255,0.1)"
+                    : "rgba(34,211,238,0.35)"
+                }`,
+              }}
+            >
+              <span
+                className={`h-[8px] w-[8px] rounded-full ${voix.etat !== "arret" ? "pulse-dot" : ""}`}
+                style={{ background: ETIQUETTE_VOIX[voix.etat].couleur }}
+              />
+              {ETIQUETTE_VOIX[voix.etat].texte}
+            </button>
+          )}
+
           <button
             type="submit"
             disabled={enCours || saisie.trim().length === 0}
