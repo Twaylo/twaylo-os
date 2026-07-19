@@ -30,6 +30,7 @@ import {
   synchroniserJour,
 } from "./sync";
 import { localDateKey } from "./local-date";
+import type { EvenementAgenda } from "./agenda-types";
 import type {
   Blocage,
   BlocageStocke,
@@ -97,6 +98,11 @@ type OsState = {
   /** Format libre : « Nom · Catégorie · Option1, Option2 ». */
   ajouterHabitude: (saisie: string) => Promise<void>;
   supprimerHabitude: (habitId: string) => void;
+
+  /** Les événements de la semaine, venus de Google Agenda. */
+  agenda: EvenementAgenda[];
+  /** Faux tant que l'URL iCal n'est pas configurée, ou si l'agenda ne répond pas. */
+  agendaConnecte: boolean;
 
   /** Ce qui est arrêté et attend quelqu'un. */
   blocages: Blocage[];
@@ -219,6 +225,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
   const [blocagesBruts, setBlocagesBruts] = useState<BlocageStocke[]>([]);
+  const [agenda, setAgenda] = useState<EvenementAgenda[]>([]);
+  const [agendaConnecte, setAgendaConnecte] = useState(false);
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
     "inconnu",
   );
@@ -299,6 +307,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, [hydrateFromStorage]);
 
   useEffect(() => surChangementSync(setSync), []);
+
+  /*
+   * L'agenda est chargé à part, et son échec est sans conséquence : la carte
+   * Semaine se contente d'afficher qu'elle n'est pas connectée. Un agenda
+   * injoignable ne doit pas empêcher de cocher ses habitudes.
+   */
+  useEffect(() => {
+    if (demoMode) return;
+    let annule = false;
+    void fetch("/api/agenda")
+      .then((r) => r.json())
+      .then((d: { connecte?: boolean; evenements?: EvenementAgenda[] }) => {
+        if (annule) return;
+        setAgendaConnecte(Boolean(d.connecte));
+        setAgenda(d.evenements ?? []);
+      })
+      .catch((err) => console.error("[agenda] chargement impossible :", err));
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
 
   /*
    * Chargement depuis la base, APRÈS l'hydratation locale.
@@ -936,6 +965,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      agenda,
+      agendaConnecte,
       blocages,
       ajouterBlocage,
       leverBlocage,
@@ -985,6 +1016,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerHabitude,
       ajouterHabitude,
       supprimerHabitude,
+      agenda,
+      agendaConnecte,
       blocages,
       ajouterBlocage,
       leverBlocage,

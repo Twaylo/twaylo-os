@@ -5,10 +5,26 @@ import { useCurrentWeek } from "@/lib/use-week";
 import { Eyebrow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
+const JOURS = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
+
 export function SemaineCard() {
-  const { data } = useOs();
+  const { agenda, agendaConnecte, demoMode, data } = useOs();
   const week = useCurrentWeek();
-  const connected = data.events.length > 0;
+
+  // En démo on garde le jeu factice ; sinon ce sont les vrais événements.
+  const evenements = demoMode
+    ? data.events.map((e, i) => ({
+        id: `demo-${i}`,
+        titre: e.title,
+        heure: e.time,
+        jourIndex: i,
+        journeeEntiere: false,
+      }))
+    : agenda;
+  const connected = demoMode || agendaConnecte;
+
+  // Une pastille sous les jours qui portent au moins un événement.
+  const joursOccupes = new Set(evenements.map((e) => e.jourIndex));
 
   return (
     <Panel accent="var(--color-ble)" className="col-span-full md:col-span-2 xl:col-span-1">
@@ -52,41 +68,52 @@ export function SemaineCard() {
             <div className="mt-[1px] font-mono text-[16px] font-black">{d.num}</div>
             <div
               className="mx-auto mt-1 h-[5px] w-[5px] rounded-full"
-              style={{ background: data.busyDays[d.index] ?? "transparent" }}
+              style={{
+                background: joursOccupes.has(d.index)
+                  ? "var(--color-ble)"
+                  : "transparent",
+              }}
             />
           </div>
         ))}
       </div>
 
-      {connected ? (
-        <ul className="mt-[11px] flex flex-col gap-[6px]">
-          {data.events.map((e) => (
+      {!connected ? (
+        <EmptyState hint="Ajoute GOOGLE_ICAL_URL dans .env.local (Agenda › Paramètres › Adresse secrète au format iCal).">
+          Agenda non connecté
+        </EmptyState>
+      ) : evenements.length === 0 ? (
+        <EmptyState hint="Rien de prévu cette semaine.">Semaine libre</EmptyState>
+      ) : (
+        <ul className="mt-[11px] flex flex-col gap-[5px]">
+          {evenements.map((e) => (
             <li
-              key={e.title}
-              className="flex items-center gap-[11px] rounded-[10px] px-3 py-[7px]"
+              key={e.id}
+              className="flex items-center gap-[9px] rounded-[10px] px-[10px] py-[6px]"
               style={{
                 background: "rgba(255,255,255,0.035)",
                 border: "1px solid rgba(255,255,255,0.06)",
               }}
             >
               <span
-                className="flex-none font-mono text-[11.5px] font-extrabold"
-                style={{ color: "var(--color-ble-soft)", flexBasis: 42 }}
+                className="flex-none text-[9px] font-black tracking-[0.08em] text-white/35"
+                style={{ flexBasis: 26 }}
               >
-                {e.time}
+                {JOURS[e.jourIndex] ?? ""}
               </span>
               <span
-                className="h-[6px] w-[6px] flex-none rounded-full"
-                style={{ background: e.color }}
-              />
-              <span className="text-[12.5px] font-bold">{e.title}</span>
+                className="flex-none font-mono text-[11px] font-extrabold"
+                style={{ color: "var(--color-ble-soft)", flexBasis: 38 }}
+              >
+                {/* Un événement sur la journée entière n'a pas d'heure à montrer. */}
+                {e.heure || "jour"}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[12px] font-bold" title={e.titre}>
+                {e.titre}
+              </span>
             </li>
           ))}
         </ul>
-      ) : (
-        <EmptyState hint="L'agenda se branchera via l'URL iCal secrète.">
-          Aucun événement
-        </EmptyState>
       )}
     </Panel>
   );
