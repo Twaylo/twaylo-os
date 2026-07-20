@@ -520,9 +520,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (distant.deals) setDeals(distant.deals as DealVue[]);
       if (distant.dealStats) setDealStats(distant.dealStats);
       if (distant.captures) {
-        setCaptures(
-          distant.captures.map((c) => ({ text: c.text, type: c.type as Capture["type"] })),
-        );
+        /*
+         * Fusionner, pas remplacer.
+         *
+         * Une capture prise hors-ligne vit uniquement en local : le POST a
+         * échoué, elle n'est donc pas dans la liste distante. La remplacer
+         * purement la faisait disparaître de l'écran, puis l'effet de
+         * persistance écrivait la liste amputée par-dessus le cache — perdue
+         * pour de bon. On garde en tête les captures locales que le serveur
+         * n'a jamais reçues.
+         */
+        const distantes = distant.captures.map((c) => ({
+          text: c.text,
+          type: c.type as Capture["type"],
+        }));
+        setCaptures((local) => {
+          const connues = new Set(distantes.map((c) => c.text));
+          const orphelines = local.filter((c) => !connues.has(c.text));
+          return [...orphelines, ...distantes].slice(0, 4);
+        });
       }
       // Le journal distant ne remplace le local que si le local est vide :
       // sinon une frappe en cours au moment de la réponse serait écrasée

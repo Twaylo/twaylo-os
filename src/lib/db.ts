@@ -92,13 +92,28 @@ function uuidStable(texte: string): string {
   ].join("-");
 }
 
+/** Le semis initial des tâches a-t-il déjà eu lieu, une fois pour toutes ? */
+async function tachesDejaSemees(): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data?.habitudes as { tachesSemees?: boolean } | null)?.tachesSemees === true;
+}
+
 /**
- * Au tout premier démarrage, la table est vide. Plutôt qu'un dashboard
- * désert, on y sème les tâches réelles de Twaylo (spec Partie 11).
+ * Au tout premier démarrage, la table est vide. Plutôt qu'un dashboard désert,
+ * on y sème les tâches réelles de Twaylo (spec Partie 11).
  *
- * `ignoreDuplicates` fait de l'amorçage un no-op dès la deuxième fois : une
- * tâche semée puis supprimée par Twaylo ne réapparaît donc pas non plus,
- * puisqu'on ne sème que si la table est entièrement vide.
+ * Un drapeau sur la ligne sentinelle marque le semis comme fait, une fois pour
+ * toutes. Sans lui, « table vide » était confondu avec « jamais semé » : vider
+ * délibérément sa liste ramenait les tâches par défaut à chaque rechargement,
+ * et on ne pouvait jamais atteindre une liste vide — le cas normal « j'ai tout
+ * fini, je nettoie ». Même correction que pour les habitudes.
  */
 export async function lireTaches(): Promise<TacheDB[]> {
   const db = supabaseAdmin();
@@ -113,6 +128,9 @@ export async function lireTaches(): Promise<TacheDB[]> {
   if (error) throw error;
   if (data.length > 0) return data as TacheDB[];
 
+  // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
+  if (await tachesDejaSemees()) return [];
+
   const { error: erreurSemis } = await db.from("tasks").upsert(
     REAL_DATA.tasks.map((t) => ({
       id: uuidStable(t.text),
@@ -126,6 +144,9 @@ export async function lireTaches(): Promise<TacheDB[]> {
   );
 
   if (erreurSemis) throw erreurSemis;
+
+  // Le semis n'aura pas lieu deux fois : on le marque avant même la relecture.
+  await majSentinelle({ tachesSemees: true });
 
   // Relecture plutôt que d'utiliser le retour de l'upsert : avec
   // `ignoreDuplicates`, il ne renvoie que les lignes réellement insérées.
