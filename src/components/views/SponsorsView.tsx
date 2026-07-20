@@ -71,9 +71,36 @@ function MontantEditable({ deal }: { deal: DealVue }) {
   );
 }
 
+/**
+ * Les quatre statistiques, recalculées à partir des deals affichés.
+ *
+ * Elles venaient du serveur et n'étaient jamais recalculées après un
+ * changement local : déplacer un deal en « Signé » ou corriger un montant
+ * laissait le total du haut mentir jusqu'au rechargement. En les dérivant de
+ * la liste courante, elles suivent chaque geste. Même logique que `statsDeals`
+ * côté serveur, pour que les deux coïncident.
+ */
+function calculerStats(deals: DealVue[]) {
+  const somme = (etapes: string[]) =>
+    deals.filter((d) => etapes.includes(d.etape)).reduce((n, d) => n + (d.montant ?? 0), 0);
+  const euro = (n: number) => (n === 0 ? "—" : `${n.toLocaleString("fr-FR")} €`);
+  const clos = deals.filter((d) => d.etape === "signe" || d.etape === "livre").length;
+  const taux = deals.length > 0 ? Math.round((clos / deals.length) * 100) : null;
+
+  return [
+    { label: "Pipeline total", value: euro(somme(ETAPES.map((e) => e.id))), color: "#5fd39a" },
+    { label: "Signés", value: euro(somme(["signe", "livre"])), color: "#61c9db" },
+    { label: "En négociation", value: euro(somme(["negociation"])), color: "#e6c060" },
+    {
+      label: "Taux de closing",
+      value: taux === null ? "—" : `${taux} %`,
+      color: "#ff6ba3",
+    },
+  ];
+}
+
 export function SponsorsView() {
-  const { deals, dealStats, ajouterDeal, deplacerDeal, supprimerDeal, demoMode, data } =
-    useOs();
+  const { deals, ajouterDeal, deplacerDeal, supprimerDeal, demoMode, data } = useOs();
 
   // En démo, on reconstruit des deals depuis le jeu de démonstration pour que
   // l'écran soit plein quand Twaylo filme.
@@ -88,7 +115,9 @@ export function SponsorsView() {
   );
 
   const liste = demoMode ? listeDemo : (deals ?? []);
-  const stats = demoMode ? data.dealStats : (dealStats ?? data.dealStats);
+  // En démo, les stats factices ; sinon, recalculées à chaque rendu depuis la
+  // liste, donc toujours d'accord avec ce qui est affiché.
+  const stats = demoMode ? data.dealStats : calculerStats(liste);
   const total = liste.length;
 
   const colonnes: ColonneKanban<DealVue>[] = ETAPES.map((e) => ({

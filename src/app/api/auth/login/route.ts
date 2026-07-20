@@ -22,8 +22,25 @@ const tentatives = new Map<string, { n: number; jusqua: number }>();
 const MAX_TENTATIVES = 5;
 const FENETRE_MS = 15 * 60 * 1000;
 
-/** Secondes d'attente restantes, ou `null` si l'adresse peut réessayer. */
+/*
+ * Un second compteur, global cette fois.
+ *
+ * Le compteur par IP s'appuie sur `x-forwarded-for`, un en-tête que le client
+ * fabrique lui-même : il suffit de le faire varier à chaque essai pour n'être
+ * jamais deux fois « la même » adresse et contourner la limite. Ce compteur-ci
+ * ne dépend d'aucun en-tête — il compte TOUS les échecs, toutes provenances
+ * confondues. L'app ne sert qu'un utilisateur : au-delà de 20 échecs par quart
+ * d'heure, quelque chose ne va pas, on ferme pour tout le monde.
+ */
+const MAX_GLOBAL = 20;
+let globalEchecs = { n: 0, jusqua: 0 };
+
+/** Secondes d'attente restantes, ou `null` si l'essai peut passer. */
 function bloque(ip: string): number | null {
+  // Le verrou global d'abord : c'est lui qui résiste à la rotation d'IP.
+  if (Date.now() <= globalEchecs.jusqua && globalEchecs.n >= MAX_GLOBAL) {
+    return Math.ceil((globalEchecs.jusqua - Date.now()) / 1000);
+  }
   const e = tentatives.get(ip);
   if (!e) return null;
   if (Date.now() > e.jusqua) {
@@ -34,6 +51,12 @@ function bloque(ip: string): number | null {
 }
 
 function enregistrerEchec(ip: string): void {
+  if (Date.now() > globalEchecs.jusqua) {
+    globalEchecs = { n: 1, jusqua: Date.now() + FENETRE_MS };
+  } else {
+    globalEchecs.n += 1;
+  }
+
   const e = tentatives.get(ip);
   if (!e || Date.now() > e.jusqua) {
     tentatives.set(ip, { n: 1, jusqua: Date.now() + FENETRE_MS });

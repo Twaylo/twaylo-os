@@ -35,8 +35,13 @@ export function ContenuView() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void ajouterVideo(nouvelleVideo, format);
-              setNouvelleVideo("");
+              const idee = nouvelleVideo.trim();
+              if (!idee) return;
+              // On ne vide le champ qu'une fois l'ajout confirmé : en cas
+              // d'échec, l'idée reste tapée pour pouvoir réessayer.
+              void ajouterVideo(idee, format).then((ok) => {
+                if (ok) setNouvelleVideo("");
+              });
             }}
             className="flex flex-1 items-center justify-end gap-2"
           >

@@ -127,7 +127,12 @@ export async function POST(req: Request) {
         { type: "text", text: `\n\n# État actuel de l'OS de Twaylo\n\n${contexte}` },
       ],
       messages: [
-        ...historique.map((m) => ({ role: m.role, content: m.contenu })),
+        // Un message au contenu vide (réponse précédente ratée) fait rejeter
+        // tout l'appel par l'API : « text content blocks must be non-empty ».
+        // On les écarte, ce qui débloque la conversation au tour suivant.
+        ...historique
+          .filter((m) => m.contenu.trim() !== "")
+          .map((m) => ({ role: m.role, content: m.contenu })),
         { role: "user" as const, content: question },
       ],
     });
@@ -146,7 +151,12 @@ export async function POST(req: Request) {
           }
         } catch (err) {
           console.error("[brain] flux interrompu :", err);
-          controller.enqueue(encodeur.encode("\n\n[Réponse interrompue.]"));
+          // Marqueur clair : sans lui, une erreur d'API passait pour une
+          // réponse tronquée normale, et Twaylo n'avait aucun moyen de savoir
+          // que le brain avait planté.
+          controller.enqueue(
+            encodeur.encode("\n\n⚠️ Le brain a rencontré une erreur. Réessaie."),
+          );
         } finally {
           controller.close();
         }

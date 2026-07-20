@@ -145,7 +145,7 @@ type OsState = {
   /** Fait avancer une vidéo d'une étape, ou la ramène en arrière. */
   deplacerVideo: (id: string, statut: string) => void;
   /** Ajoute une idée au pipeline. */
-  ajouterVideo: (titre: string, format?: "short" | "long") => Promise<void>;
+  ajouterVideo: (titre: string, format?: "short" | "long") => Promise<boolean>;
   supprimerVideo: (id: string) => void;
   /** Renomme une vidéo sans changer son étape. */
   renommerVideo: (id: string, titre: string) => void;
@@ -1072,9 +1072,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ajouterVideo = useCallback(
-    async (titre: string, format: "short" | "long" = "long") => {
+    async (titre: string, format: "short" | "long" = "long"): Promise<boolean> => {
       const propre = titre.trim();
-      if (!propre || demoModeRef.current) return;
+      if (!propre || demoModeRef.current) return false;
       try {
         const res = await fetch("/api/videos", {
           method: "POST",
@@ -1102,8 +1102,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
               )
             : prev,
         );
+        return true;
       } catch (err) {
+        // On renvoie l'échec pour que l'appelant garde le champ rempli : sans
+        // ça, l'idée était effacée de la saisie avant même d'avoir abouti, et
+        // disparaissait sans un mot en cas de coupure réseau.
         console.error("[pipeline] ajout impossible :", err);
+        return false;
       }
     },
     [],

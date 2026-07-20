@@ -18,9 +18,15 @@ import { ViewHeader } from "@/components/views/ViewHeader";
  * devient un document d'archive, pas un brouillon qu'on réécrit.
  */
 
-/** Numéro de semaine ISO — la clé de rangement d'une revue. */
-function semaineISO(d: Date): { annee: number; semaine: number } {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+/**
+ * Numéro de semaine ISO, à partir du jour local de Twaylo (`YYYY-MM-DD`).
+ *
+ * On part du jour déjà calculé dans son fuseau et on raisonne en UTC : mélanger
+ * le fuseau du navigateur (getDay/getDate) et celui de Twaylo décalait la
+ * semaine — donc la clé de rangement — d'un jour au passage de minuit.
+ */
+function semaineISO(jourLocal: string): { annee: number; semaine: number } {
+  const t = new Date(`${jourLocal}T00:00:00Z`);
   // Jeudi de la même semaine : c'est lui qui détermine l'année ISO.
   t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
   const debutAnnee = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
@@ -28,15 +34,14 @@ function semaineISO(d: Date): { annee: number; semaine: number } {
   return { annee: t.getUTCFullYear(), semaine };
 }
 
-function bornesSemaine(d: Date): { du: string; au: string; lundiISO: string } {
-  const offset = (d.getDay() + 6) % 7;
-  const lundi = new Date(d);
-  lundi.setDate(d.getDate() - offset);
-  const dimanche = new Date(lundi);
-  dimanche.setDate(lundi.getDate() + 6);
+function bornesSemaine(jourLocal: string): { du: string; au: string; lundiISO: string } {
+  const d = new Date(`${jourLocal}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // lundi
+  const dimanche = new Date(d);
+  dimanche.setUTCDate(d.getUTCDate() + 6);
   const fmt = (x: Date) =>
-    x.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-  return { du: fmt(lundi), au: fmt(dimanche), lundiISO: localDateKey(lundi) };
+    x.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+  return { du: fmt(d), au: fmt(dimanche), lundiISO: d.toISOString().slice(0, 10) };
 }
 
 type Section = { titre: string; couleur: string; champs: Champ[] };
@@ -149,10 +154,18 @@ export function RevueView() {
   );
 
   useEffect(() => {
-    const now = new Date();
-    const { annee, semaine } = semaineISO(now);
-    const { du, au, lundiISO } = bornesSemaine(now);
+    const auj = localDateKey();
+    const { annee, semaine } = semaineISO(auj);
+    const { du, au, lundiISO } = bornesSemaine(auj);
     setMeta({ annee, semaine, du, au, lundiISO });
+
+    // #3 : en démo, on ne charge pas la vraie revue — filmer son écran ne doit
+    // pas exposer ce que Twaylo a écrit. Un formulaire vierge suffit.
+    if (demoMode) {
+      setRevue(REVUE_VIDE);
+      setHydrate(true);
+      return;
+    }
 
     const local = readJSON<Revue>(
       `twaylo-revue-${annee}-${String(semaine).padStart(2, "0")}`,
@@ -192,7 +205,7 @@ export function RevueView() {
         });
       })
       .catch((err) => console.error("[revue] chargement impossible :", err));
-  }, []);
+  }, [demoMode]);
 
   useEffect(() => {
     if (!hydrate || !cle || demoMode || !meta) return;
@@ -344,10 +357,10 @@ export function RevueView() {
                         <div className="mt-[8px]">
                           <MicButton
                             onTranscript={(t) =>
-                              set(
-                                champ.cle,
-                                revue[champ.cle] ? `${revue[champ.cle]} ${t}` : t,
-                              )
+                              setRevue((r) => ({
+                                ...r,
+                                [champ.cle]: r[champ.cle] ? `${r[champ.cle]} ${t}` : t,
+                              }))
                             }
                           />
                         </div>

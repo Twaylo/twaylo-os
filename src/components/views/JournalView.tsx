@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useOs } from "@/lib/os-context";
 import { EmptyState, MicButton } from "@/components/ui";
-import { localDateKey } from "@/lib/local-date";
+import { localDateKey, USER_TIMEZONE } from "@/lib/local-date";
 import { Panel } from "@/components/Panel";
 import { MemoryList } from "@/components/cards/JournalCard";
 import { ViewHeader } from "@/components/views/ViewHeader";
@@ -17,6 +17,7 @@ function useTodayLabel() {
         weekday: "long",
         day: "numeric",
         month: "long",
+        timeZone: USER_TIMEZONE,
       }),
     );
   }, []);
@@ -27,11 +28,9 @@ type EntreePassee = { jour: string; texte: string };
 
 /** « 17 juil. » plutôt que « 2026-07-17 ». */
 function dateLisible(jour: string): string {
-  return new Date(`${jour}T12:00:00Z`).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  const d = new Date(`${jour}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return jour; // déjà lisible (démo)
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
 export function JournalView() {
@@ -42,11 +41,24 @@ export function JournalView() {
    * écrit les jours précédents existait en base mais n'apparaissait nulle part.
    * C'est ce qui manquait pour que le journal serve de mémoire.
    */
+  const { journalText, setJournalText, demoMode, data } = useOs();
+
   const [passees, setPassees] = useState<EntreePassee[] | null>(null);
+  const [erreur, setErreur] = useState(false);
   const [ouverte, setOuverte] = useState<string | null>(null);
 
   useEffect(() => {
+    // En démo, l'historique factice — surtout ne pas exposer les vraies
+    // entrées de Twaylo pendant qu'il filme son écran.
+    if (demoMode) {
+      setPassees(
+        data.journalEntries.map((e) => ({ jour: e.date, texte: e.snippet })),
+      );
+      return;
+    }
+
     let annule = false;
+    setErreur(false);
     void fetch(`/api/journal?jour=${localDateKey()}&combien=30`)
       .then((r) => r.json())
       .then((d) => {
@@ -54,14 +66,18 @@ export function JournalView() {
       })
       .catch((err) => {
         console.error("[journal] historique illisible :", err);
-        if (!annule) setPassees([]);
+        // Une lecture ratée n'est pas « rien écrit » : le distinguer évite
+        // d'annoncer à Twaylo qu'il n'a jamais rien noté alors que des années
+        // de journal sont juste momentanément illisibles.
+        if (!annule) {
+          setErreur(true);
+          setPassees([]);
+        }
       });
     return () => {
       annule = true;
     };
-  }, []);
-
-  const { journalText, setJournalText, data } = useOs();
+  }, [demoMode, data.journalEntries]);
   const today = useTodayLabel();
 
   return (
@@ -122,6 +138,10 @@ export function JournalView() {
               <div className="py-4 text-center text-[12px] font-bold text-white/25">
                 Lecture…
               </div>
+            ) : erreur ? (
+              <EmptyState hint="Ton journal est intact — la base est juste injoignable pour l'instant.">
+                Historique momentanément illisible
+              </EmptyState>
             ) : passees.length === 0 ? (
               <EmptyState hint="La première entrée démarre ta mémoire.">
                 Aucune entrée passée
