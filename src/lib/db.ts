@@ -27,6 +27,25 @@ export type EtatJour = {
   faites: Record<string, string[]>;
   une_chose: UneChose;
   nutrition: { repas: unknown[] };
+  /**
+   * L'instantané des tâches du jour.
+   *
+   * Les tâches vivent dans leur propre table, remise à neuf chaque matin.
+   * Sans cet instantané, l'historique de complétion serait perdu à chaque
+   * réinitialisation : on fige donc ici, jour par jour, ce qui était là et ce
+   * qui avait été coché.
+   */
+  taches?: SnapshotTaches;
+};
+
+/** Ce qu'on garde d'une journée de tâches, pour le bilan dans le temps. */
+export type SnapshotTaches = {
+  total: number;
+  faites: number;
+  /** Le focus principal seul — « ai-je bouclé l'essentiel ». */
+  principalTotal: number;
+  principalFaites: number;
+  liste: { titre: string; niveau: string; fait: boolean }[];
 };
 
 const ETAT_VIDE: EtatJour = {

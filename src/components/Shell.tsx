@@ -12,12 +12,12 @@ import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { RevueView } from "@/components/views/RevueView";
 import { FichiersView } from "@/components/views/FichiersView";
 import { BrainView } from "@/components/views/BrainView";
-import { HabitudesView } from "@/components/views/HabitudesView";
+import { BilanView } from "@/components/views/BilanView";
 
 const VIEWS = {
   Accueil: AccueilView,
   Brain: BrainView,
-  Habitudes: HabitudesView,
+  Bilan: BilanView,
   Contacts: ContactsView,
   Sponsors: SponsorsView,
   Contenu: ContenuView,

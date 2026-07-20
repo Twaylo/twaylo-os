@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     journal?: string;
     uneChose?: { texte: string; fait: boolean };
     nutrition?: { repas: unknown[] };
+    taches?: unknown;
   };
 
   try {
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
   if (corps.faites !== undefined) etat.faites = corps.faites;
   if (corps.uneChose !== undefined) etat.une_chose = corps.uneChose;
   if (corps.nutrition !== undefined) etat.nutrition = corps.nutrition;
+  if (corps.taches !== undefined) etat.taches = corps.taches;
 
   try {
     await ecrireJour(jour, {

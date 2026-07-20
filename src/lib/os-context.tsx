@@ -49,7 +49,7 @@ import type {
 export const TABS = [
   "Accueil",
   "Brain",
-  "Habitudes",
+  "Bilan",
   "Contacts",
   "Sponsors",
   "Contenu",
@@ -560,6 +560,39 @@ export function OsProvider({ children }: { children: ReactNode }) {
     writeJSON(dailyKey("nutrition"), repas);
     synchroniserJour({ jour: localDateKey(), nutrition: { repas } });
   }, [repas, demoMode, hydrate]);
+
+  /*
+   * Instantané des tâches du jour, pour le bilan dans le temps.
+   *
+   * Les tâches vivent dans leur propre table, remise à neuf chaque matin. Sans
+   * cet instantané écrit jour par jour dans daily_logs, l'historique de
+   * complétion serait effacé à chaque réinitialisation. On fige donc l'état
+   * courant — combien de tâches, combien de faites, et le focus principal à
+   * part — dès qu'il change. Le débounce d'une seconde évite d'écrire à chaque
+   * coche.
+   *
+   * Pas de garde « modifié » ici, contrairement au journal : réécrire le même
+   * instantané est sans conséquence, et on veut que la journée en cours soit
+   * toujours reflétée, même après un simple chargement.
+   */
+  useEffect(() => {
+    if (!hydrate || demoMode) return;
+    const principales = tasks.filter((t) => (t.niveau ?? "secondaire") === "principal");
+    synchroniserJour({
+      jour: localDateKey(),
+      taches: {
+        total: tasks.length,
+        faites: tasks.filter((t) => t.done).length,
+        principalTotal: principales.length,
+        principalFaites: principales.filter((t) => t.done).length,
+        liste: tasks.map((t) => ({
+          titre: t.text,
+          niveau: t.niveau ?? "secondaire",
+          fait: t.done,
+        })),
+      },
+    });
+  }, [tasks, demoMode, hydrate]);
 
   /*
    * Les setters exposés passent par ici plutôt que d'être transmis bruts.
