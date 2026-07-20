@@ -998,3 +998,38 @@ export async function supprimerRevenu(id: string): Promise<void> {
 
   if (error) throw error;
 }
+
+/* ------------------------------------------------------------------ */
+/* YouTube — jeton de rafraîchissement                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Le refresh token OAuth de YouTube.
+ *
+ * Rangé sur la ligne sentinelle, à côté des habitudes et des blocages. Il ne
+ * quitte jamais le serveur : /api/state ne lit que `definitions` et
+ * `blocages` de ce jsonb, jamais `youtube`. La clé service_role contourne
+ * RLS, mais le navigateur ne voit passer que des statistiques déjà calculées,
+ * pas le jeton qui a servi à les obtenir.
+ */
+export async function lireTokenYoutube(): Promise<string | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+  const token = (data?.habitudes as { youtube?: { refresh_token?: string } } | null)
+    ?.youtube?.refresh_token;
+  return typeof token === "string" && token ? token : null;
+}
+
+export async function ecrireTokenYoutube(refreshToken: string): Promise<void> {
+  await majSentinelle({ youtube: { refresh_token: refreshToken } });
+}
+
+export async function oublierTokenYoutube(): Promise<void> {
+  await majSentinelle({ youtube: {} });
+}
