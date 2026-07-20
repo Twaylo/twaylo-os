@@ -108,6 +108,9 @@ type OsState = {
   majObjectif: (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => void;
   supprimerObjectif: (id: string) => void;
 
+  /** Les stats YouTube, nulles tant que la lecture n'a pas répondu. */
+  youtube: YoutubeStats | null;
+
   /** Les événements de la semaine, venus de Google Agenda. */
   agenda: EvenementAgenda[];
   /** Faux tant que l'URL iCal n'est pas configurée, ou si l'agenda ne répond pas. */
@@ -167,6 +170,20 @@ type OsState = {
   deplacerDeal: (id: string, etape: string) => void;
   supprimerDeal: (id: string) => void;
   majMontantDeal: (id: string, montant: number | null) => void;
+};
+
+/** Les statistiques YouTube, telles que le navigateur les reçoit. */
+export type YoutubeStats = {
+  connecte: boolean;
+  periode: string;
+  vues: number;
+  minutesVisionnees: number;
+  abonnesGagnes: number;
+  revenuEstime: number | null;
+  rpm: number | null;
+  abonnesTotal: number | null;
+  parJour: { date: string; vues: number }[];
+  error?: string;
 };
 
 /** Un objectif tel que l'interface le manipule. */
@@ -274,6 +291,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const blocagesRef = useRef<BlocageStocke[]>([]);
   const [objectifs, setObjectifs] = useState<ObjectifVue[] | null>(null);
   const [agenda, setAgenda] = useState<EvenementAgenda[]>([]);
+  const [youtube, setYoutube] = useState<YoutubeStats | null>(null);
   const [agendaConnecte, setAgendaConnecte] = useState(false);
   const [sync, setSync] = useState<"inconnu" | "connecte" | "hors_ligne" | "erreur">(
     "inconnu",
@@ -425,6 +443,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
         if (!annule && Array.isArray(d.objectifs)) setObjectifs(d.objectifs);
       })
       .catch((err) => console.error("[objectifs] chargement impossible :", err));
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
+
+  /*
+   * Les stats YouTube, chargées à part comme l'agenda : leur lecture fait
+   * quatre appels à Google et peut prendre quelques secondes. Rien ici ne
+   * doit retarder l'affichage du reste du dashboard.
+   */
+  useEffect(() => {
+    if (demoMode) return;
+    let annule = false;
+    void fetch("/api/youtube/stats")
+      .then((r) => r.json())
+      .then((d: YoutubeStats) => {
+        if (!annule) setYoutube(d);
+      })
+      .catch((err) => console.error("[youtube] chargement impossible :", err));
     return () => {
       annule = true;
     };
@@ -1230,6 +1267,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterObjectif,
       majObjectif: majObjectifLocal,
       supprimerObjectif: supprimerObjectifLocal,
+      youtube,
       agenda,
       agendaConnecte,
       blocages,
@@ -1285,6 +1323,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterObjectif,
       majObjectifLocal,
       supprimerObjectifLocal,
+      youtube,
       agenda,
       agendaConnecte,
       blocages,

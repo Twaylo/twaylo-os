@@ -254,7 +254,37 @@ function Compte() {
 }
 
 export function TopRail() {
-  const { activeTab, setActiveTab, data } = useOs();
+  const { activeTab, setActiveTab, data, demoMode, youtube } = useOs();
+
+  /*
+   * Les trois compteurs du haut. En mode réel ils viennent de YouTube — vides
+   * tant que la connexion n'a pas répondu, puis abonnés / vues 30 j / RPM. En
+   * démo, le jeu factice.
+   */
+  const tickers =
+    !demoMode && youtube?.connecte
+      ? [
+          {
+            label: "ABONNÉS",
+            valeur:
+              youtube.abonnesTotal !== null
+                ? youtube.abonnesTotal.toLocaleString("fr-FR")
+                : "—",
+            delta: youtube.abonnesGagnes ? `+${youtube.abonnesGagnes.toLocaleString("fr-FR")}` : "",
+          },
+          {
+            label: "VUES 30J",
+            valeur: youtube.vues.toLocaleString("fr-FR"),
+            delta: "",
+          },
+          {
+            label: "RPM",
+            valeur:
+              youtube.rpm !== null ? `${youtube.rpm.toFixed(2).replace(".", ",")} €` : "—",
+            delta: "",
+          },
+        ]
+      : data.tickers;
   const { dateStr, timeStr } = useClock();
 
   return (
@@ -310,7 +340,7 @@ export function TopRail() {
             ses vues et son RPM.
           */}
           <div className="hidden items-center gap-[14px] lg:flex">
-            {data.tickers.map((t) => (
+            {tickers.map((t) => (
               <div key={t.label} className="leading-[1.15]">
                 <div className="text-[8px] font-black tracking-[0.1em] text-white/30">
                   {t.label}

@@ -8,19 +8,6 @@ import { ViewHeader } from "@/components/views/ViewHeader";
 
 const CHART_HEIGHT = 115;
 
-type StatsYoutube = {
-  connecte: boolean;
-  periode: string;
-  vues: number;
-  minutesVisionnees: number;
-  abonnesGagnes: number;
-  revenuEstime: number | null;
-  rpm: number | null;
-  abonnesTotal: number | null;
-  parJour: { date: string; vues: number }[];
-  error?: string;
-};
-
 const nombre = (n: number) => n.toLocaleString("fr-FR");
 const euros = (n: number) =>
   n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -35,16 +22,12 @@ const RETOURS: Record<string, { texte: string; ok: boolean }> = {
 };
 
 export function RevenusView() {
-  const { revealed, demoMode, data } = useOs();
+  const { revealed, demoMode, data, youtube } = useOs();
   const hidden = !revealed;
 
-  const [yt, setYt] = useState<StatsYoutube | null>(null);
-  const [charge, setCharge] = useState(false);
   const [retour, setRetour] = useState<{ texte: string; ok: boolean } | null>(null);
 
   useEffect(() => {
-    if (demoMode) return;
-
     // Message de retour après le passage par Google, puis on nettoie l'URL.
     const params = new URLSearchParams(window.location.search);
     const code = params.get("yt");
@@ -54,34 +37,20 @@ export function RevenusView() {
       const reste = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (reste ? `?${reste}` : ""));
     }
-
-    let annule = false;
-    setCharge(true);
-    void fetch("/api/youtube/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!annule) setYt(d);
-      })
-      .catch((err) => console.error("[revenus] YouTube illisible :", err))
-      .finally(() => {
-        if (!annule) setCharge(false);
-      });
-    return () => {
-      annule = true;
-    };
-  }, [demoMode]);
+  }, []);
 
   /* -------- Mode démo : le jeu factice, pour filmer -------- */
   if (demoMode) return <RevenusDemo hidden={hidden} data={data} />;
 
-  const connecte = yt?.connecte === true;
-  const maxVues = Math.max(1, ...(yt?.parJour ?? []).map((j) => j.vues));
+  const connecte = youtube?.connecte === true;
+  const enCours = youtube === null;
+  const maxVues = Math.max(1, ...(youtube?.parJour ?? []).map((j) => j.vues));
 
   return (
     <>
       <ViewHeader
         title="Revenus"
-        subtitle={connecte ? yt?.periode : "YouTube Studio non connecté"}
+        subtitle={connecte ? youtube?.periode : "YouTube Studio non connecté"}
         action={connecte ? <RevealButton large /> : undefined}
       />
 
@@ -103,10 +72,10 @@ export function RevenusView() {
         <Panel accent="var(--color-ver)">
           <div className="flex flex-col items-center gap-[14px] py-8 text-center">
             <div className="max-w-[420px] text-[13.5px] leading-[1.5] text-white/50">
-              {charge ? (
+              {enCours ? (
                 "Vérification de la connexion…"
-              ) : yt?.error ? (
-                yt.error
+              ) : youtube?.error ? (
+                youtube.error
               ) : (
                 <>
                   Branche ta chaîne pour voir tes vraies vues, abonnés et revenus
@@ -115,7 +84,7 @@ export function RevenusView() {
                 </>
               )}
             </div>
-            {!charge && (
+            {!enCours && (
               <a
                 href="/api/youtube/connect"
                 className="cursor-pointer rounded-[12px] px-[18px] py-[11px] text-[13px] font-extrabold text-[#07121d] transition-all hover:brightness-110"
@@ -129,32 +98,32 @@ export function RevenusView() {
       )}
 
       {/* -------- Connecté : les vrais chiffres -------- */}
-      {connecte && yt && (
+      {connecte && youtube && (
         <>
           <div className="mb-[14px] grid grid-cols-2 gap-[14px] xl:grid-cols-4">
             <Tuile
               label="REVENU ESTIMÉ · 30 J"
-              valeur={yt.revenuEstime === null ? "—" : euros(yt.revenuEstime)}
+              valeur={youtube.revenuEstime === null ? "—" : euros(youtube.revenuEstime)}
               sous={
-                yt.revenuEstime === null
+                youtube.revenuEstime === null
                   ? "chaîne non monétisée"
-                  : yt.rpm !== null
-                    ? `RPM ${yt.rpm.toFixed(2).replace(".", ",")} €`
+                  : youtube.rpm !== null
+                    ? `RPM ${youtube.rpm.toFixed(2).replace(".", ",")} €`
                     : ""
               }
               sensible
               hidden={hidden}
             />
-            <Tuile label="VUES · 30 J" valeur={nombre(yt.vues)} sous="" hidden={false} />
+            <Tuile label="VUES · 30 J" valeur={nombre(youtube.vues)} sous="" hidden={false} />
             <Tuile
               label="ABONNÉS GAGNÉS · 30 J"
-              valeur={`${yt.abonnesGagnes >= 0 ? "+" : ""}${nombre(yt.abonnesGagnes)}`}
-              sous={yt.abonnesTotal !== null ? `${nombre(yt.abonnesTotal)} au total` : ""}
+              valeur={`${youtube.abonnesGagnes >= 0 ? "+" : ""}${nombre(youtube.abonnesGagnes)}`}
+              sous={youtube.abonnesTotal !== null ? `${nombre(youtube.abonnesTotal)} au total` : ""}
               hidden={false}
             />
             <Tuile
               label="TEMPS DE VISIONNAGE · 30 J"
-              valeur={`${nombre(Math.round(yt.minutesVisionnees / 60))} h`}
+              valeur={`${nombre(Math.round(youtube.minutesVisionnees / 60))} h`}
               sous=""
               hidden={false}
             />
@@ -167,13 +136,13 @@ export function RevenusView() {
             >
               VUES PAR JOUR · 30 DERNIERS JOURS
             </div>
-            {yt.parJour.length === 0 ? (
+            {youtube.parJour.length === 0 ? (
               <EmptyState hint="Les données quotidiennes arriveront à la prochaine synchro.">
                 Pas encore de détail quotidien
               </EmptyState>
             ) : (
               <div className="flex items-end gap-[3px]" style={{ height: CHART_HEIGHT + 20 }}>
-                {yt.parJour.map((j) => (
+                {youtube.parJour.map((j) => (
                   <div
                     key={j.date}
                     title={`${j.date} — ${nombre(j.vues)} vues`}
