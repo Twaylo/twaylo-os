@@ -286,10 +286,224 @@ function TachesBilan() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Nutrition                                                           */
+/* ------------------------------------------------------------------ */
+
+type JourNutrition = {
+  jour: string;
+  kcal: number;
+  p: number;
+  c: number;
+  f: number;
+  mange: boolean;
+};
+
+type StatsNutrition = {
+  connecte: boolean;
+  jours: JourNutrition[];
+  moyenne: { kcal: number; p: number; c: number; f: number };
+  joursSuivis: number;
+  serieProteines: number;
+  objectifs: { kcal: number; p: number; c: number; f: number };
+  premierJourSuivi: string | null;
+  error?: string;
+};
+
+function NutritionBilan() {
+  const [stats, setStats] = useState<StatsNutrition | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    let annule = false;
+    void fetch("/api/nutrition/stats?jours=60")
+      .then((r) => r.json())
+      .then((d) => {
+        if (annule) return;
+        if (d?.error || d?.connecte === false) {
+          setErreur(d?.error ?? "La base ne répond pas.");
+          return;
+        }
+        setStats(d);
+      })
+      .catch((err) => {
+        console.error("[bilan] nutrition illisible :", err);
+        if (!annule) setErreur("Impossible de lire l'historique nutrition.");
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  if (erreur) {
+    return (
+      <Panel accent="var(--color-ver)">
+        <EmptyState hint={erreur}>Bilan nutrition indisponible</EmptyState>
+      </Panel>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <Panel accent="var(--color-ver)">
+        <div className="py-6 text-center text-[13px] font-bold text-white/30">
+          Lecture de la nutrition…
+        </div>
+      </Panel>
+    );
+  }
+
+  if (!stats.premierJourSuivi || stats.joursSuivis === 0) {
+    return (
+      <Panel accent="var(--color-ver)">
+        <Eyebrow color="var(--color-ver-soft)" dot="var(--color-ver)">
+          NUTRITION
+        </Eyebrow>
+        <EmptyState hint="Note tes repas sur l'accueil — les moyennes et les tendances se calculent toutes seules.">
+          Rien à montrer encore
+        </EmptyState>
+      </Panel>
+    );
+  }
+
+  // Les derniers jours suivis, du plus ancien au plus récent, pour la frise.
+  const derniers = stats.jours.slice(-28);
+  const maxKcal = Math.max(stats.objectifs.kcal, ...derniers.map((j) => j.kcal), 1);
+
+  const MOYENNES: { label: string; valeur: number; cible: number; unite: string }[] = [
+    { label: "KCAL", valeur: stats.moyenne.kcal, cible: stats.objectifs.kcal, unite: "" },
+    { label: "PROTÉINES", valeur: stats.moyenne.p, cible: stats.objectifs.p, unite: "g" },
+    { label: "GLUCIDES", valeur: stats.moyenne.c, cible: stats.objectifs.c, unite: "g" },
+    { label: "LIPIDES", valeur: stats.moyenne.f, cible: stats.objectifs.f, unite: "g" },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 gap-[14px] xl:grid-cols-3">
+      {/* ---------- Moyennes ---------- */}
+      <Panel accent="var(--color-ver)" className="col-span-full xl:col-span-1">
+        <div className="flex items-start justify-between gap-2">
+          <Eyebrow color="var(--color-ver-soft)" dot="var(--color-ver)">
+            NUTRITION
+          </Eyebrow>
+          <span className="flex-none text-[9.5px] font-bold text-white/30">
+            {stats.joursSuivis} jour{stats.joursSuivis > 1 ? "s" : ""} suivi
+            {stats.joursSuivis > 1 ? "s" : ""}
+          </span>
+        </div>
+        <div className="mt-1 text-[9.5px] font-bold tracking-[0.06em] text-white/30">
+          MOYENNE PAR JOUR
+        </div>
+
+        <div className="mt-[12px] flex flex-col gap-[10px]">
+          {MOYENNES.map((m) => {
+            const pct = m.cible ? Math.min(100, Math.round((m.valeur / m.cible) * 100)) : 0;
+            return (
+              <div key={m.label}>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[9.5px] font-extrabold tracking-[0.08em] text-white/45">
+                    {m.label}
+                  </span>
+                  <span className="font-mono text-[11px] font-bold text-white/70">
+                    {m.valeur}
+                    {m.unite} <span className="text-white/30">/ {m.cible}{m.unite}</span>
+                  </span>
+                </div>
+                <div className="bar-track mt-[4px]" style={{ height: 5 }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, background: "var(--color-ver)" }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          className="mt-[13px] flex items-center justify-between rounded-[10px] px-[11px] py-[9px]"
+          style={{ background: "rgba(61,220,132,0.08)", border: "1px solid rgba(61,220,132,0.2)" }}
+        >
+          <div>
+            <div className="text-[9px] font-black tracking-[0.1em] text-white/40">
+              SÉRIE PROTÉINES
+            </div>
+            <div className="text-[10px] text-white/35">objectif {stats.objectifs.p} g atteint</div>
+          </div>
+          <div
+            className="font-mono text-[20px] font-black"
+            style={{ color: stats.serieProteines > 0 ? "var(--color-ver)" : "rgba(255,255,255,0.3)" }}
+          >
+            {stats.serieProteines}
+            <span className="text-[11px] text-white/40"> j</span>
+          </div>
+        </div>
+      </Panel>
+
+      {/* ---------- Frise des calories ---------- */}
+      <Panel accent="var(--color-ver)" className="col-span-full xl:col-span-2">
+        <Eyebrow color="var(--color-ver-soft)" dot="var(--color-ver)">
+          CALORIES PAR JOUR
+        </Eyebrow>
+        <div className="mt-1 text-[9.5px] font-bold tracking-[0.06em] text-white/30">
+          LIGNE = TON OBJECTIF DE {stats.objectifs.kcal} KCAL
+        </div>
+
+        <div className="relative mt-[16px]" style={{ height: 120 }}>
+          {/* La ligne d'objectif. */}
+          <div
+            className="absolute left-0 right-0 border-t border-dashed"
+            style={{
+              bottom: `${(stats.objectifs.kcal / maxKcal) * 100}%`,
+              borderColor: "rgba(255,198,61,0.5)",
+            }}
+          />
+          <div className="flex h-full items-end gap-[3px]">
+            {derniers.map((j) => {
+              // Vert si dans ±15 % de la cible, ambre si loin, gris si rien noté.
+              const ecart = stats.objectifs.kcal ? Math.abs(j.kcal - stats.objectifs.kcal) / stats.objectifs.kcal : 1;
+              const couleur = !j.mange
+                ? "rgba(255,255,255,0.06)"
+                : ecart <= 0.15
+                  ? "var(--color-ver)"
+                  : "var(--color-amb)";
+              return (
+                <div
+                  key={j.jour}
+                  title={
+                    j.mange
+                      ? `${dateCourte(j.jour)} — ${j.kcal} kcal · ${j.p}g prot.`
+                      : `${dateCourte(j.jour)} — rien noté`
+                  }
+                  className="flex-1 rounded-t-[3px] transition-all hover:brightness-125"
+                  style={{
+                    height: `${Math.max((j.kcal / maxKcal) * 100, j.mange ? 3 : 1)}%`,
+                    background: couleur,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-[8px] flex items-center gap-[12px] text-[9px] font-bold text-white/25">
+          <span className="flex items-center gap-[4px]">
+            <span className="h-[10px] w-[10px] rounded-[2px]" style={{ background: "var(--color-ver)" }} />
+            dans la cible
+          </span>
+          <span className="flex items-center gap-[4px]">
+            <span className="h-[10px] w-[10px] rounded-[2px]" style={{ background: "var(--color-amb)" }} />
+            loin de la cible
+          </span>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 export function BilanView() {
   return (
     <div className="flex flex-col gap-[18px]">
       <TachesBilan />
+      <NutritionBilan />
       <HabitudesView />
     </div>
   );
