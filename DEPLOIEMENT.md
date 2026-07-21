@@ -1,101 +1,97 @@
-# Rendre l'OS accessible partout
+# Que l'OS ne s'éteigne jamais — le mettre sur Vercel
 
-Aujourd'hui l'OS tourne sur ton PC, en `localhost`. Trois conséquences : il
-meurt quand tu fermes ton laptop, il n'existe pas depuis ton MacBook ni ton
-téléphone, et il n'existera pas depuis la Bolivie.
+Tant que l'OS tourne sur ton PC (`npm run dev`), il meurt dès que le PC dort ou
+que la session se ferme. Pour qu'il tourne **24h/24**, indépendamment de ta
+machine, on le pose sur **Vercel** : hébergement gratuit à ton échelle, allumé
+en permanence, accessible de partout. Ta base Supabase est déjà dans le cloud —
+elle ne bouge pas.
 
-Deux façons de régler ça. La première dépanne, la seconde résout.
-
----
-
-## Option A — Sur ton réseau, tout de suite (5 minutes)
-
-Ça marche tant que le PC est allumé et que tu es sur le même Wi-Fi.
-
-**1. Lance le serveur en écoute réseau**
-
-```bash
-npm run dev:reseau
-```
-
-Sans le `-H 0.0.0.0` que ce script ajoute, Next n'écoute que sur lui-même et
-rien d'autre sur le réseau ne peut l'atteindre.
-
-**2. Ouvre le port dans le pare-feu Windows**
-
-PowerShell **en administrateur**, une seule fois :
-
-```powershell
-New-NetFirewallRule -DisplayName "Twaylo OS" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
-```
-
-**3. Depuis le MacBook ou le téléphone**
-
-```
-http://192.168.1.10:3000
-```
-
-Cette adresse change si ta box redistribue les IP. Pour la retrouver :
-`ipconfig` sur le PC, ligne « Adresse IPv4 ».
-
-### Ce que cette option ne donne pas
-
-- Rien ne marche si le PC est éteint, en veille, ou sur un autre réseau
-- Pas de HTTPS, donc **le micro du Brain ne marchera pas** sur le MacBook ni
-  sur le téléphone : les navigateurs refusent l'accès au micro hors HTTPS,
-  sauf sur `localhost`
-- Rien depuis l'extérieur de chez toi
+Compte ~20 minutes, une seule fois.
 
 ---
 
-## Option B — Vercel (20 minutes, une fois pour toutes)
+## Étape 1 — Créer le compte et importer le projet
 
-C'est la vraie réponse. HTTPS, accessible de partout, indépendant de ton PC,
-gratuit à ton échelle. Le micro fonctionne. La base Supabase, elle, ne bouge
-pas : elle est déjà dans le cloud.
+1. Va sur **vercel.com** → **Sign Up** → choisis **Continue with GitHub** (le
+   compte où vit déjà `twaylo-os`).
+2. Une fois connecté : **Add New… → Project**.
+3. Trouve **`twaylo-os`** dans la liste → **Import**.
+4. Ne touche à rien dans « Framework Preset » (Next.js est détecté tout seul).
+   **Ne clique pas encore sur Deploy** — d'abord les variables, étape 2.
 
-**1. Pousse le dépôt** — c'est déjà fait, tout est sur
-`github.com/Twaylo/twaylo-os`.
+## Étape 2 — Recopier les variables d'environnement
 
-**2. Sur vercel.com** → *Add New Project* → importe `twaylo-os`. Le framework
-est détecté tout seul.
+Sur la page d'import, section **Environment Variables**. Prends chaque valeur
+depuis ton fichier `.env.local` et recopie-la. **Ne les colle nulle part
+ailleurs qu'ici.**
 
-**3. Recopie les variables d'environnement**
+**Indispensables** (sans elles, rien ne marche) :
 
-Prends-les depuis ton `.env.local`. **Ne les colle nulle part ailleurs** — ni
-dans un chat, ni dans un fichier suivi par git.
-
-Indispensables :
-
-| Variable | D'où elle vient |
+| Nom | Où la prendre |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ton `.env.local` |
-| `SUPABASE_SERVICE_ROLE_KEY` | ton `.env.local` |
-| `AUTH_SECRET` | ton `.env.local` |
-| `DASHBOARD_PASSWORD` | **choisis-en un nouveau, aléatoire** |
+| `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` |
+| `AUTH_SECRET` | `.env.local` |
+| `DASHBOARD_PASSWORD` | **choisis-en un nouveau, pas `twaylo-change-moi`** |
 | `USER_ID` | `twaylo` |
+| `NEXT_PUBLIC_USER_TIMEZONE` | `Europe/Paris` |
 
-Optionnelles, selon ce que tu veux voir marcher :
+**Pour que le Brain, YouTube et l'agenda marchent aussi** :
 
-| Variable | Active quoi |
+| Nom | Où la prendre |
 |---|---|
-| `ANTHROPIC_API_KEY` | l'onglet Brain |
-| `GOOGLE_ICAL_URL` | la carte Semaine |
-| `API_SECRET` | l'accès par script |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_ID`, `TELEGRAM_WEBHOOK_SECRET` | la capture par Telegram |
+| `ANTHROPIC_API_KEY` | `.env.local` |
+| `GOOGLE_CLIENT_ID` | `.env.local` |
+| `GOOGLE_CLIENT_SECRET` | `.env.local` |
+| `GOOGLE_ICAL_URL` | `.env.local` |
+| `GOOGLE_REDIRECT_URI` | **⚠️ à changer** — voir étape 4 |
+| `API_SECRET` | `.env.local` |
 
-**4. Deploy.** Tu obtiens une URL en `.vercel.app`. Ajoute-la en favori sur le
-Mac et sur le téléphone.
+## Étape 3 — Déployer
 
-**5. Sur iPhone** : Safari → Partager → *Sur l'écran d'accueil*. L'OS s'ouvre
-alors en plein écran, sans barre d'adresse, comme une application.
+Clique **Deploy**. Attends 1–2 minutes. Vercel te donne une adresse en
+`https://twaylo-os-xxxx.vercel.app`. **C'est ton OS, allumé pour toujours.**
+Mets-la en favori sur ton Mac et ton téléphone.
 
-### Une chose à savoir avant de déployer
+Sur iPhone : Safari → Partager → **Sur l'écran d'accueil**. Il s'ouvre en plein
+écran, comme une application.
 
-Le frein anti-force-brute de la page de connexion compte les tentatives **en
-mémoire**. Vercel peut faire tourner plusieurs instances : chacune aurait son
-propre compteur, ce qui affaiblit le frein sans l'annuler. Ça reste
-largement mieux que rien, mais si l'URL devient publique, il faudra passer ce
-compteur sur Redis (Upstash s'intègre en deux clics sur Vercel).
+## Étape 4 — Reconnecter YouTube à la nouvelle adresse
 
-C'est signalé en commentaire dans `src/app/api/auth/login/route.ts`.
+La connexion YouTube ne marchera pas encore : Google ne connaît que
+`localhost`. Deux petites choses :
+
+1. **Sur Vercel** → ton projet → Settings → Environment Variables → change
+   `GOOGLE_REDIRECT_URI` en :
+   ```
+   https://TON-ADRESSE.vercel.app/api/youtube/callback
+   ```
+   (remplace `TON-ADRESSE` par ta vraie adresse Vercel), puis **Redeploy**.
+
+2. **Sur console.cloud.google.com** → ton projet Twaylo OS → **Clients** →
+   `Twaylo OS` → dans **URI de redirection autorisés**, **+ Ajouter un URI** et
+   colle la même adresse :
+   ```
+   https://TON-ADRESSE.vercel.app/api/youtube/callback
+   ```
+   (garde aussi celle en `localhost`, pour continuer à tester chez toi.)
+
+Ensuite, sur ton OS déployé : onglet Revenus → Connecter YouTube Studio. C'est
+reparti.
+
+## Étape 5 (optionnel) — Chaque modif se redéploie toute seule
+
+Comme le projet est relié à GitHub, chaque fois qu'on pousse une amélioration,
+Vercel la met en ligne automatiquement en 1–2 minutes. Rien à refaire.
+
+---
+
+### Deux choses à savoir
+
+- **Le frein anti-force-brute compte en mémoire.** Sur Vercel, plusieurs
+  copies du serveur peuvent tourner en parallèle, chacune avec son propre
+  compteur — le frein est donc plus faible qu'en local. Tant que l'adresse
+  reste privée ça va ; si tu la rends publique un jour, on branchera un vrai
+  compteur partagé (Upstash, deux clics sur Vercel). C'est noté dans le code.
+- **Ton PC peut alors s'éteindre.** Une fois sur Vercel, tu n'as plus besoin de
+  `npm run dev` ni que ton PC reste allumé. L'OS vit tout seul.
