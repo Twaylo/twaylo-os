@@ -50,7 +50,16 @@ export function RevenusView() {
     <>
       <ViewHeader
         title="Revenus"
-        subtitle={connecte ? youtube?.periode : "YouTube Studio non connecté"}
+        // L'en-tête suit le même état que le corps : pendant le chargement, il
+        // disait « non connecté » alors que le corps disait « vérification » et
+        // la bannière « connecté » — trois messages contradictoires.
+        subtitle={
+          enCours
+            ? "Vérification de la connexion…"
+            : connecte
+              ? youtube?.periode
+              : "YouTube Studio non connecté"
+        }
         action={connecte ? <RevealButton large /> : undefined}
       />
 
@@ -107,9 +116,13 @@ export function RevenusView() {
               sous={
                 youtube.revenuEstime === null
                   ? "chaîne non monétisée"
-                  : youtube.rpm !== null
-                    ? `RPM ${youtube.rpm.toFixed(2).replace(".", ",")} €`
-                    : ""
+                  : // On tait le RPM tant que le revenu est masqué : sinon
+                    // revenu = RPM × vues/1000 le rend déductible.
+                    hidden
+                    ? "RPM masqué"
+                    : youtube.rpm !== null
+                      ? `RPM ${youtube.rpm.toFixed(2).replace(".", ",")} €`
+                      : ""
               }
               sensible
               hidden={hidden}

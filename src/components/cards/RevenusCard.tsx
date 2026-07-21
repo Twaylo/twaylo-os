@@ -63,7 +63,11 @@ export function RevenusCard() {
           <div className="mt-[10px] flex gap-2">
             <div className="stat-box flex-1 rounded-[10px] px-[9px] py-[7px]">
               <div className="text-[10px] text-white/45">RPM</div>
-              <div className="font-mono text-[13px] font-extrabold">
+              {/* Masqué avec le revenu : le RPM combiné aux vues le trahirait. */}
+              <div
+                className="font-mono text-[13px] font-extrabold transition-[filter] duration-200"
+                style={{ filter: revealed ? "none" : "blur(6px)" }}
+              >
                 {youtube!.rpm !== null ? `${youtube!.rpm.toFixed(2).replace(".", ",")} €` : "—"}
               </div>
             </div>

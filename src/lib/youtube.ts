@@ -40,8 +40,17 @@ function redirectUri(): string {
   );
 }
 
-/** L'URL de consentement Google. `access_type=offline` est ce qui donne le refresh token. */
-export function urlAutorisation(): string {
+/**
+ * L'URL de consentement Google. `access_type=offline` est ce qui donne le
+ * refresh token.
+ *
+ * Le `state` est une valeur imprévisible qu'on retrouvera au retour : sans lui,
+ * un tiers pouvait forger un lien de callback avec SON code d'autorisation et
+ * le faire cliquer à Twaylo (connecté, cookie SameSite=lax envoyé sur une
+ * navigation top-level), branchant ainsi SA chaîne YouTube à la place. Le
+ * callback refuse tout retour dont le `state` ne correspond pas.
+ */
+export function urlAutorisation(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: redirectUri(),
@@ -51,6 +60,7 @@ export function urlAutorisation(): string {
     // `consent` force Google à renvoyer un refresh token même si Twaylo a déjà
     // autorisé l'app une fois — sinon il n'arrive qu'à la toute première fois.
     prompt: "consent",
+    state,
   });
   return `${AUTH_URL}?${params.toString()}`;
 }
@@ -118,9 +128,20 @@ export type StatsYoutube = {
 };
 
 function jourParis(decalageJours = 0): string {
-  const d = new Date();
+  /*
+   * On part du jour civil de Paris, puis on décale en arithmétique de dates
+   * civiles ancrée à midi UTC.
+   *
+   * L'ancienne version décalait l'instant UTC de N×24 h avant de reformater en
+   * heure de Paris : autour d'un changement d'heure, `startDate` et `endDate`
+   * tombaient dans deux décalages différents, et la fenêtre « 30 jours » en
+   * couvrait 31 (ou 29). Ancré à midi, le calcul ne franchit jamais une
+   * bascule d'heure.
+   */
+  const aujParis = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+  const d = new Date(`${aujParis}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + decalageJours);
-  return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+  return d.toISOString().slice(0, 10);
 }
 
 /** Interroge un rapport Analytics et renvoie ses lignes. */
