@@ -373,10 +373,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   /** Relit tout le stockage local et remplit l'état. */
   const hydrateFromStorage = useCallback(() => {
     setCaptures(readJSON<Capture[]>(KEYS.captures, REAL_DATA.captures));
-    // Rien pour les tâches : le stockage local ne garde que les identifiants
-    // cochés, pas la liste. La remplir depuis le jeu d'exemple peignait de
-    // fausses tâches en attendant la base — on laisse la liste vide et on
-    // affiche « lecture en cours » plutôt qu'un contenu qui n'existe pas.
+    // La dernière liste connue, repeinte immédiatement : ce sont de VRAIES
+    // tâches, contrairement au jeu d'exemple d'avant. La base les corrige dès
+    // qu'elle répond, et `tachesPretes` empêche d'en tirer un instantané.
+    setTasks(readJSON<Task[]>(KEYS.tachesCache, []));
     // Clé datée : au changement de jour local, la clé n'existe pas encore et
     // les habitudes repartent vierges. Aucun code de remise à zéro.
     setHabits(readJSON<Habit[]>("twaylo-habitudes-def", []));
@@ -536,7 +536,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setTachesPretes(true);
       if (!distant?.connecte) return;
 
-      if (distant.taches) setTasks(distant.taches);
+      if (distant.taches) {
+        setTasks(distant.taches);
+        // De quoi repeindre l'écran instantanément au prochain démarrage,
+        // pendant que la fonction serveur sort de veille.
+        writeJSON(KEYS.tachesCache, distant.taches);
+      }
       if (distant.habitudes && !touchePendantChargement.current.habitudes) {
         setHabits(distant.habitudes as Habit[]);
         writeJSON("twaylo-habitudes-def", distant.habitudes);
@@ -619,7 +624,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
         .filter((t) => t.done)
         .map((t) => (t as { id?: string }).id ?? t.text),
     );
-  }, [tasks, demoMode, hydrate]);
+    // Le cache d'affichage suit les modifications locales, sinon il resterait
+    // figé à la dernière lecture et repeindrait une liste périmée au démarrage
+    // suivant. On attend que la base ait répondu pour ne pas mémoriser un état
+    // d'attente, et on écarte les tâches non encore confirmées.
+    if (!tachesPretes) return;
+    writeJSON(
+      KEYS.tachesCache,
+      tasks.filter((t) => !((t as { id?: string }).id ?? "").startsWith("tmp-")),
+    );
+  }, [tasks, demoMode, hydrate, tachesPretes]);
 
   /*
    * Le jour est relu à chaque écriture, jamais figé au montage.

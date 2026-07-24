@@ -21,6 +21,16 @@ export const KEYS = {
   demo: `${PREFIX}-demo-mode`,
   captures: `${PREFIX}-captures`,
   tasks: `${PREFIX}-tasks-done`,
+  /**
+   * La dernière liste de tâches renvoyée par la base.
+   *
+   * Sans elle, l'écran restait vide le temps que la fonction serveur sorte de
+   * veille — plusieurs secondes au premier chargement de la journée. On repeint
+   * donc la dernière liste connue tout de suite, et la base la corrige dès
+   * qu'elle répond. Rien n'est enregistré à partir de ce cache : il ne sert
+   * qu'à l'affichage (voir `tachesPretes`).
+   */
+  tachesCache: `${PREFIX}-taches-cache`,
 } as const;
 
 /**
