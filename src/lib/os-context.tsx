@@ -399,6 +399,45 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setTodoCloturee(readJSON<string>("twaylo-todo-cloturee", ""));
   }, []);
 
+  /**
+   * Repeint le tableau de bord depuis le dernier état connu de la base.
+   *
+   * Sans ça, chaque carte attendait sa propre réponse serveur : elles se
+   * remplissaient l'une après l'autre, changeaient de hauteur, et la grille se
+   * réorganisait à chaque fois — les cartes « sautaient » pendant deux ou trois
+   * secondes. Ici tout arrive d'un bloc, avant la première peinture.
+   *
+   * Deux régimes, parce que toutes les données n'ont pas le même rapport au
+   * temps. Le pipeline, les contacts, les deals ou la définition des habitudes
+   * ne dépendent pas du jour : on les repeint toujours. Les habitudes cochées,
+   * les repas, la chose du jour et la série décrivent UNE journée : les
+   * ressortir un nouveau matin afficherait la veille comme si c'était
+   * aujourd'hui, ce qui serait pire qu'une carte vide.
+   */
+  const appliquerCache = useCallback(() => {
+    const cache = readJSON<{
+      jour: string;
+      etat: Awaited<ReturnType<typeof chargerEtat>>;
+    } | null>(KEYS.etatCache, null);
+    const d = cache?.etat;
+    if (!d) return;
+
+    // Hors du temps : valable quel que soit le jour.
+    if (d.habitudes) setHabits(d.habitudes as Habit[]);
+    if (Array.isArray(d.blocages)) setBlocagesBruts(d.blocages);
+    if (d.pipeline) setPipeline(d.pipeline as PipelineColumn[]);
+    if (d.contacts) setContacts(d.contacts as (Contact & { id: string })[]);
+    if (d.deals) setDeals(d.deals as DealVue[]);
+    if (d.dealStats) setDealStats(d.dealStats);
+
+    // Propre à la journée : seulement si le cache parle bien d'aujourd'hui.
+    if (cache?.jour !== localDateKey()) return;
+    if (d.faites) setFaitesDuJour(d.faites as FaitesDuJour);
+    if (typeof d.serie === "number") setSerie(d.serie);
+    if (d.uneChose) setUneChose(d.uneChose);
+    if (d.nutrition?.repas) setRepas(d.nutrition.repas as Repas[]);
+  }, []);
+
   /*
    * Lecture initiale, une seule fois — AVANT le premier affichage.
    *
@@ -424,11 +463,15 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setTasks(DEMO_DATA.tasks);
     } else {
       hydrateFromStorage();
+      // Après l'hydratation locale : le cache d'état ne touche pas aux tâches,
+      // que `hydrateFromStorage` vient de repeindre depuis un cache plus frais
+      // (il suit les modifications faites depuis la dernière lecture).
+      appliquerCache();
     }
 
     hydrated.current = true;
     setHydrate(true);
-  }, [hydrateFromStorage]);
+  }, [hydrateFromStorage, appliquerCache]);
 
   useEffect(() => surChangementSync(setSync), []);
 
@@ -558,6 +601,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
        */
       setTachesPretes(true);
       if (!distant?.connecte) return;
+
+      // Tout l'état est mémorisé, pour repeindre le tableau de bord entier au
+      // prochain démarrage plutôt que carte après carte.
+      writeJSON(KEYS.etatCache, { jour, etat: distant });
 
       if (distant.taches) {
         setTasks(distant.taches);

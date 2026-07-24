@@ -31,6 +31,16 @@ export const KEYS = {
    * qu'à l'affichage (voir `tachesPretes`).
    */
   tachesCache: `${PREFIX}-taches-cache`,
+  /**
+   * Le dernier état complet renvoyé par la base, avec le jour qu'il décrit.
+   *
+   * Les cartes se remplissaient une par une à mesure que le serveur répondait,
+   * et comme chacune changeait alors de hauteur, la grille se réorganisait
+   * sous les yeux. On repeint donc tout le tableau de bord d'un coup, dès le
+   * premier affichage. Le jour est stocké avec : les habitudes cochées et les
+   * repas d'hier n'ont rien à faire sur la journée d'aujourd'hui.
+   */
+  etatCache: `${PREFIX}-etat-cache`,
 } as const;
 
 /**

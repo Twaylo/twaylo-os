@@ -32,6 +32,15 @@ export default function RootLayout({
     <html
       lang="fr"
       className={`${nunito.variable} ${jetbrains.variable} h-full antialiased`}
+      /*
+       * Le fond en style en ligne, et pas seulement dans la feuille de style.
+       *
+       * Il n'était posé que sur `body` : le temps que le navigateur récupère et
+       * lise le CSS, il peignait sa toile par défaut — un éclair blanc avant
+       * l'OS. Écrit ici, il fait partie du document lui-même et s'applique dès
+       * la première ligne, sans attendre aucun fichier.
+       */
+      style={{ background: "#07121d" }}
     >
       <body className="min-h-full">{children}</body>
     </html>
