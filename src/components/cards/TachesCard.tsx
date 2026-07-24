@@ -86,7 +86,12 @@ export function TachesCard() {
     deposerTache,
     passerJourSuivant,
     todoCloturee,
+    tachesPretes,
+    demoMode,
   } = useOs();
+
+  // En démo, la liste est fournie sans passer par la base : rien à attendre.
+  const enChargement = !tachesPretes && !demoMode;
 
   const [nouvelle, setNouvelle] = useState<Record<string, string>>({});
   /** L'identifiant de la tâche en cours de renommage, s'il y en a une. */
@@ -650,7 +655,13 @@ export function TachesCard() {
         </div>
       </div>
 
-      {tasks.length === 0 && (
+      {enChargement && tasks.length === 0 && (
+        <div className="py-6 text-center text-[12px] font-bold text-white/25">
+          Lecture des tâches…
+        </div>
+      )}
+
+      {!enChargement && tasks.length === 0 && (
         <EmptyState hint="Un focus principal, deux ou trois secondaires.">
           Aucune tâche
         </EmptyState>

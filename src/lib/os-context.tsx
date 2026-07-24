@@ -150,6 +150,8 @@ type OsState = {
   /** Renomme une vidéo sans changer son étape. */
   renommerVideo: (id: string, titre: string) => void;
 
+  /** Faux tant que la base n'a pas répondu : la liste affichée n'est qu'une attente. */
+  tachesPretes: boolean;
   ajouterTache: (titre: string, niveau?: Niveau) => Promise<void>;
   /** Fait passer une tâche du focus principal aux annexes, ou l'inverse. */
   changerNiveauTache: (id: string, niveau: Niveau) => void;
@@ -227,21 +229,6 @@ export type DealVue = {
 
 const OsContext = createContext<OsState | null>(null);
 
-/**
- * Les états cochés sont stockés par libellé, pas par index : réordonner ou
- * insérer une ligne ne doit pas décaler ce qui est fait.
- * C'est aussi la forme de daily_logs.habitudes côté Supabase.
- */
-function applyDone<T extends { done: boolean }>(
-  items: T[],
-  label: (item: T) => string,
-  doneLabels: string[],
-): T[] {
-  const done = new Set(doneLabels);
-  return items.map((item) => ({ ...item, done: done.has(label(item)) }));
-}
-
-
 export function OsProvider({ children }: { children: ReactNode }) {
   /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
   const demoModeRef = useRef(false);
@@ -280,7 +267,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   // Les listes cochables sont éditables, donc copiées dans l'état local.
   const [captures, setCaptures] = useState<Capture[]>(REAL_DATA.captures);
-  const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
+  /*
+   * On démarre sur une liste VIDE, jamais sur les tâches d'exemple.
+   *
+   * `REAL_DATA.tasks` servait d'état initial : au lancement, l'écran affichait
+   * donc une seconde de fausses tâches avant que la base ne réponde. Elles
+   * n'appartenaient à personne, et l'instantané du jour pouvait même les écrire
+   * dans l'historique avant l'arrivée des vraies. Ce jeu d'exemple n'a qu'un
+   * usage légitime : amorcer la base d'un tout nouveau compte, côté serveur
+   * (voir `lireTaches` dans db.ts).
+   */
+  const [tasks, setTasks] = useState<Task[]>([]);
+  /** Faux tant que la base n'a pas répondu — évite d'annoncer « aucune tâche ». */
+  const [tachesPretes, setTachesPretes] = useState(false);
   // Jour où Twaylo a clôturé sa todo à la main. Tant qu'on reste ce jour-là,
   // l'instantané des tâches ne réécrit pas la liste vidée par-dessus l'archive.
   const [todoCloturee, setTodoCloturee] = useState("");
@@ -374,15 +373,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   /** Relit tout le stockage local et remplit l'état. */
   const hydrateFromStorage = useCallback(() => {
     setCaptures(readJSON<Capture[]>(KEYS.captures, REAL_DATA.captures));
-    // Les tâches d'amorçage n'ont pas encore d'identifiant : le libellé sert
-    // de repli tant que la base n'a pas répondu.
-    setTasks(
-      applyDone(
-        REAL_DATA.tasks,
-        (t) => (t as { id?: string }).id ?? t.text,
-        readJSON<string[]>(KEYS.tasks, []),
-      ),
-    );
+    // Rien pour les tâches : le stockage local ne garde que les identifiants
+    // cochés, pas la liste. La remplir depuis le jeu d'exemple peignait de
+    // fausses tâches en attendant la base — on laisse la liste vide et on
+    // affiche « lecture en cours » plutôt qu'un contenu qui n'existe pas.
     // Clé datée : au changement de jour local, la clé n'existe pas encore et
     // les habitudes repartent vierges. Aucun code de remise à zéro.
     setHabits(readJSON<Habit[]>("twaylo-habitudes-def", []));
@@ -531,7 +525,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
     let annule = false;
     void chargerEtat(jour).then((distant) => {
-      if (annule || !distant?.connecte) return;
+      if (annule) return;
+      /*
+       * La tentative de lecture est finie, quel qu'en soit le résultat.
+       *
+       * Le drapeau est posé AVANT le test de connexion : hors ligne ou base non
+       * configurée, la liste est légitimement vide et l'écran doit le dire,
+       * plutôt que d'afficher « lecture en cours » pour toujours.
+       */
+      setTachesPretes(true);
+      if (!distant?.connecte) return;
 
       if (distant.taches) setTasks(distant.taches);
       if (distant.habitudes && !touchePendantChargement.current.habitudes) {
@@ -576,7 +579,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (distant.journal) {
         setJournalText((local) => (local.trim() ? local : distant.journal ?? ""));
       }
-    });
+    })
+      // Panne réseau franche : on lève quand même le drapeau, sinon la carte
+      // resterait bloquée sur « lecture des tâches » indéfiniment.
+      .catch((err) => {
+        console.error("[état] lecture impossible :", err);
+        if (!annule) setTachesPretes(true);
+      });
 
     return () => {
       annule = true;
@@ -660,6 +669,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!hydrate || demoMode) return;
+    // Tant que la base n'a pas répondu, la liste affichée n'est qu'un état
+    // d'attente : l'écrire figerait un instantané vide (ou, avant, les tâches
+    // d'exemple) par-dessus la vraie journée dans l'historique.
+    if (!tachesPretes) return;
     // Journée clôturée à la main : l'archive du jour est déjà figée. Réécrire
     // maintenant enverrait la liste vidée par-dessus et effacerait l'historique.
     // Le lendemain (nouvelle clé de jour), la garde tombe et le suivi reprend.
@@ -679,7 +692,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
         })),
       },
     });
-  }, [tasks, demoMode, hydrate, todoCloturee]);
+  }, [tasks, demoMode, hydrate, todoCloturee, tachesPretes]);
 
   /*
    * Les setters exposés passent par ici plutôt que d'être transmis bruts.
@@ -1532,6 +1545,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterVideo,
       supprimerVideo,
       renommerVideo,
+      tachesPretes,
       ajouterTache,
       supprimerTache: supprimerTacheLocale,
       renommerTache,
@@ -1592,6 +1606,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterVideo,
       supprimerVideo,
       renommerVideo,
+      tachesPretes,
       ajouterTache,
       supprimerTacheLocale,
       renommerTache,
