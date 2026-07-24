@@ -25,14 +25,19 @@ Sur la page d'import, section **Environment Variables**. Prends chaque valeur
 depuis ton fichier `.env.local` et recopie-la. **Ne les colle nulle part
 ailleurs qu'ici.**
 
+La liste complète, dans l'ordre. Astuce : Vercel accepte un **copier-coller de
+plusieurs lignes d'un coup** dans le champ « Key » — tu peux coller tout le
+contenu de `.env.local` et il découpe tout seul.
+
 **Indispensables** (sans elles, rien ne marche) :
 
 | Nom | Où la prendre |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.local` |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` |
 | `AUTH_SECRET` | `.env.local` |
-| `DASHBOARD_PASSWORD` | **choisis-en un nouveau, pas `twaylo-change-moi`** |
+| `DASHBOARD_PASSWORD` | **tape-en un NOUVEAU ici** — l'OS devient public, c'est la seule serrure |
 | `USER_ID` | `twaylo` |
 | `NEXT_PUBLIC_USER_TIMEZONE` | `Europe/Paris` |
 
@@ -44,8 +49,16 @@ ailleurs qu'ici.**
 | `GOOGLE_CLIENT_ID` | `.env.local` |
 | `GOOGLE_CLIENT_SECRET` | `.env.local` |
 | `GOOGLE_ICAL_URL` | `.env.local` |
-| `GOOGLE_REDIRECT_URI` | **⚠️ à changer** — voir étape 4 |
+| `GOOGLE_REDIRECT_URI` | **n'existe pas en local — à créer**, voir étape 4 |
 | `API_SECRET` | `.env.local` |
+| `CRON_SECRET` | `.env.local` |
+
+**Seulement si tu utilises le bot Telegram** :
+
+| Nom | Où la prendre |
+|---|---|
+| `TELEGRAM_WEBHOOK_SECRET` | `.env.local` |
+| `TELEGRAM_USER_ID` | `.env.local` |
 
 ## Étape 3 — Déployer
 
