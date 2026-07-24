@@ -158,6 +158,21 @@ type OsState = {
   renommerTache: (id: string, titre: string) => void;
   /** Échange deux tâches de place, par leurs index dans `tasks`. */
   echangerTaches: (a: number, b: number) => void;
+  /**
+   * Fin d'un glisser-déposer : applique le nouvel ordre (liste d'identifiants)
+   * et, si la tâche déplacée a changé de niveau, son nouveau niveau.
+   */
+  deposerTache: (
+    ordreIds: string[],
+    changementNiveau: { id: string; niveau: Niveau } | null,
+  ) => void;
+  /**
+   * Clôture la todo du jour : fige l'instantané dans l'historique, puis vide la
+   * liste pour repartir à neuf le lendemain.
+   */
+  passerJourSuivant: () => Promise<void>;
+  /** Date (clé locale) où la todo a été clôturée à la main — sinon "". */
+  todoCloturee: string;
 
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
@@ -170,6 +185,8 @@ type OsState = {
   deplacerDeal: (id: string, etape: string) => void;
   supprimerDeal: (id: string) => void;
   majMontantDeal: (id: string, montant: number | null) => void;
+  /** Fixe (ou efface, avec null) l'échéance d'un deal — format AAAA-MM-JJ. */
+  majEcheanceDeal: (id: string, echeance: string | null) => void;
 };
 
 /** Les statistiques YouTube, telles que le navigateur les reçoit. */
@@ -204,6 +221,8 @@ export type DealVue = {
   etape: string;
   montant: number | null;
   note: string | null;
+  /** Échéance au format AAAA-MM-JJ, nulle tant qu'elle n'est pas fixée. */
+  echeance: string | null;
 };
 
 const OsContext = createContext<OsState | null>(null);
@@ -262,6 +281,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
   // Les listes cochables sont éditables, donc copiées dans l'état local.
   const [captures, setCaptures] = useState<Capture[]>(REAL_DATA.captures);
   const [tasks, setTasks] = useState<Task[]>(REAL_DATA.tasks);
+  // Jour où Twaylo a clôturé sa todo à la main. Tant qu'on reste ce jour-là,
+  // l'instantané des tâches ne réécrit pas la liste vidée par-dessus l'archive.
+  const [todoCloturee, setTodoCloturee] = useState("");
   const [habits, setHabits] = useState<Habit[]>([]);
   const [faitesDuJour, setFaitesDuJour] = useState<FaitesDuJour>({});
   const [blocagesBruts, setBlocagesBruts] = useState<BlocageStocke[]>([]);
@@ -301,6 +323,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   tasksRef.current = tasks;
   habitsRef.current = habits;
   blocagesRef.current = blocagesBruts;
+  const objectifsRef = useRef<ObjectifVue[] | null>(null);
+  objectifsRef.current = objectifs;
+  const dealsRef = useRef<DealVue[] | null>(null);
+  dealsRef.current = deals;
 
   // Le jour local, figé au montage : sert de clé pour la base comme pour le
   // cache navigateur. Les deux doivent parler du même jour.
@@ -361,6 +387,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setJournalText(readJSON<string>(dailyKey("journal"), ""));
     setUneChose(readJSON<UneChose>(dailyKey("unechose"), { texte: "", fait: false }));
     setRepas(readJSON<Repas[]>(dailyKey("nutrition"), []));
+    setTodoCloturee(readJSON<string>("twaylo-todo-cloturee", ""));
   }, []);
 
   // Lecture initiale, une seule fois.
@@ -630,6 +657,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!hydrate || demoMode) return;
+    // Journée clôturée à la main : l'archive du jour est déjà figée. Réécrire
+    // maintenant enverrait la liste vidée par-dessus et effacerait l'historique.
+    // Le lendemain (nouvelle clé de jour), la garde tombe et le suivi reprend.
+    if (todoCloturee === localDateKey()) return;
     const principales = tasks.filter((t) => (t.niveau ?? "secondaire") === "principal");
     synchroniserJour({
       jour: localDateKey(),
@@ -645,7 +676,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
         })),
       },
     });
-  }, [tasks, demoMode, hydrate]);
+  }, [tasks, demoMode, hydrate, todoCloturee]);
 
   /*
    * Les setters exposés passent par ici plutôt que d'être transmis bruts.
@@ -905,6 +936,52 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
   }, []);
 
+  /**
+   * Fin d'un glisser-déposer : on applique en une fois le nouvel ordre et, si la
+   * tâche a changé de niveau en cours de route, son nouveau niveau.
+   *
+   * Tout se joue dans un seul `setTasks` pour éviter deux rendus qui se
+   * marchent dessus, puis on persiste l'ordre et le niveau séparément — ce sont
+   * deux colonnes distinctes en base. Une tâche sans identifiant (amorçage pas
+   * encore confirmé par le serveur) n'est pas dans `ordreIds` : on la remet à la
+   * fin plutôt que de la perdre.
+   */
+  const deposerTache = useCallback(
+    (ordreIds: string[], changementNiveau: { id: string; niveau: Niveau } | null) => {
+      setTasks((prev) => {
+        const parId = new Map(prev.map((t) => [(t as { id?: string }).id, t]));
+        const ordonnees = ordreIds
+          .map((id) => parId.get(id))
+          .filter((t): t is Task => Boolean(t))
+          .map((t) =>
+            changementNiveau && (t as { id?: string }).id === changementNiveau.id
+              ? { ...t, niveau: changementNiveau.niveau }
+              : t,
+          );
+        const restantes = prev.filter((t) => {
+          const id = (t as { id?: string }).id;
+          return !id || !ordreIds.includes(id);
+        });
+        return [...ordonnees, ...restantes];
+      });
+
+      if (demoModeRef.current) return;
+      void fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ordre: ordreIds }),
+      }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
+      if (changementNiveau) {
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(changementNiveau),
+        }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
+      }
+    },
+    [],
+  );
+
   const ajouterObjectif = useCallback(async (libelle: string, portee: string) => {
     const propre = libelle.trim();
     if (!propre || demoModeRef.current) return;
@@ -932,17 +1009,24 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const majObjectifLocal = useCallback(
     (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => {
-      let apres: ObjectifVue | undefined;
-      setObjectifs((prev) => {
-        if (!prev) return prev;
-        return prev.map((o) => {
-          if (o.id !== id) return o;
-          apres = { ...o, ...patch };
-          return apres;
-        });
-      });
+      /*
+       * L'état d'après se calcule ICI, avant l'updater — et non dedans.
+       *
+       * React n'exécute pas la fonction passée à `setObjectifs` sur-le-champ :
+       * il la garde pour la prochaine passe de rendu. L'ancienne version y
+       * affectait `apres`, puis testait `if (!apres) return` à la ligne
+       * suivante — sur une variable encore vide. L'écriture en base ne partait
+       * donc pas, et la modification disparaissait au rechargement. React
+       * évalue souvent l'updater en avance par optimisation, ce qui masquait le
+       * défaut la plupart du temps : il ne se manifestait que lorsqu'une autre
+       * mise à jour était déjà en file (clics rapprochés), en silence.
+       */
+      const avant = (objectifsRef.current ?? []).find((o) => o.id === id);
+      if (!avant) return;
+      const apres = { ...avant, ...patch };
+      setObjectifs((prev) => (prev ? prev.map((o) => (o.id === id ? apres : o)) : prev));
 
-      if (demoModeRef.current || !apres) return;
+      if (demoModeRef.current) return;
       const cible = { pct: apres.pct, valeur: apres.valeur, etapes: apres.etapes };
       /*
        * On réapplique ce que le serveur dit avoir écrit.
@@ -1162,6 +1246,64 @@ export function OsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * « Passer au jour suivant » : on archive la todo du jour dans l'historique,
+   * puis on efface les tâches faites en reportant au lendemain celles qui
+   * restent — Twaylo n'a pas à retaper ce qu'il n'a pas eu le temps de finir.
+   *
+   * L'ordre compte. L'instantané complet (faites comprises) part en premier, en
+   * direct et attendu, sur l'état d'AVANT le nettoyage — le passer par le
+   * débounce d'une seconde enverrait la liste déjà purgée et fausserait
+   * l'archive. Ensuite seulement on marque la journée close (pour que l'effet
+   * d'instantané ne réécrive pas la liste réduite par-dessus l'archive) et on
+   * efface les cochées, à l'écran puis en base.
+   */
+  const passerJourSuivant = useCallback(async () => {
+    if (demoModeRef.current) return;
+    const jour = localDateKey();
+    const actuelles = tasksRef.current;
+
+    // 1. Figer l'archive du jour, seulement s'il y avait quelque chose à garder.
+    if (actuelles.length > 0) {
+      const principales = actuelles.filter((t) => (t.niveau ?? "secondaire") === "principal");
+      try {
+        await fetch("/api/daily", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jour,
+            taches: {
+              total: actuelles.length,
+              faites: actuelles.filter((t) => t.done).length,
+              principalTotal: principales.length,
+              principalFaites: principales.filter((t) => t.done).length,
+              liste: actuelles.map((t) => ({
+                titre: t.text,
+                niveau: t.niveau ?? "secondaire",
+                fait: t.done,
+              })),
+            },
+          }),
+        });
+      } catch (err) {
+        console.error("[todo] archive du jour impossible :", err);
+      }
+    }
+
+    // 2. Marquer la journée close, ici et dans le stockage local.
+    setTodoCloturee(jour);
+    writeJSON("twaylo-todo-cloturee", jour);
+
+    // 3. Retirer les tâches faites — l'écran d'abord, la base ensuite. Les
+    //    inachevées restent et deviennent la todo de demain.
+    setTasks((prev) => prev.filter((t) => !t.done));
+    try {
+      await fetch("/api/tasks?faites=1", { method: "DELETE" });
+    } catch (err) {
+      console.error("[todo] nettoyage des tâches faites impossible :", err);
+    }
+  }, []);
+
   const ajouterContact = useCallback(async (nom: string, type = "collab") => {
     const propre = nom.trim();
     if (!propre || demoModeRef.current) return;
@@ -1261,6 +1403,35 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[deals] montant impossible :", err));
   }, []);
 
+  /** Fixe (ou efface, avec null) la date d'échéance d'un deal. */
+  const majEcheanceDeal = useCallback((id: string, echeance: string | null) => {
+    // La valeur d'avant, pour pouvoir la remettre si le serveur refuse.
+    const avant = (dealsRef.current ?? []).find((d) => d.id === id)?.echeance ?? null;
+    setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, echeance } : d)));
+    if (demoModeRef.current) return;
+    void fetch("/api/deals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, echeance }),
+    })
+      .then((r) => {
+        if (r.ok) return;
+        /*
+         * Le plus probable : la colonne `echeance` n'existe pas encore, faute
+         * d'avoir appliqué la migration 0003. On remet la date d'avant plutôt
+         * que de laisser l'écran afficher une valeur que la base n'a pas
+         * gardée — sinon elle disparaît au rechargement suivant, sans un mot.
+         */
+        setDeals((prev) =>
+          (prev ?? []).map((d) => (d.id === id ? { ...d, echeance: avant } : d)),
+        );
+        console.error(
+          "[deals] échéance refusée par le serveur — la migration 0003 (colonne `echeance`) est-elle appliquée ?",
+        );
+      })
+      .catch((err) => console.error("[deals] échéance impossible :", err));
+  }, []);
+
   const value = useMemo<OsState>(
     () => ({
       activeTab,
@@ -1310,6 +1481,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       supprimerTache: supprimerTacheLocale,
       renommerTache,
       echangerTaches,
+      deposerTache,
+      passerJourSuivant,
+      todoCloturee,
       changerNiveauTache,
       ajouterContact,
       supprimerContact: supprimerContactLocal,
@@ -1320,6 +1494,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       deplacerDeal,
       supprimerDeal: supprimerDealLocal,
       majMontantDeal,
+      majEcheanceDeal,
     }),
     [
       activeTab,
@@ -1366,6 +1541,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       supprimerTacheLocale,
       renommerTache,
       echangerTaches,
+      deposerTache,
+      passerJourSuivant,
+      todoCloturee,
       changerNiveauTache,
       ajouterContact,
       supprimerContactLocal,
@@ -1376,6 +1554,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       deplacerDeal,
       supprimerDealLocal,
       majMontantDeal,
+      majEcheanceDeal,
     ],
   );
 

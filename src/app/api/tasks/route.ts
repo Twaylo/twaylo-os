@@ -8,6 +8,8 @@ import {
   ecrireOrdreTaches,
   renommerTache,
   supprimerTache,
+  supprimerTachesFaites,
+  supprimerToutesTaches,
   versTaches,
 } from "@/lib/db";
 
@@ -113,9 +115,22 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ persiste: false }, { status: 200 });
   }
 
-  const id = new URL(req.url).searchParams.get("id");
+  const params = new URL(req.url).searchParams;
+  const id = params.get("id");
+
+  // Sans `id`, on efface en masse — le « passer au jour suivant ».
+  //   ?faites=1 → seulement les tâches cochées (on reporte le reste au lendemain)
+  //   sinon     → toute la todo
   if (!id) {
-    return NextResponse.json({ error: "Paramètre `id` manquant." }, { status: 400 });
+    const seulementFaites = params.get("faites") === "1";
+    try {
+      if (seulementFaites) await supprimerTachesFaites();
+      else await supprimerToutesTaches();
+      return NextResponse.json({ persiste: true, vide: true });
+    } catch (err) {
+      console.error("[tasks] vidage impossible :", err);
+      return NextResponse.json({ error: "Vidage impossible." }, { status: 500 });
+    }
   }
 
   try {

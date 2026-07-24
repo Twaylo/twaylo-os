@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
-import type { BlocageStocke, Contact, Habit, Niveau, Task, UneChose } from "./types";
+import type { BlocageStocke, Contact, Niveau, Task, UneChose } from "./types";
 
 /**
  * L'accès aux données, côté serveur uniquement.
@@ -221,6 +221,41 @@ export async function supprimerTache(id: string): Promise<void> {
     .delete()
     .eq("id", id)
     .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+/**
+ * Vide toute la todo de Twaylo — le « passer au jour suivant ».
+ *
+ * L'instantané du jour est déjà figé dans daily_logs avant l'appel : ici on ne
+ * fait qu'effacer la table de travail pour repartir sur une liste vierge. Le
+ * drapeau « tâches semées » reste posé, donc les cinq tâches d'exemple ne
+ * reviennent pas.
+ */
+export async function supprimerToutesTaches(): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .delete()
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
+/**
+ * Efface seulement les tâches cochées — le « passer au jour suivant » qui
+ * reporte au lendemain tout ce qui n'a pas été fait.
+ *
+ * L'instantané complet du jour (faites comprises) est déjà rangé dans
+ * daily_logs avant l'appel : ici on ne retire de la table de travail que ce qui
+ * est terminé, et les tâches inachevées restent en place pour demain.
+ */
+export async function supprimerTachesFaites(): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .delete()
+    .eq("user_id", USER_ID)
+    .eq("statut", "faite");
 
   if (error) throw error;
 }
@@ -596,10 +631,28 @@ export type DealDB = {
   etape: string;
   montant: number | null;
   note: string | null;
+  /** Date d'échéance (AAAA-MM-JJ), nulle tant qu'elle n'est pas fixée. */
+  echeance: string | null;
 };
 
-const COLONNES_DEAL = "id, nom, etape, montant, note";
+const COLONNES_DEAL = "id, nom, etape, montant, note, echeance";
+/** Le jeu d'avant la migration 0003 — voir `sansEcheance` plus bas. */
+const COLONNES_DEAL_ANCIEN = "id, nom, etape, montant, note";
 export const ETAPES_DEAL = ["prospect", "negociation", "signe", "livre"] as const;
+
+/**
+ * La colonne `echeance` manque-t-elle encore ?
+ *
+ * La migration 0003 s'applique à la main dans Supabase. Tant qu'elle n'est pas
+ * passée, demander la colonne fait échouer toute la lecture et la page Sponsors
+ * devient blanche. Plutôt que d'imposer l'ordre des opérations, on retombe sur
+ * l'ancien jeu de colonnes : les deals s'affichent, sans date, et la
+ * fonctionnalité s'allume d'elle-même une fois la migration lancée.
+ */
+function sansEcheance(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /echeance/i.test(error.message ?? "");
+}
 
 export async function lireDeals(): Promise<DealDB[]> {
   const { data, error } = await supabaseAdmin()
@@ -608,24 +661,41 @@ export async function lireDeals(): Promise<DealDB[]> {
     .eq("user_id", USER_ID)
     .order("created_at", { ascending: true });
 
-  if (error) throw error;
-  return data as DealDB[];
+  if (!error) return data as DealDB[];
+  if (!sansEcheance(error)) throw error;
+
+  const repli = await supabaseAdmin()
+    .from("deals")
+    .select(COLONNES_DEAL_ANCIEN)
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+  if (repli.error) throw repli.error;
+  return (repli.data as Omit<DealDB, "echeance">[]).map((d) => ({ ...d, echeance: null }));
 }
 
 export async function creerDeal(nom: string, etape = "prospect"): Promise<DealDB> {
+  // On ne demande QUE les anciennes colonnes : un deal naît sans échéance, et
+  // réessayer l'insertion en cas de colonne manquante risquerait d'en créer
+  // deux (l'insertion peut avoir abouti même si la projection a échoué).
   const { data, error } = await supabaseAdmin()
     .from("deals")
     .insert({ user_id: USER_ID, nom, etape })
-    .select(COLONNES_DEAL)
+    .select(COLONNES_DEAL_ANCIEN)
     .single();
 
   if (error) throw error;
-  return data as DealDB;
+  return { ...(data as Omit<DealDB, "echeance">), echeance: null };
 }
 
 export async function majDeal(
   id: string,
-  patch: { etape?: string; montant?: number | null; note?: string | null; nom?: string },
+  patch: {
+    etape?: string;
+    montant?: number | null;
+    note?: string | null;
+    nom?: string;
+    echeance?: string | null;
+  },
 ): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("deals")

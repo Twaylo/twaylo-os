@@ -26,13 +26,17 @@ export function ObjectifsCard() {
         valeur: o.value,
         pct: o.pct,
       }))
-    : (objectifs ?? []).map((o) => ({
-        id: o.id,
-        portee: o.portee,
-        objectif: o.objectif,
-        valeur: o.valeur,
-        pct: o.pct,
-      }));
+    : // Les archivés (atteints ou abandonnés) restent dans l'onglet Objectifs :
+      // l'accueil ne montre que ce qui est encore à viser.
+      (objectifs ?? [])
+        .filter((o) => o.statut === "en_cours")
+        .map((o) => ({
+          id: o.id,
+          portee: o.portee,
+          objectif: o.objectif,
+          valeur: o.valeur,
+          pct: o.pct,
+        }));
 
   // L'ordre du temps : la semaine avant l'année, jamais l'ordre de création.
   const ordonnes = [...liste].sort(

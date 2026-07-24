@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useOs } from "@/lib/os-context";
-import { Amount, EmptyState, FormatBadge, RevealButton } from "@/components/ui";
+import { Amount, EmptyState, RevealButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 

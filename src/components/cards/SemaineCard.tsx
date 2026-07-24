@@ -6,7 +6,6 @@ import { useCurrentWeek } from "@/lib/use-week";
 import { Eyebrow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
-const JOURS = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
 const JOURS_LONGS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 /**

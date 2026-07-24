@@ -31,11 +31,17 @@ export async function POST(req: Request) {
   }
 }
 
-/** Déplace un deal, fixe son montant, ou change sa note. */
+/** Déplace un deal, fixe son montant ou son échéance, ou change sa note. */
 export async function PATCH(req: Request) {
   if (!isSupabaseConfigured()) return NextResponse.json({ persiste: false });
 
-  let corps: { id?: unknown; etape?: unknown; montant?: unknown; note?: unknown };
+  let corps: {
+    id?: unknown;
+    etape?: unknown;
+    montant?: unknown;
+    note?: unknown;
+    echeance?: unknown;
+  };
   try {
     corps = await req.json();
   } catch {
@@ -46,7 +52,12 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "`id` invalide." }, { status: 400 });
   }
 
-  const patch: { etape?: string; montant?: number | null; note?: string | null } = {};
+  const patch: {
+    etape?: string;
+    montant?: number | null;
+    note?: string | null;
+    echeance?: string | null;
+  } = {};
 
   if (
     typeof corps.etape === "string" &&
@@ -59,6 +70,19 @@ export async function PATCH(req: Request) {
   if (corps.montant === null) patch.montant = null;
   else if (typeof corps.montant === "number" && Number.isFinite(corps.montant)) {
     patch.montant = corps.montant;
+  }
+
+  // Échéance : effacer (null) ou une date nue AAAA-MM-JJ. On refuse tout autre
+  // format plutôt que de laisser Postgres interpréter une saisie ambiguë.
+  if (corps.echeance === null) patch.echeance = null;
+  else if (typeof corps.echeance === "string") {
+    const d = corps.echeance.trim();
+    if (d === "") patch.echeance = null;
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`))) {
+      patch.echeance = d;
+    } else {
+      return NextResponse.json({ error: "`echeance` invalide." }, { status: 400 });
+    }
   }
 
   if (typeof corps.note === "string") patch.note = corps.note.trim() || null;

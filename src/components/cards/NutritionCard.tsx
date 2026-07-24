@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   OBJECTIFS_DEFAUT,
   estimerRepas,
@@ -9,7 +9,6 @@ import {
   totaux,
 } from "@/lib/nutrition";
 import { useOs } from "@/lib/os-context";
-import type { Repas } from "@/lib/types";
 import { Eyebrow, MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 

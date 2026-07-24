@@ -22,34 +22,43 @@ export function AccueilView() {
 
   const grille = useMasonry<HTMLDivElement>();
 
+  /*
+   * Trois zones empilées, et une seule est en « masonry ».
+   *
+   * Le compactage range les cartes colonne par colonne, à la hauteur de leur
+   * contenu. Une carte qui occupe PLUSIEURS colonnes casse ce rangement : la
+   * grille doit attendre que toutes ses colonnes soient libres en même temps,
+   * et laisse au-dessus d'elle un creux que rien ne vient combler — le trou de
+   * ~80 px qu'on voyait sous « Ça coince », juste avant Pipeline.
+   *
+   * On sépare donc les deux familles : les cartes d'une colonne vont dans la
+   * grille compactée (qui se remplit alors sans le moindre vide), et les cartes
+   * larges vivent en dessous, en pleine largeur. Pipeline y gagne même de la
+   * place — ses quatre étapes tiennent enfin côte à côte.
+   */
   return (
-    <div
-      ref={grille}
-      // `grid-auto-rows` fin + `items-start` : chaque carte occupe exactement
-      // le nombre de micro-rangées que son contenu réclame (voir useMasonry).
-      // Les micro-rangées n'existent qu'au format large, là où le compactage a
-      // un sens. En dessous, la grille reste une pile normale : appliquer des
-      // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
-      className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-4 xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]">
+    <div className="flex flex-col gap-[14px]">
       <CaptureBar />
-      <OperateurCard />
-      <TachesCard />
-      <RevenusCard />
-      <HabitudesCard />
-      <BlocagesCard />
 
-      {/*
-        L'ordre compte : sur une grille à quatre colonnes, une rangée qui n'en
-        remplit que trois laisse un vide de la hauteur de toute la rangée.
-        C'était le cas ici — Blocages (1) + Pipeline (2) laissaient un trou de
-        294 × 497 px à droite. Nutrition le comble, et chaque rangée fait
-        maintenant exactement quatre colonnes :
+      <div
+        ref={grille}
+        // `grid-auto-rows` fin + `items-start` : chaque carte occupe exactement
+        // le nombre de micro-rangées que son contenu réclame (voir useMasonry).
+        // Les micro-rangées n'existent qu'au format large, là où le compactage a
+        // un sens. En dessous, la grille reste une pile normale : appliquer des
+        // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
+        className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-4 xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]">
+        <OperateurCard />
+        <TachesCard />
+        <RevenusCard />
+        <HabitudesCard />
+        <BlocagesCard />
+        <NutritionCard />
+        <SemaineCard />
+        <ObjectifsCard />
+      </div>
 
-          Blocages 1 + Pipeline 2 + Nutrition 1
-          Semaine 2  + Objectifs 2
-          Journal 4
-      */}
-      <Panel accent="var(--color-cya)" className="col-span-full md:col-span-2">
+      <Panel accent="var(--color-cya)">
         <div className="mb-[11px] flex items-center justify-between gap-3">
           <Eyebrow color="var(--color-cya-soft)" dot="var(--color-cya)">
             PIPELINE CONTENU
@@ -61,9 +70,6 @@ export function AccueilView() {
         <PipelineGrid compact />
       </Panel>
 
-      <NutritionCard />
-      <SemaineCard />
-      <ObjectifsCard />
       <JournalCard />
     </div>
   );
