@@ -126,6 +126,14 @@ export function TachesCard() {
   const grabRef = useRef({ x: 0, y: 0 });
   /** Hauteur de la ligne tirée : sert à viser d'après la carte, pas le doigt. */
   const hauteurRef = useRef(0);
+  /**
+   * Vrai dès qu'un appui s'est transformé en déplacement.
+   *
+   * On peut désormais saisir une tâche n'importe où sur la ligne — or la ligne
+   * sert aussi à cocher. Le clic part après le relâchement : sans ce drapeau,
+   * ranger une tâche la cocherait par la même occasion.
+   */
+  const glissementArmeRef = useRef(false);
   const rafProxy = useRef(0);
   const rafMove = useRef<number | null>(null);
   const rafScroll = useRef<number | null>(null);
@@ -193,13 +201,25 @@ export function TachesCard() {
    * bougé de plus de 8 px — sinon un simple défilement partant de la poignée
    * déclencherait un tri par accident. À la souris, c'est immédiat.
    */
-  function commencerDrag(e: React.PointerEvent, id: string, niveau: Niveau) {
+  function commencerDrag(
+    e: React.PointerEvent,
+    id: string,
+    niveau: Niveau,
+    depuisPoignee: boolean,
+  ) {
     if (edition) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const row = rowRefs.current.get(id);
     if (!row) return;
-    e.preventDefault();
-    e.stopPropagation();
+    // Nouvelle séquence d'appui : le glissement précédent ne compte plus.
+    glissementArmeRef.current = false;
+    // Depuis la ligne, on ne coupe RIEN : le clic doit continuer de cocher si
+    // l'appui reste court. Depuis la poignée, on coupe tout de suite — elle ne
+    // sert qu'à ranger.
+    if (depuisPoignee) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
     const idPointeur = e.pointerId;
     const sx = e.clientX;
@@ -219,6 +239,7 @@ export function TachesCard() {
 
     const armer = () => {
       arme = true;
+      glissementArmeRef.current = true;
       preArmRef.current = null;
       idPointeurRef.current = idPointeur;
       aReordonneRef.current = false;
@@ -287,20 +308,39 @@ export function TachesCard() {
       nettoyerPre();
     };
 
+    const tactile = e.pointerType === "touch";
+    // À la souris, saisir la ligne elle-même ne peut pas armer sur-le-champ :
+    // un simple clic servirait alors à ranger au lieu de cocher. On attend un
+    // vrai geste — quelques pixels parcourus, bouton enfoncé.
+    const seuilSouris = !tactile && !depuisPoignee;
+
     const surMovePre = (ev: PointerEvent) => {
+      if (ev.pointerId !== idPointeur) return;
       pointerRef.current = { x: ev.clientX, y: ev.clientY };
-      if (!arme && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) nettoyerPre();
+      if (arme) return;
+      const distance = Math.hypot(ev.clientX - sx, ev.clientY - sy);
+      if (seuilSouris) {
+        if (distance > 6) armer();
+      } else if (distance > 8) {
+        // Au doigt, s'éloigner avant l'appui long, c'est vouloir faire défiler
+        // la page : on abandonne et on laisse le geste au navigateur.
+        nettoyerPre();
+      }
     };
 
-    const delai = e.pointerType === "touch" ? 140 : 0;
-    if (delai) {
-      window.addEventListener("pointermove", surMovePre, { passive: true });
-      window.addEventListener("pointerup", nettoyerPre, { once: true });
-      window.addEventListener("pointercancel", nettoyerPre, { once: true });
-      preArmRef.current = setTimeout(armer, delai);
-    } else {
+    // Depuis la ligne, l'appui doit être plus franc que depuis la poignée : on
+    // couvre ainsi le tap qui coche, qui est le geste le plus fréquent.
+    const delai = tactile ? (depuisPoignee ? 140 : 220) : 0;
+
+    if (!tactile && depuisPoignee) {
       armer();
+      return;
     }
+
+    window.addEventListener("pointermove", surMovePre, { passive: true });
+    window.addEventListener("pointerup", nettoyerPre, { once: true });
+    window.addEventListener("pointercancel", nettoyerPre, { once: true });
+    if (tactile) preArmRef.current = setTimeout(armer, delai);
   }
 
   // Écoute du geste une fois armé : pointermove coalescé dans un seul rAF (une
@@ -756,6 +796,12 @@ export function TachesCard() {
                       key={id ?? t.text}
                       ref={id ? setRowRef(id) : undefined}
                       data-niveau={niveau}
+                      // Tenir la ligne appuyée suffit à la déplacer : la poignée
+                      // reste pour qui préfère viser, mais elle n'est plus le
+                      // seul moyen.
+                      onPointerDown={
+                        id ? (e) => commencerDrag(e, id, niveau, false) : undefined
+                      }
                       className="group relative flex items-stretch gap-[5px]"
                       // Pendant le tri, la ligne tirée devient un trou invisible
                       // (elle garde sa boîte = l'emplacement de dépôt) : tout le
@@ -785,7 +831,7 @@ export function TachesCard() {
                           type="button"
                           aria-label={`Déplacer ${t.text}`}
                           title="Glisser pour ranger"
-                          onPointerDown={(e) => commencerDrag(e, id, niveau)}
+                          onPointerDown={(e) => commencerDrag(e, id, niveau, true)}
                           className="flex-none touch-none select-none px-[2px] text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
                           style={{ cursor: tire ? "grabbing" : "grab" }}
                         >
@@ -800,13 +846,23 @@ export function TachesCard() {
                           done={t.done}
                           accent={meta.couleur}
                           intensite={intensite}
-                          onToggle={() => toggleTask(index)}
+                          // Le clic part au relâchement, donc après un
+                          // déplacement : sans cette garde, ranger une tâche la
+                          // cocherait dans la foulée.
+                          onToggle={() => {
+                            if (glissementArmeRef.current) return;
+                            toggleTask(index);
+                          }}
                         />
                         {id && (
                           // Fond opaque : la barre se superpose à la ligne, et
                           // sans lui le titre d'une tâche longue passait sous
                           // les boutons.
                           <div
+                            // La ligne entière arme un déplacement : sans cette
+                            // coupure, viser ⇅ ✎ × en bougeant un peu la souris
+                            // partirait en glissement.
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center gap-[2px] rounded-[8px] px-[3px] py-[2px] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
                             style={{ background: "rgba(17,30,44,0.96)" }}
                           >
