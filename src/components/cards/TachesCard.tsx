@@ -124,6 +124,8 @@ export function TachesCard() {
   const proxyRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef({ x: 0, y: 0 });
   const grabRef = useRef({ x: 0, y: 0 });
+  /** Hauteur de la ligne tirée : sert à viser d'après la carte, pas le doigt. */
+  const hauteurRef = useRef(0);
   const rafProxy = useRef(0);
   const rafMove = useRef<number | null>(null);
   const rafScroll = useRef<number | null>(null);
@@ -225,6 +227,7 @@ export function TachesCard() {
         x: pointerRef.current.x - r.left,
         y: pointerRef.current.y - r.top,
       };
+      hauteurRef.current = r.height;
       if (!reduireRef.current) (navigator as NavVibr).vibrate?.(8);
 
       // Clone flottant : un conteneur qui suit le doigt (translate) enveloppant
@@ -336,7 +339,19 @@ export function TachesCard() {
     // pointermove ET depuis la boucle d'auto-scroll : pendant un défilement à
     // doigt immobile, les lignes bougent sous le doigt, il faut recibler.
     function appliquerCible() {
-      const c = cibleSous(pointerRef.current.y);
+      /*
+       * On vise avec le CENTRE de la carte tirée, pas avec le doigt.
+       *
+       * Le doigt tient la poignée à mi-hauteur : en amenant visuellement la
+       * carte au-dessus de la première ligne, il restait au niveau du milieu de
+       * celle-ci, et l'OS concluait « insérer après ». Impossible, donc, de
+       * poser une tâche en tête de colonne — l'écran montrait une chose et le
+       * calcul en faisait une autre. Le centre de la carte, lui, correspond à
+       * ce que Twaylo voit.
+       */
+      const centreCarte =
+        pointerRef.current.y - grabRef.current.y + hauteurRef.current / 2;
+      const c = cibleSous(centreCarte);
       if (c && (c.id !== derniere || c.niveau !== niveauRef.current)) {
         derniere = c.id;
         aReordonneRef.current = true;
