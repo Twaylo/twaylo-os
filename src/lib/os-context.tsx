@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,17 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+
+/**
+ * `useLayoutEffect` côté navigateur, `useEffect` côté serveur.
+ *
+ * Next.js pré-rend ce composant sur le serveur, où `useLayoutEffect` n'a aucun
+ * sens (rien à peindre) et fait grogner React à chaque rendu. On garde donc le
+ * bon outil là où il agit — avant la peinture, dans le navigateur — sans
+ * polluer les journaux du serveur.
+ */
+const useEffetAvantPeinture =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
 import {
@@ -387,8 +399,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setTodoCloturee(readJSON<string>("twaylo-todo-cloturee", ""));
   }, []);
 
-  // Lecture initiale, une seule fois.
-  useEffect(() => {
+  /*
+   * Lecture initiale, une seule fois — AVANT le premier affichage.
+   *
+   * `useLayoutEffect` et non `useEffect` : le second s'exécute une fois la page
+   * peinte, si bien que l'écran s'affichait d'abord vide (tâches, habitudes,
+   * nutrition, série à zéro) avant d'être repeint avec la mémoire du
+   * navigateur. Ce clignotement au démarrage n'était pas un chargement : les
+   * données étaient déjà là, on les lisait juste trop tard. Ici la lecture est
+   * faite avant le premier rendu visible.
+   *
+   * Lire le stockage local est instantané : rien qui mérite d'attendre.
+   */
+  useEffetAvantPeinture(() => {
     pruneOldDailyKeys("habits");
     pruneOldDailyKeys("journal");
     pruneOldDailyKeys("unechose");
