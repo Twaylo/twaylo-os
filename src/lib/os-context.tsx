@@ -327,6 +327,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
   objectifsRef.current = objectifs;
   const dealsRef = useRef<DealVue[] | null>(null);
   dealsRef.current = deals;
+  // Numérote les identifiants provisoires des créations optimistes, le temps
+  // que le serveur renvoie le vrai.
+  const compteurTemp = useRef(0);
 
   // Le jour local, figé au montage : sert de clé pour la base comme pour le
   // cache navigateur. Les deux doivent parler du même jour.
@@ -982,9 +985,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /** Ajout optimiste, même raison que pour les tâches : l'écran n'attend pas. */
   const ajouterObjectif = useCallback(async (libelle: string, portee: string) => {
     const propre = libelle.trim();
     if (!propre || demoModeRef.current) return;
+
+    const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
+    setObjectifs((prev) => [
+      ...(prev ?? []),
+      {
+        id: cleTemp,
+        objectif: propre,
+        portee,
+        statut: "en_cours",
+        pct: 0,
+        valeur: "",
+        etapes: [],
+      },
+    ]);
+
     try {
       const res = await fetch("/api/objectifs", {
         method: "POST",
@@ -996,9 +1015,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
       // Sans cette garde, une réponse sans champ `objectif` poussait
       // `undefined` dans la liste et la vue plantait au rendu suivant.
       if (!objectif?.id) throw new Error("réponse sans objectif");
-      setObjectifs((prev) => [...(prev ?? []), objectif]);
+      setObjectifs((prev) =>
+        (prev ?? []).map((o) => (o.id === cleTemp ? objectif : o)),
+      );
     } catch (err) {
       console.error("[objectifs] ajout impossible :", err);
+      setObjectifs((prev) => (prev ?? []).filter((o) => o.id !== cleTemp));
     }
   }, []);
 
@@ -1221,9 +1243,28 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[pipeline] renommage impossible :", err));
   }, []);
 
+  /**
+   * Ajout optimiste : la tâche s'affiche tout de suite, la base suit.
+   *
+   * Elle n'apparaissait qu'une fois la réponse du serveur revenue — soit un
+   * aller-retour navigateur → fonction Vercel → Supabase, qui dépasse la
+   * seconde quand la fonction sort de veille. Twaylo tapait sa tâche, appuyait
+   * sur Entrée, et regardait un champ vide en se demandant si ça avait marché.
+   * Toutes les autres actions (cocher, renommer, supprimer) affichent d'abord
+   * et enregistrent ensuite : l'ajout fait pareil désormais.
+   *
+   * La tâche provisoire porte un identifiant `tmp-…`, remplacé par le vrai dès
+   * que le serveur répond. En cas d'échec elle est retirée, plutôt que de
+   * laisser à l'écran une tâche que la base n'a jamais eue.
+   */
   const ajouterTache = useCallback(async (titre: string, niveau: Niveau = "secondaire") => {
     const propre = titre.trim();
     if (!propre || demoModeRef.current) return;
+
+    const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
+    const provisoire = { id: cleTemp, text: propre, done: false, niveau } as Task;
+    setTasks((prev) => [...prev, provisoire]);
+
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -1232,9 +1273,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { tache } = await res.json();
-      setTasks((prev) => [...prev, tache]);
+      if (!tache) throw new Error("réponse sans tâche");
+      setTasks((prev) =>
+        prev.map((t) => ((t as { id?: string }).id === cleTemp ? tache : t)),
+      );
     } catch (err) {
       console.error("[taches] ajout impossible :", err);
+      setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
     }
   }, []);
 
@@ -1358,9 +1403,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[contacts] déplacement impossible :", err));
   }, []);
 
+  /** Ajout optimiste, même raison que pour les tâches : l'écran n'attend pas. */
   const ajouterDeal = useCallback(async (nom: string, etape = "prospect") => {
     const propre = nom.trim();
     if (!propre || demoModeRef.current) return;
+
+    const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
+    setDeals((prev) => [
+      ...(prev ?? []),
+      { id: cleTemp, nom: propre, etape, montant: null, note: null, echeance: null },
+    ]);
+
     try {
       const res = await fetch("/api/deals", {
         method: "POST",
@@ -1369,9 +1422,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { deal } = await res.json();
-      setDeals((prev) => [...(prev ?? []), deal]);
+      if (!deal?.id) throw new Error("réponse sans deal");
+      setDeals((prev) => (prev ?? []).map((d) => (d.id === cleTemp ? deal : d)));
     } catch (err) {
       console.error("[deals] ajout impossible :", err);
+      setDeals((prev) => (prev ?? []).filter((d) => d.id !== cleTemp));
     }
   }, []);
 

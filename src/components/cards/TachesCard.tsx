@@ -258,9 +258,12 @@ export function TachesCard() {
         });
       }
 
+      // Les identifiants `tmp-…` sont ceux d'une tâche que le serveur n'a pas
+      // encore confirmée : les envoyer dans l'ordre enregistrerait une position
+      // pour une tâche qui n'existe pas en base.
       const ordre = tasks
         .map((t) => (t as { id?: string }).id)
-        .filter((x): x is string => Boolean(x));
+        .filter((x): x is string => Boolean(x) && !x!.startsWith("tmp-"));
       ordreRef.current = ordre;
       niveauRef.current = niveau;
       niveauInitialRef.current = niveau;
