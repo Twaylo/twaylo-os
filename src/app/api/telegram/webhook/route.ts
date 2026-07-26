@@ -7,6 +7,7 @@ import {
   answerCallbackQuery,
   downloadVoice,
   editMessageText,
+  secretWebhookTelegram,
   sendMessage,
   todoKeyboard,
   urgenceKeyboard,
@@ -74,7 +75,9 @@ function confirmation(
 
 /** Vrai seulement si la requête porte le secret exact convenu avec Telegram. */
 function secretValide(req: Request): boolean {
-  const attendu = process.env.TELEGRAM_WEBHOOK_SECRET;
+  // Le même nettoyage qu'à l'inscription : Telegram nous renvoie le secret déjà
+  // épuré, on doit le comparer à sa version épurée, pas à la valeur brute.
+  const attendu = secretWebhookTelegram();
   const recu = req.headers.get("x-telegram-bot-api-secret-token");
   if (!attendu || !recu) return false;
   return timingSafeEqual(recu, attendu);

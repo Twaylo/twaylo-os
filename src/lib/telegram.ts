@@ -13,6 +13,20 @@ function token(): string {
   return t;
 }
 
+/**
+ * Le secret du webhook, nettoyé des caractères que Telegram refuse.
+ *
+ * Telegram n'accepte dans un `secret_token` que `A–Z a–z 0–9 _ -` — un espace,
+ * un accent ou un symbole le fait rejeter d'un « unallowed characters ». Plutôt
+ * que d'exiger que Twaylo connaisse cette règle, on retire nous-mêmes ce qui
+ * dépasse. La condition sine qua non : appliquer EXACTEMENT le même nettoyage
+ * à l'inscription (setWebhook) et à la vérification (webhook entrant), sinon
+ * les deux ne coïncideraient plus. D'où cette source unique.
+ */
+export function secretWebhookTelegram(): string {
+  return (process.env.TELEGRAM_WEBHOOK_SECRET ?? "").replace(/[^A-Za-z0-9_-]/g, "");
+}
+
 async function call<T>(method: string, body: unknown): Promise<T> {
   const res = await fetch(`${API}/bot${token()}/${method}`, {
     method: "POST",

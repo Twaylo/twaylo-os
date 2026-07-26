@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secretWebhookTelegram } from "@/lib/telegram";
 
 /**
  * Branche le bot Telegram en un clic, depuis l'OS lui-même.
@@ -21,18 +22,30 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  // Le secret nettoyé des caractères que Telegram refuse — même source que la
+  // vérification du webhook, pour qu'ils coïncident toujours.
+  const secret = secretWebhookTelegram();
   const userId = process.env.TELEGRAM_USER_ID;
 
   const manque: string[] = [];
   if (!token) manque.push("TELEGRAM_BOT_TOKEN");
-  if (!secret) manque.push("TELEGRAM_WEBHOOK_SECRET");
+  if (!process.env.TELEGRAM_WEBHOOK_SECRET) manque.push("TELEGRAM_WEBHOOK_SECRET");
   if (!userId) manque.push("TELEGRAM_USER_ID");
   if (manque.length > 0) {
     return page(
       false,
       "Il manque des variables sur Vercel",
       `Ajoute ${manque.join(", ")} dans les Environment Variables, redéploie, puis reviens sur cette page.`,
+    );
+  }
+
+  // Après nettoyage, il reste trop peu pour un secret sûr : le seul cas est un
+  // TELEGRAM_WEBHOOK_SECRET fait presque uniquement de caractères interdits.
+  if (secret.length < 8) {
+    return page(
+      false,
+      "Ton mot secret est trop court après nettoyage",
+      "Telegram n'accepte que lettres, chiffres, tiret et souligné. Mets un TELEGRAM_WEBHOOK_SECRET d'au moins 8 caractères de ce type sur Vercel, redéploie, puis reviens.",
     );
   }
 
@@ -62,11 +75,12 @@ export async function GET(req: Request) {
   }
 
   if (!data.ok) {
-    return page(
-      false,
-      "Telegram a refusé le branchement",
-      `Message de Telegram : « ${data.description ?? "erreur inconnue"} ». Le plus probable : la variable TELEGRAM_BOT_TOKEN sur Vercel n'est pas le bon jeton. Corrige-la, redéploie, et reviens.`,
-    );
+    const desc = data.description ?? "erreur inconnue";
+    // On oriente selon ce que Telegram dit, sans deviner à l'aveugle.
+    const indice = /token|unauthorized|not found/i.test(desc)
+      ? "Vérifie que TELEGRAM_BOT_TOKEN sur Vercel est bien le jeton complet donné par BotFather."
+      : "Vérifie tes variables Telegram sur Vercel, puis redéploie.";
+    return page(false, "Telegram a refusé le branchement", `Message de Telegram : « ${desc} ». ${indice}`);
   }
 
   return page(
