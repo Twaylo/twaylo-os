@@ -638,7 +638,7 @@ export type DealDB = {
 const COLONNES_DEAL = "id, nom, etape, montant, note, echeance";
 /** Le jeu d'avant la migration 0003 — voir `sansEcheance` plus bas. */
 const COLONNES_DEAL_ANCIEN = "id, nom, etape, montant, note";
-export const ETAPES_DEAL = ["prospect", "negociation", "signe", "livre"] as const;
+export const ETAPES_DEAL = ["prospect", "negociation", "signe", "livre", "regle"] as const;
 
 /**
  * La colonne `echeance` manque-t-elle encore ?

@@ -20,6 +20,8 @@ const ETAPES = [
   { id: "negociation", nom: "Négociation", couleur: "#e6c060" },
   { id: "signe", nom: "Signé", couleur: "#5fd39a" },
   { id: "livre", nom: "Livré", couleur: "#61c9db" },
+  // Réglé = l'argent réellement encaissé, l'étape finale après la livraison.
+  { id: "regle", nom: "Réglé", couleur: "#3ddc84" },
 ];
 
 function MontantEditable({ deal }: { deal: DealVue }) {
@@ -217,6 +219,7 @@ const LIBELLE_STAT: Record<string, string> = {
   negociation: "En négociation",
   signe: "Argent signé",
   livre: "Livré",
+  regle: "Réglé",
 };
 
 const somme = (deals: DealVue[], etapes: string[]) =>
@@ -276,9 +279,11 @@ export function SponsorsView() {
   // L'acquis d'un côté, l'attente de l'autre : un deal en négociation n'est pas
   // de l'argent, et le mélanger au signé ferait croire à un chiffre plus gros
   // qu'il n'est.
-  const acquis = somme(liste, ["signe", "livre"]);
+  // Signé, livré ET réglé sont de l'argent gagné — seule l'étape en amont
+  // (prospect, négociation) reste incertaine.
+  const acquis = somme(liste, ["signe", "livre", "regle"]);
   const attente = somme(liste, ["prospect", "negociation"]);
-  const clos = liste.filter((d) => d.etape === "signe" || d.etape === "livre").length;
+  const clos = liste.filter((d) => ["signe", "livre", "regle"].includes(d.etape)).length;
   const taux = total > 0 ? Math.round((clos / total) * 100) : null;
 
   const colonnes: ColonneKanban<DealVue>[] = ETAPES.map((e) => ({
@@ -306,7 +311,7 @@ export function SponsorsView() {
         }
       />
 
-      <div className="mb-[14px] grid grid-cols-2 gap-[14px] xl:grid-cols-4">
+      <div className="mb-[14px] grid grid-cols-2 gap-[14px] md:grid-cols-3 xl:grid-cols-5">
         {stats.map((s) => (
           <Panel key={s.label} accent={s.color} size="sm" className="px-[17px] py-[15px]">
             <div className="text-[11px] font-bold text-white/45">{s.label}</div>

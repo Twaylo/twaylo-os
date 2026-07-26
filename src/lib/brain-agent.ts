@@ -5,11 +5,30 @@ import {
   creerObjectif,
   creerTache,
   creerVideo,
+  ETAPES_DEAL,
+  lireDeals,
+  lireObjectifs,
   lireTaches,
+  majDeal,
+  majObjectif,
+  type DealDB,
+  type ObjectifDB,
   type TacheDB,
 } from "./db";
+import { lireStatsHabitudes } from "./habitudes-stats";
+import { lireStatsTaches } from "./taches-stats";
+import { lireStatsNutrition } from "./nutrition-stats";
 import { assemblerContexte, CONSIGNE_BRAIN } from "./brain-contexte";
 import type { Niveau } from "./types";
+
+/** Le libellé lisible d'une étape de deal, pour les confirmations. */
+const LIBELLE_ETAPE: Record<string, string> = {
+  prospect: "Prospect",
+  negociation: "Négociation",
+  signe: "Signé",
+  livre: "Livré",
+  regle: "Réglé",
+};
 
 /**
  * Le Brain qui AGIT (spec « Jarvis » de Twaylo).
@@ -103,6 +122,60 @@ const OUTILS: Anthropic.Tool[] = [
       required: ["objectif", "portee"],
     },
   },
+  {
+    name: "consulter_historique",
+    description:
+      "Lit l'historique et les statistiques d'un domaine (taux, séries, tendances, jour faible). À utiliser dès que Twaylo veut discuter de ses habitudes, de sa régularité ou de ses données dans le temps.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domaine: { type: "string", enum: ["habitudes", "taches", "nutrition"] },
+      },
+      required: ["domaine"],
+    },
+  },
+  {
+    name: "deplacer_deal",
+    description:
+      "Fait avancer un sponsor/deal d'une étape à l'autre. « valider une OP » ou « c'est signé » = signe ; « c'est payé/réglé » = regle.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom: { type: "string", description: "Le nom du sponsor, même partiel." },
+        etape: {
+          type: "string",
+          enum: ["prospect", "negociation", "signe", "livre", "regle"],
+          description: "prospect → négociation → signé → livré → réglé (payé).",
+        },
+      },
+      required: ["nom", "etape"],
+    },
+  },
+  {
+    name: "fixer_montant_deal",
+    description: "Fixe le montant en euros d'un sponsor/deal.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom: { type: "string" },
+        montant: { type: "number", description: "Le montant en euros." },
+      },
+      required: ["nom", "montant"],
+    },
+  },
+  {
+    name: "archiver_objectif",
+    description:
+      "Change le statut d'un objectif : atteint, abandonne, ou en_cours (le ressortir de l'archive).",
+    input_schema: {
+      type: "object",
+      properties: {
+        objectif: { type: "string", description: "Le libellé de l'objectif, même partiel." },
+        statut: { type: "string", enum: ["atteint", "abandonne", "en_cours"] },
+      },
+      required: ["objectif", "statut"],
+    },
+  },
 ];
 
 /** Enlève accents et casse, pour comparer des libellés à l'oreille. */
@@ -140,6 +213,39 @@ function trouverTache(titre: string, taches: TacheDB[]): TacheDB | null {
     }
   }
   return meilleurScore > 0 ? meilleur : null;
+}
+
+/** Retrouve l'élément (deal, objectif) dont le libellé colle le mieux. */
+function trouverParNom<T>(requete: string, items: T[], libelle: (t: T) => string): T | null {
+  const q = normaliser(requete);
+  if (!q) return null;
+  const contient = items
+    .filter((t) => {
+      const n = normaliser(libelle(t));
+      return n.includes(q) || q.includes(n);
+    })
+    .sort((a, b) => libelle(a).length - libelle(b).length);
+  if (contient.length > 0) return contient[0];
+  const mots = new Set(q.split(/\s+/).filter((m) => m.length > 2));
+  let meilleur: T | null = null;
+  let meilleurScore = 0;
+  for (const t of items) {
+    const nm = new Set(normaliser(libelle(t)).split(/\s+/));
+    let score = 0;
+    for (const m of mots) if (nm.has(m)) score += 1;
+    if (score > meilleurScore) {
+      meilleurScore = score;
+      meilleur = t;
+    }
+  }
+  return meilleurScore > 0 ? meilleur : null;
+}
+
+/** L'historique d'un domaine, sans le détail jour par jour (trop lourd). */
+function resumeSansJours(stats: { jours?: unknown }): string {
+  const { jours, ...reste } = stats;
+  void jours;
+  return JSON.stringify(reste);
 }
 
 /** Exécute un outil et renvoie une phrase de résultat pour Claude. */
@@ -183,6 +289,51 @@ async function executer(nom: string, entree: Record<string, unknown>): Promise<s
       await creerObjectif(objectif, portee, { pct: 0, valeur: "", etapes: [] });
       return `Objectif ajouté (${portee}) : « ${objectif} ».`;
     }
+    case "consulter_historique": {
+      const domaine = String(entree.domaine ?? "");
+      if (domaine === "habitudes") return resumeSansJours(await lireStatsHabitudes());
+      if (domaine === "taches") return resumeSansJours(await lireStatsTaches());
+      if (domaine === "nutrition") return resumeSansJours(await lireStatsNutrition());
+      return "Domaine inconnu : habitudes, taches ou nutrition.";
+    }
+    case "deplacer_deal": {
+      const etape = String(entree.etape ?? "");
+      if (!(ETAPES_DEAL as readonly string[]).includes(etape)) return "Étape invalide.";
+      const cible = trouverParNom<DealDB>(
+        String(entree.nom ?? ""),
+        await lireDeals(),
+        (d) => d.nom,
+      );
+      if (!cible) return `Aucun sponsor ne correspond à « ${entree.nom} ».`;
+      await majDeal(cible.id, { etape });
+      return `« ${cible.nom} » déplacé en ${LIBELLE_ETAPE[etape] ?? etape}.`;
+    }
+    case "fixer_montant_deal": {
+      const montant = Number(entree.montant);
+      if (!Number.isFinite(montant)) return "Montant invalide.";
+      const cible = trouverParNom<DealDB>(
+        String(entree.nom ?? ""),
+        await lireDeals(),
+        (d) => d.nom,
+      );
+      if (!cible) return `Aucun sponsor ne correspond à « ${entree.nom} ».`;
+      await majDeal(cible.id, { montant });
+      return `Montant de « ${cible.nom} » fixé à ${montant.toLocaleString("fr-FR")} €.`;
+    }
+    case "archiver_objectif": {
+      const statut = String(entree.statut ?? "");
+      if (!["atteint", "abandonne", "en_cours"].includes(statut)) return "Statut invalide.";
+      const cible = trouverParNom<ObjectifDB>(
+        String(entree.objectif ?? ""),
+        await lireObjectifs(),
+        (o) => o.objectif,
+      );
+      if (!cible) return `Aucun objectif ne correspond à « ${entree.objectif} ».`;
+      await majObjectif(cible.id, { statut });
+      const mot =
+        statut === "atteint" ? "marqué atteint" : statut === "abandonne" ? "abandonné" : "remis en cours";
+      return `Objectif « ${cible.objectif} » ${mot}.`;
+    }
     default:
       return `Outil inconnu : ${nom}.`;
   }
@@ -191,9 +342,10 @@ async function executer(nom: string, entree: Record<string, unknown>): Promise<s
 const CONSIGNE_AGENT = `${CONSIGNE_BRAIN}
 
 Tu es joint depuis Telegram, en vocal ou par écrit. Deux différences avec d'habitude :
-- Tu peux AGIR sur l'OS via les outils fournis (créer une tâche, la cocher, ajouter une idée vidéo, un contact, un objectif). Utilise-les dès que Twaylo demande une action, sans redemander confirmation.
+- Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation.
+- Tu peux CONSULTER l'historique (habitudes, tâches, nutrition) avec l'outil dédié : séries, taux, tendances, jour faible. Sers-t'en dès qu'il veut parler de sa régularité ou de ses données dans le temps, plutôt que de rester sur l'instantané.
 - Réponds COURT — c'est un message Telegram, pas un essai. Une à trois phrases. Après une action, confirme ce que tu as fait en une phrase. Pas de mise en forme Markdown lourde.
-Si c'est juste une question, réponds sans outil.`;
+Si c'est juste une question, réponds sans outil. Quand tu donnes un avis (habitudes, sponsors…), appuie-le sur les vraies données, pas sur des généralités.`;
 
 /**
  * Envoie le message de Twaylo au Brain, laisse Claude agir via les outils, et
