@@ -47,6 +47,9 @@ export function JournalView() {
   const [erreur, setErreur] = useState(false);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [enregistrement, setEnregistrement] = useState<"repos" | "cours" | "fait">("repos");
+  // Bumpé après un enregistrement : force la relecture de l'historique pour que
+  // l'entrée du jour y apparaisse tout de suite.
+  const [rechargement, setRechargement] = useState(0);
 
   /**
    * Le bouton « Enregistrer » ne faisait rien : le journal se sauvait tout seul
@@ -63,6 +66,7 @@ export function JournalView() {
         body: JSON.stringify({ jour: localDateKey(), journal: journalText }),
       });
       setEnregistrement("fait");
+      setRechargement((n) => n + 1);
       setTimeout(() => setEnregistrement("repos"), 2000);
     } catch (err) {
       console.error("[journal] enregistrement impossible :", err);
@@ -85,7 +89,15 @@ export function JournalView() {
     void fetch(`/api/journal?jour=${localDateKey()}&combien=30`)
       .then((r) => r.json())
       .then((d) => {
-        if (!annule) setPassees(Array.isArray(d.entrees) ? d.entrees : []);
+        if (annule) return;
+        const jours = Array.isArray(d.entrees) ? (d.entrees as EntreePassee[]) : [];
+        // L'entrée du jour en tête, pour que Twaylo la voie confirmée dès qu'il
+        // enregistre — sinon elle n'apparaissait qu'à partir du lendemain.
+        const auj =
+          typeof d.aujourdhui === "string" && d.aujourdhui.trim()
+            ? [{ jour: localDateKey(), texte: d.aujourdhui.trim() }]
+            : [];
+        setPassees([...auj, ...jours]);
       })
       .catch((err) => {
         console.error("[journal] historique illisible :", err);
@@ -100,7 +112,7 @@ export function JournalView() {
     return () => {
       annule = true;
     };
-  }, [demoMode, data.journalEntries]);
+  }, [demoMode, data.journalEntries, rechargement]);
   const today = useTodayLabel();
 
   return (
@@ -196,7 +208,7 @@ export function JournalView() {
                           className="font-mono text-[11px] font-extrabold"
                           style={{ color: "var(--color-cor-soft)" }}
                         >
-                          {dateLisible(j.jour)}
+                          {j.jour === localDateKey() ? "Aujourd'hui" : dateLisible(j.jour)}
                         </span>
                         <span className="text-[10px] text-white/25">
                           {j.texte.length} caractères
