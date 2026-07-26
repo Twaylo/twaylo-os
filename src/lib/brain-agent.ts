@@ -19,6 +19,10 @@ import { lireStatsHabitudes } from "./habitudes-stats";
 import { lireStatsTaches } from "./taches-stats";
 import { lireStatsNutrition } from "./nutrition-stats";
 import { lireStatsYoutube } from "./youtube";
+import { agendaConfigure, lireAgendaSemaine } from "./agenda";
+
+/** Les jours de la semaine, 0 = lundi (comme jourIndex des événements). */
+const JOURS_SEMAINE = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 import { assemblerContexte, CONSIGNE_BRAIN } from "./brain-contexte";
 import type { Niveau } from "./types";
 
@@ -138,7 +142,13 @@ const OUTILS: Anthropic.Tool[] = [
   {
     name: "consulter_revenus",
     description:
-      "Lit les revenus YouTube/AdSense et les stats de la chaîne sur 30 jours (revenu estimé, RPM, vues, abonnés gagnés, total). À utiliser dès que Twaylo parle d'argent YouTube, d'AdSense, de RPM, de vues ou de croissance de la chaîne.",
+      "Lit les revenus YouTube/AdSense et les stats de la chaîne sur 30 jours (revenu estimé, RPM, vues, abonnés gagnés, total). Le revenu est bien de l'argent (estimatedRevenue), pas des vues. Rappelle que YouTube a 2-3 jours de retard. À utiliser dès que Twaylo parle d'argent YouTube, d'AdSense, de RPM, de vues ou de croissance de la chaîne.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "consulter_agenda",
+    description:
+      "Lit le Google Agenda de Twaylo pour la semaine en cours (jour, heure, titre). À utiliser dès qu'il demande son planning, ses rendez-vous, ou ce qu'il a cette semaine.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -323,6 +333,23 @@ async function executer(nom: string, entree: Record<string, unknown>): Promise<s
         return "YouTube n'est pas connecté (ou l'accès a expiré). Twaylo doit le rebrancher dans l'onglet Revenus.";
       }
     }
+    case "consulter_agenda": {
+      if (!agendaConfigure()) {
+        return "Le Google Agenda n'est pas connecté (GOOGLE_ICAL_URL manquant sur Vercel).";
+      }
+      try {
+        const evenements = await lireAgendaSemaine();
+        if (evenements.length === 0) return "Aucun événement cette semaine dans l'agenda.";
+        return evenements
+          .map(
+            (e) =>
+              `${JOURS_SEMAINE[e.jourIndex] ?? "?"} ${e.heure || "(journée)"} — ${e.titre}`,
+          )
+          .join("\n");
+      } catch {
+        return "Agenda injoignable pour l'instant.";
+      }
+    }
     case "deplacer_deal": {
       const etape = String(entree.etape ?? "");
       if (!(ETAPES_DEAL as readonly string[]).includes(etape)) return "Étape invalide.";
@@ -370,7 +397,7 @@ const CONSIGNE_AGENT = `${CONSIGNE_BRAIN}
 
 Tu es joint depuis Telegram, en vocal ou par écrit. Deux différences avec d'habitude :
 - Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation.
-- Tu peux CONSULTER l'historique (habitudes, tâches, nutrition) et les REVENUS YouTube/AdSense (revenu estimé, RPM, vues, abonnés sur 30 jours) avec les outils dédiés. Sers-t'en dès qu'il veut parler de sa régularité, de ses données dans le temps ou de l'argent de sa chaîne, plutôt que de rester sur l'instantané.
+- Tu peux CONSULTER l'historique (habitudes, tâches, nutrition), les REVENUS YouTube/AdSense (revenu estimé, RPM, vues, abonnés sur 30 jours) et le GOOGLE AGENDA de la semaine, avec les outils dédiés. Sers-t'en dès qu'il veut parler de sa régularité, de ses données dans le temps, de l'argent de sa chaîne ou de son planning, plutôt que de rester sur l'instantané.
 - Réponds COURT — c'est un message Telegram, pas un essai. Une à trois phrases. Après une action, confirme ce que tu as fait en une phrase. Pas de mise en forme Markdown lourde.
 Si c'est juste une question, réponds sans outil. Quand tu donnes un avis (habitudes, sponsors…), appuie-le sur les vraies données, pas sur des généralités.`;
 
@@ -393,10 +420,11 @@ export async function repondreEtAgir(message: string, jour: string): Promise<str
   // est un garde-fou contre une boucle qui s'emballe.
   for (let tour = 0; tour < 6; tour++) {
     const rep = await client.messages.create({
-      // Haiku par défaut : sur Telegram, la vitesse prime, et créer/cocher une
-      // tâche ou répondre court n'exige pas Opus. Surchargeable via l'env si un
-      // jour on veut plus de finesse.
-      model: process.env.BRAIN_TELEGRAM_MODEL ?? "claude-haiku-4-5",
+      // Sonnet par défaut : Haiku bâclait les questions un peu fines, Opus était
+      // trop lent. Sonnet tient les deux bouts — assez malin, assez rapide.
+      // Surchargeable via l'env (BRAIN_TELEGRAM_MODEL=claude-opus-4-8 pour le
+      // maximum sur les cas complexes).
+      model: process.env.BRAIN_TELEGRAM_MODEL ?? "claude-sonnet-4-6",
       max_tokens: 1024,
       system: [
         { type: "text", text: CONSIGNE_AGENT },
