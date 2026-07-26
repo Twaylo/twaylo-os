@@ -29,20 +29,32 @@ export async function GET(req: Request) {
   const combien = Number.isFinite(brut) ? Math.min(Math.max(brut, 1), 120) : 30;
 
   try {
-    const { data, error } = await supabaseAdmin()
-      .from("daily_logs")
-      .select("jour, journal_texte")
-      .eq("user_id", USER_ID)
-      .neq("jour", "2000-01-01")
-      .lt("jour", jour)
-      .order("jour", { ascending: false })
-      .limit(combien);
+    const db = supabaseAdmin();
+    const [passees, dujour] = await Promise.all([
+      db
+        .from("daily_logs")
+        .select("jour, journal_texte")
+        .eq("user_id", USER_ID)
+        .neq("jour", "2000-01-01")
+        .lt("jour", jour)
+        .order("jour", { ascending: false })
+        .limit(combien),
+      // Le journal du jour, pour que l'écran puisse rattraper ce que le bot
+      // Telegram y a ajouté pendant qu'il était ailleurs.
+      db
+        .from("daily_logs")
+        .select("journal_texte")
+        .eq("user_id", USER_ID)
+        .eq("jour", jour)
+        .maybeSingle(),
+    ]);
 
-    if (error) throw error;
+    if (passees.error) throw passees.error;
 
     return NextResponse.json({
       connecte: true,
-      entrees: (data ?? [])
+      aujourdhui: (dujour.data?.journal_texte as string | null) ?? "",
+      entrees: (passees.data ?? [])
         .filter((l) => (l.journal_texte ?? "").trim())
         .map((l) => ({ jour: l.jour as string, texte: (l.journal_texte as string).trim() })),
     });

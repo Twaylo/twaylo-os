@@ -727,6 +727,44 @@ export function OsProvider({ children }: { children: ReactNode }) {
     synchroniserJour({ jour: localDateKey(), journal: journalText });
   }, [journalText, demoMode, hydrate]);
 
+  /*
+   * Rattrape les ajouts au journal faits ailleurs — le bot Telegram, surtout.
+   *
+   * L'écran écrivait le journal en écrasant tout, le bot y ajoute à la suite :
+   * une note dictée à Telegram pouvait donc être perdue au prochain
+   * enregistrement de l'écran. Au retour sur l'OS (focus ou onglet redevenu
+   * visible), on relit le journal du jour et on adopte ce que le serveur a EN
+   * PLUS — c'est-à-dire ce que le bot a ajouté à la suite — sans écraser une
+   * saisie locale en cours.
+   */
+  useEffect(() => {
+    if (!hydrate || demoMode) return;
+    const rafraichir = () => {
+      if (document.visibilityState === "hidden") return;
+      void fetch(`/api/journal?jour=${localDateKey()}&combien=1`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (typeof d?.aujourdhui !== "string") return;
+          const serveur: string = d.aujourdhui;
+          setJournalText((local) => {
+            const l = local.trim();
+            const s = serveur.trim();
+            // Le serveur prolonge le local (ajout Telegram) → on adopte. Sinon
+            // (édition locale divergente), on garde ce que Twaylo écrit.
+            return s.length > l.length && s.startsWith(l) ? serveur : local;
+          });
+        })
+        .catch(() => {});
+    };
+    rafraichir();
+    window.addEventListener("focus", rafraichir);
+    document.addEventListener("visibilitychange", rafraichir);
+    return () => {
+      window.removeEventListener("focus", rafraichir);
+      document.removeEventListener("visibilitychange", rafraichir);
+    };
+  }, [hydrate, demoMode]);
+
   useEffect(() => {
     if (!hydrate || demoMode || !modifie.current.uneChose) return;
     writeJSONDebounced(dailyKey("unechose"), uneChose);

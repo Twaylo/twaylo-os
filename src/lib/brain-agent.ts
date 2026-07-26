@@ -288,6 +288,9 @@ async function executer(
       const texte = String(entree.texte ?? "").trim();
       if (!texte) return "Rien à noter.";
       const { journal } = await lireJour(jour);
+      // Anti-doublon : si ce texte est déjà dans le journal (ex. Twaylo l'a
+      // aussi tapé dans l'OS), on ne le recolle pas à la suite.
+      if (journal.includes(texte)) return `C'est déjà dans ton journal du jour.`;
       const nouveau = journal.trim() ? `${journal}\n${texte}` : texte;
       await ecrireJour(jour, { journal: nouveau });
       return `Noté dans le journal du jour : « ${texte} ».`;
