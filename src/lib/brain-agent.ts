@@ -18,6 +18,7 @@ import {
 import { lireStatsHabitudes } from "./habitudes-stats";
 import { lireStatsTaches } from "./taches-stats";
 import { lireStatsNutrition } from "./nutrition-stats";
+import { lireStatsYoutube } from "./youtube";
 import { assemblerContexte, CONSIGNE_BRAIN } from "./brain-contexte";
 import type { Niveau } from "./types";
 
@@ -133,6 +134,12 @@ const OUTILS: Anthropic.Tool[] = [
       },
       required: ["domaine"],
     },
+  },
+  {
+    name: "consulter_revenus",
+    description:
+      "Lit les revenus YouTube/AdSense et les stats de la chaîne sur 30 jours (revenu estimé, RPM, vues, abonnés gagnés, total). À utiliser dès que Twaylo parle d'argent YouTube, d'AdSense, de RPM, de vues ou de croissance de la chaîne.",
+    input_schema: { type: "object", properties: {} },
   },
   {
     name: "deplacer_deal",
@@ -296,6 +303,26 @@ async function executer(nom: string, entree: Record<string, unknown>): Promise<s
       if (domaine === "nutrition") return resumeSansJours(await lireStatsNutrition());
       return "Domaine inconnu : habitudes, taches ou nutrition.";
     }
+    case "consulter_revenus": {
+      try {
+        const y = await lireStatsYoutube();
+        return [
+          `Période : ${y.periode}`,
+          y.revenuEstime !== null
+            ? `Revenu estimé (AdSense) : ${y.revenuEstime.toLocaleString("fr-FR")} €`
+            : "Revenu : chaîne non monétisée ou portée monétaire absente",
+          y.rpm !== null ? `RPM : ${y.rpm.toLocaleString("fr-FR")} €` : null,
+          `Vues : ${y.vues.toLocaleString("fr-FR")}`,
+          `Abonnés gagnés : ${y.abonnesGagnes >= 0 ? "+" : ""}${y.abonnesGagnes.toLocaleString("fr-FR")}`,
+          y.abonnesTotal !== null ? `Abonnés au total : ${y.abonnesTotal.toLocaleString("fr-FR")}` : null,
+          `Temps de visionnage : ${Math.round(y.minutesVisionnees / 60).toLocaleString("fr-FR")} h`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+      } catch {
+        return "YouTube n'est pas connecté (ou l'accès a expiré). Twaylo doit le rebrancher dans l'onglet Revenus.";
+      }
+    }
     case "deplacer_deal": {
       const etape = String(entree.etape ?? "");
       if (!(ETAPES_DEAL as readonly string[]).includes(etape)) return "Étape invalide.";
@@ -343,7 +370,7 @@ const CONSIGNE_AGENT = `${CONSIGNE_BRAIN}
 
 Tu es joint depuis Telegram, en vocal ou par écrit. Deux différences avec d'habitude :
 - Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation.
-- Tu peux CONSULTER l'historique (habitudes, tâches, nutrition) avec l'outil dédié : séries, taux, tendances, jour faible. Sers-t'en dès qu'il veut parler de sa régularité ou de ses données dans le temps, plutôt que de rester sur l'instantané.
+- Tu peux CONSULTER l'historique (habitudes, tâches, nutrition) et les REVENUS YouTube/AdSense (revenu estimé, RPM, vues, abonnés sur 30 jours) avec les outils dédiés. Sers-t'en dès qu'il veut parler de sa régularité, de ses données dans le temps ou de l'argent de sa chaîne, plutôt que de rester sur l'instantané.
 - Réponds COURT — c'est un message Telegram, pas un essai. Une à trois phrases. Après une action, confirme ce que tu as fait en une phrase. Pas de mise en forme Markdown lourde.
 Si c'est juste une question, réponds sans outil. Quand tu donnes un avis (habitudes, sponsors…), appuie-le sur les vraies données, pas sur des généralités.`;
 
