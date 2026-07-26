@@ -46,6 +46,29 @@ export function JournalView() {
   const [passees, setPassees] = useState<EntreePassee[] | null>(null);
   const [erreur, setErreur] = useState(false);
   const [ouverte, setOuverte] = useState<string | null>(null);
+  const [enregistrement, setEnregistrement] = useState<"repos" | "cours" | "fait">("repos");
+
+  /**
+   * Le bouton « Enregistrer » ne faisait rien : le journal se sauvait tout seul
+   * en tapant, mais aucun repère ne le disait, d'où l'impression de ne pas
+   * pouvoir enregistrer. Il force maintenant l'écriture et confirme.
+   */
+  async function enregistrer() {
+    if (demoMode || enregistrement === "cours") return;
+    setEnregistrement("cours");
+    try {
+      await fetch("/api/daily", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jour: localDateKey(), journal: journalText }),
+      });
+      setEnregistrement("fait");
+      setTimeout(() => setEnregistrement("repos"), 2000);
+    } catch (err) {
+      console.error("[journal] enregistrement impossible :", err);
+      setEnregistrement("repos");
+    }
+  }
 
   useEffect(() => {
     // En démo, l'historique factice — surtout ne pas exposer les vraies
@@ -118,10 +141,16 @@ export function JournalView() {
             />
             <button
               type="button"
-              className="cursor-pointer rounded-xl border-none px-5 py-[11px] text-[14px] font-extrabold text-[#07121d] transition-all hover:brightness-110"
+              onClick={enregistrer}
+              disabled={demoMode || enregistrement === "cours"}
+              className="cursor-pointer rounded-xl border-none px-5 py-[11px] text-[14px] font-extrabold text-[#07121d] transition-all hover:brightness-110 disabled:opacity-60"
               style={{ background: "linear-gradient(90deg,#ff7a3d,#ffc63d)" }}
             >
-              Enregistrer &amp; nourrir l&apos;IA
+              {enregistrement === "fait"
+                ? "Enregistré ✓"
+                : enregistrement === "cours"
+                  ? "Enregistrement…"
+                  : "Enregistrer & nourrir l'IA"}
             </button>
           </div>
         </Panel>

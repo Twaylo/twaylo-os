@@ -741,6 +741,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
     if (!hydrate || demoMode) return;
     const rafraichir = () => {
       if (document.visibilityState === "hidden") return;
+      // Dès que Twaylo a touché à son journal, sa version fait foi : on ne
+      // rattrape plus rien du serveur, sinon effacer une ligne la ferait
+      // réapparaître (le serveur « prolonge » alors le local).
+      if (modifie.current.journal) return;
       void fetch(`/api/journal?jour=${localDateKey()}&combien=1`)
         .then((r) => r.json())
         .then((d) => {
