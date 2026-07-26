@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "@/lib/auth";
-import { classifyCapture } from "@/lib/router/classifyCapture";
-import { routeCapture } from "@/lib/router/routeCapture";
 import { transcribeVoice } from "@/lib/transcribe";
+import { repondreEtAgir } from "@/lib/brain-agent";
+import { localDateKey } from "@/lib/local-date";
 import {
   answerCallbackQuery,
   downloadVoice,
@@ -10,13 +10,10 @@ import {
   secretWebhookTelegram,
   sendMessage,
   todoKeyboard,
-  urgenceKeyboard,
 } from "@/lib/telegram";
 import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
 import { lireOrdreTaches, lireTaches, versTaches } from "@/lib/db";
 import type { TacheBouton } from "@/lib/telegram";
-import { CAPTURE_META } from "@/lib/labels";
-import type { CaptureType, Urgence } from "@/lib/types";
 
 /**
  * Le webhook Telegram (spec Partie 5).
@@ -31,6 +28,12 @@ import type { CaptureType, Urgence } from "@/lib/types";
  * erreur. Un non-2xx déclenche des réessais en boucle chez Telegram, ce qui
  * transformerait un bug ponctuel en tempête de requêtes.
  */
+
+// Le Brain assemble le contexte puis mène une boucle d'outils : quelques
+// secondes, parfois plus d'une dizaine. Sans ce plafond relevé, Vercel coupe la
+// fonction à 10 s, Telegram ne reçoit pas son 200 et réessaie — l'action se
+// jouerait alors deux fois.
+export const maxDuration = 60;
 
 type TelegramUpdate = {
   message?: {
@@ -57,23 +60,6 @@ const LABEL_URGENCE: Record<string, string> = {
   mois: "ce mois",
   un_jour: "un jour",
 };
-
-function confirmation(
-  type: CaptureType,
-  urgence: Urgence,
-  resume: string,
-  moteur: string,
-  persiste: boolean,
-): string {
-  const meta = CAPTURE_META[type];
-  const lignes = [
-    `<b>${meta.label}</b> · ${LABEL_URGENCE[urgence] ?? urgence}`,
-    resume,
-  ];
-  if (moteur === "regex") lignes.push("<i>trié hors ligne (IA injoignable)</i>");
-  if (!persiste) lignes.push("<i>⚠️ non enregistré — base non connectée</i>");
-  return lignes.join("\n");
-}
 
 /** Vrai seulement si la requête porte le secret exact convenu avec Telegram. */
 function secretValide(req: Request): boolean {
@@ -133,10 +119,8 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
 
   // 1. Obtenir le texte — tapé, ou transcrit depuis le vocal.
   let texte: string;
-  let source: "voix" | "texte";
 
   if (message.voice) {
-    source = "voix";
     try {
       texte = await transcribeVoice(await downloadVoice(message.voice.file_id));
     } catch (err) {
@@ -148,31 +132,23 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
       return NextResponse.json({ ok: true, erreur: "transcription" });
     }
   } else if (message.text?.trim()) {
-    source = "texte";
     texte = message.text.trim();
   } else {
     await sendMessage(chatId, "Envoie-moi du texte ou un vocal.");
     return NextResponse.json({ ok: true, ignore: "message vide" });
   }
 
-  // 2. Classer, 3. router, 4. confirmer.
-  const classification = await classifyCapture(texte);
-  const { captureId, persiste } = await routeCapture(texte, classification, source);
-
-  await sendMessage(
-    chatId,
-    confirmation(
-      classification.type,
-      classification.urgence,
-      classification.resume,
-      classification.moteur,
-      persiste,
-    ),
-    // Sans identifiant de capture, aucun bouton : il n'y aurait rien à corriger.
-    captureId ? urgenceKeyboard(captureId) : undefined,
-  );
-
-  return NextResponse.json({ ok: true, type: classification.type, persiste });
+  // 2. Le message part au Brain, qui comprend, AGIT sur l'OS (crée une tâche,
+  //    la coche, ajoute une idée…) et répond. Fini la boîte à notes passive.
+  try {
+    const reponse = await repondreEtAgir(texte, localDateKey());
+    await sendMessage(chatId, reponse);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[telegram] brain en échec :", err);
+    await sendMessage(chatId, "⚠️ Le brain a eu un souci. Réessaie dans un instant.");
+    return NextResponse.json({ ok: true, erreur: "brain" });
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,7 +161,14 @@ const ORDRE_NIVEAUX = ["principal", "secondaire", "annexe"];
 const AIDE = [
   "<b>Twaylo OS · bot</b>",
   "",
-  "Envoie une note — écrite ou vocale — je la range tout seul (tâche, idée, contact, objectif, journal).",
+  "Parle-moi — à l'écrit ou en vocal — et j'agis sur ton OS, ou je réponds.",
+  "",
+  "Exemples :",
+  "• « ajoute une tâche : monter le short »",
+  "• « coche l'intro Somalie »",
+  "• « idée vidéo sur les pirates somaliens »",
+  "• « ajoute Josefa en contact »",
+  "• « c'est quoi mon focus aujourd'hui ? »",
   "",
   "<b>/todo</b> — tes tâches, à cocher d'un tap",
   "<b>/aide</b> — ce message",
