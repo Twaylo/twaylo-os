@@ -749,14 +749,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
         .then((r) => r.json())
         .then((d) => {
           if (typeof d?.aujourdhui !== "string") return;
-          const serveur: string = d.aujourdhui;
-          setJournalText((local) => {
-            const l = local.trim();
-            const s = serveur.trim();
-            // Le serveur prolonge le local (ajout Telegram) → on adopte. Sinon
-            // (édition locale divergente), on garde ce que Twaylo écrit.
-            return s.length > l.length && s.startsWith(l) ? serveur : local;
-          });
+          // Re-vérifié APRÈS la requête : si Twaylo a commencé à taper entre
+          // l'envoi et la réponse, sa saisie l'emporte, on ne l'écrase pas.
+          if (modifie.current.journal) return;
+          // Sinon, la base fait foi — on affiche exactement ce qui y est
+          // enregistré (y compris les ajouts du bot Telegram), sans se fier au
+          // cache local qui peut être périmé.
+          setJournalText(d.aujourdhui);
         })
         .catch(() => {});
     };
