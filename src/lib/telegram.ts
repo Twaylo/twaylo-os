@@ -70,24 +70,45 @@ export function urgenceKeyboard(captureId: string) {
   };
 }
 
+/** La pastille qui marque le niveau d'une tâche, comme les sections de l'OS. */
+const PUCE_NIVEAU: Record<string, string> = {
+  principal: "⭐",
+  secondaire: "🔹",
+  annexe: "▫️",
+};
+
+export type TacheBouton = {
+  id: string;
+  titre: string;
+  faite: boolean;
+  niveau?: string;
+  categorie?: string;
+};
+
 /**
  * La liste des tâches, un bouton par ligne, à cocher d'un tap depuis Telegram.
  *
  * Une ligne par tâche : au doigt, sur un téléphone, des boutons empilés se
- * visent bien mieux que deux colonnes serrées. Le libellé est tronqué — un
- * bouton Telegram trop long est coupé sans prévenir, autant le faire nous-mêmes
- * proprement. `callback_data` reste sous les 64 octets qu'impose l'API :
- * « t:  » plus un identifiant tient large.
+ * visent bien mieux que deux colonnes serrées. La pastille de niveau (⭐ 🔹 ▫️)
+ * reproduit les sections de l'OS puisqu'un clavier Telegram ne sait pas porter
+ * de titres de groupe ; la catégorie suit en suffixe quand elle tient. Le
+ * libellé est tronqué — un bouton trop long est coupé sans prévenir, autant le
+ * faire proprement. `callback_data` reste sous les 64 octets de l'API :
+ * « t: » plus un identifiant tient large.
  */
-export function todoKeyboard(taches: { id: string; titre: string; faite: boolean }[]) {
+export function todoKeyboard(taches: TacheBouton[]) {
   if (taches.length === 0) return undefined;
   return {
-    inline_keyboard: taches.slice(0, 40).map((t) => [
-      {
-        text: `${t.faite ? "✅" : "⬜️"} ${t.titre}`.slice(0, 58),
-        callback_data: `t:${t.id}`,
-      },
-    ]),
+    inline_keyboard: taches.slice(0, 40).map((t) => {
+      const puce = PUCE_NIVEAU[t.niveau ?? "secondaire"] ?? "";
+      const cat = t.categorie ? ` · ${t.categorie}` : "";
+      return [
+        {
+          text: `${t.faite ? "✅" : "⬜️"} ${puce} ${t.titre}${cat}`.slice(0, 60),
+          callback_data: `t:${t.id}`,
+        },
+      ];
+    }),
   };
 }
 

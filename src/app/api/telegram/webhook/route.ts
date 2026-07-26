@@ -13,6 +13,8 @@ import {
   urgenceKeyboard,
 } from "@/lib/telegram";
 import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { lireOrdreTaches, lireTaches, versTaches } from "@/lib/db";
+import type { TacheBouton } from "@/lib/telegram";
 import { CAPTURE_META } from "@/lib/labels";
 import type { CaptureType, Urgence } from "@/lib/types";
 
@@ -177,8 +179,8 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
 /* Commandes — la télécommande de l'OS depuis Telegram                 */
 /* ------------------------------------------------------------------ */
 
-type TacheBrute = { id: string; titre: string; statut: string };
-type TacheVue = { id: string; titre: string; faite: boolean };
+/** L'ordre des sections, identique à celui de la carte Tâches de l'OS. */
+const ORDRE_NIVEAUX = ["principal", "secondaire", "annexe"];
 
 const AIDE = [
   "<b>Twaylo OS · bot</b>",
@@ -208,24 +210,54 @@ async function gererCommande(chatId: number, texte: string) {
   }
 }
 
-/** Lit les tâches de Twaylo, les plus anciennes d'abord. */
-async function lireTachesBot(): Promise<TacheVue[]> {
-  const { data } = await supabaseAdmin()
-    .from("tasks")
-    .select("id, titre, statut")
-    .eq("user_id", USER_ID)
-    .order("created_at", { ascending: true });
-  return (data ?? []).map((t: TacheBrute) => ({
+/**
+ * Les tâches, rangées EXACTEMENT comme sur l'OS : d'abord l'ordre que Twaylo a
+ * fixé à la main, puis regroupées par niveau (focus principal, secondaire,
+ * annexes). Les deux tris s'enchaînent, et comme le tri de JavaScript est
+ * stable, le second préserve l'ordre du premier à l'intérieur d'un niveau.
+ */
+async function lireTachesTriees(): Promise<TacheBouton[]> {
+  const [lignes, ordre] = await Promise.all([lireTaches(), lireOrdreTaches()]);
+  const rang = new Map(ordre.map((id, i) => [id, i]));
+  const taches: TacheBouton[] = versTaches(lignes).map((t) => ({
     id: t.id,
-    titre: t.titre,
-    faite: t.statut === "faite",
+    titre: t.text,
+    faite: t.done,
+    niveau: t.niveau ?? "secondaire",
+    categorie: t.categorie,
   }));
+
+  taches.sort((a, b) => (rang.get(a.id) ?? 1e9) - (rang.get(b.id) ?? 1e9));
+  taches.sort(
+    (a, b) =>
+      ORDRE_NIVEAUX.indexOf(a.niveau ?? "secondaire") -
+      ORDRE_NIVEAUX.indexOf(b.niveau ?? "secondaire"),
+  );
+  return taches;
 }
 
-/** Le texte d'en-tête de la vue todo — combien de faites sur le total. */
-function enteteTodo(taches: TacheVue[]): string {
+/** L'en-tête : le total, puis le compte par niveau, comme les sections de l'OS. */
+function enteteTodo(taches: TacheBouton[]): string {
   const faites = taches.filter((t) => t.faite).length;
-  return `<b>Tâches</b> · ${faites}/${taches.length} faites\nTape une ligne pour cocher ou décocher.`;
+  const segment = (emoji: string, niveau: string) => {
+    const groupe = taches.filter((t) => (t.niveau ?? "secondaire") === niveau);
+    if (groupe.length === 0) return null;
+    return `${emoji} ${groupe.filter((t) => t.faite).length}/${groupe.length}`;
+  };
+  const parNiveau = [
+    segment("⭐", "principal"),
+    segment("🔹", "secondaire"),
+    segment("▫️", "annexe"),
+  ]
+    .filter(Boolean)
+    .join("   ");
+  return [
+    `<b>Tâches</b> · ${faites}/${taches.length} faites`,
+    parNiveau,
+    "Tape une ligne pour cocher ou décocher.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function envoyerTodo(chatId: number) {
@@ -233,7 +265,7 @@ async function envoyerTodo(chatId: number) {
     await sendMessage(chatId, "Base non connectée — impossible de lire tes tâches.");
     return NextResponse.json({ ok: true, persiste: false });
   }
-  const taches = await lireTachesBot();
+  const taches = await lireTachesTriees();
   if (taches.length === 0) {
     await sendMessage(chatId, "Aucune tâche pour l'instant. Envoie-m'en une à ranger.");
     return NextResponse.json({ ok: true, taches: 0 });
@@ -280,7 +312,7 @@ async function basculerTacheBouton(
   // On redessine la liste sur place : les cases reflètent le nouvel état sans
   // renvoyer un second message.
   if (query.message) {
-    const taches = await lireTachesBot();
+    const taches = await lireTachesTriees();
     await editMessageText(
       query.message.chat.id,
       query.message.message_id,
