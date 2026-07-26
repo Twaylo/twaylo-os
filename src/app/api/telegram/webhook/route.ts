@@ -227,7 +227,15 @@ async function lireTachesTriees(): Promise<TacheBouton[]> {
     categorie: t.categorie,
   }));
 
+  // Trois tris enchaînés, du moins prioritaire au plus prioritaire (le tri de
+  // JS est stable, donc chacun préserve l'ordre du précédent à clé égale) :
+  //   1. l'ordre manuel de Twaylo,
+  //   2. la catégorie — les tâches d'une même catégorie se retrouvent côte à
+  //      côte ; sans catégorie passe en dernier (sentinelle ￿),
+  //   3. le niveau — la clé principale, comme les sections de l'OS.
+  const cleCat = (c?: string) => (c && c.trim() ? c : "￿");
   taches.sort((a, b) => (rang.get(a.id) ?? 1e9) - (rang.get(b.id) ?? 1e9));
+  taches.sort((a, b) => cleCat(a.categorie).localeCompare(cleCat(b.categorie), "fr"));
   taches.sort(
     (a, b) =>
       ORDRE_NIVEAUX.indexOf(a.niveau ?? "secondaire") -
