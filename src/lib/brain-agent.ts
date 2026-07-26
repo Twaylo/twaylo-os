@@ -5,8 +5,10 @@ import {
   creerObjectif,
   creerTache,
   creerVideo,
+  ecrireJour,
   ETAPES_DEAL,
   lireDeals,
+  lireJour,
   lireObjectifs,
   lireTaches,
   majDeal,
@@ -125,6 +127,16 @@ const OUTILS: Anthropic.Tool[] = [
         },
       },
       required: ["objectif", "portee"],
+    },
+  },
+  {
+    name: "noter_journal",
+    description:
+      "Écrit une note dans le journal du jour de Twaylo, à la suite de ce qui y est déjà. À utiliser DÈS qu'il dit de noter quelque chose dans son journal ou te confie une pensée à garder — n'oublie jamais de l'écrire vraiment.",
+    input_schema: {
+      type: "object",
+      properties: { texte: { type: "string", description: "Le texte à consigner." } },
+      required: ["texte"],
     },
   },
   {
@@ -266,8 +278,20 @@ function resumeSansJours(stats: { jours?: unknown }): string {
 }
 
 /** Exécute un outil et renvoie une phrase de résultat pour Claude. */
-async function executer(nom: string, entree: Record<string, unknown>): Promise<string> {
+async function executer(
+  nom: string,
+  entree: Record<string, unknown>,
+  jour: string,
+): Promise<string> {
   switch (nom) {
+    case "noter_journal": {
+      const texte = String(entree.texte ?? "").trim();
+      if (!texte) return "Rien à noter.";
+      const { journal } = await lireJour(jour);
+      const nouveau = journal.trim() ? `${journal}\n${texte}` : texte;
+      await ecrireJour(jour, { journal: nouveau });
+      return `Noté dans le journal du jour : « ${texte} ».`;
+    }
     case "creer_tache": {
       const titre = String(entree.titre ?? "").trim();
       if (!titre) return "Titre manquant.";
@@ -396,7 +420,7 @@ async function executer(nom: string, entree: Record<string, unknown>): Promise<s
 const CONSIGNE_AGENT = `${CONSIGNE_BRAIN}
 
 Tu es joint depuis Telegram, en vocal ou par écrit. Deux différences avec d'habitude :
-- Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation.
+- Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; écrire dans le journal du jour ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation. S'il te dit de noter un truc dans le journal, ÉCRIS-LE vraiment avec noter_journal — ne te contente pas d'acquiescer.
 - Tu peux CONSULTER l'historique (habitudes, tâches, nutrition), les REVENUS YouTube/AdSense (revenu estimé, RPM, vues, abonnés sur 30 jours) et le GOOGLE AGENDA de la semaine, avec les outils dédiés. Sers-t'en dès qu'il veut parler de sa régularité, de ses données dans le temps, de l'argent de sa chaîne ou de son planning, plutôt que de rester sur l'instantané.
 - Réponds COURT — c'est un message Telegram, pas un essai. Une à trois phrases. Après une action, confirme ce que tu as fait en une phrase. Pas de mise en forme Markdown lourde.
 Si c'est juste une question, réponds sans outil. Quand tu donnes un avis (habitudes, sponsors…), appuie-le sur les vraies données, pas sur des généralités.`;
@@ -453,7 +477,7 @@ export async function repondreEtAgir(message: string, jour: string): Promise<str
     for (const outil of outils) {
       let contenu: string;
       try {
-        contenu = await executer(outil.name, outil.input as Record<string, unknown>);
+        contenu = await executer(outil.name, outil.input as Record<string, unknown>, jour);
       } catch (err) {
         console.error(`[brain-agent] outil ${outil.name} en échec :`, err);
         contenu = `Échec de l'action ${outil.name}.`;
