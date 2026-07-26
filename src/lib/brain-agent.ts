@@ -214,7 +214,10 @@ export async function repondreEtAgir(message: string, jour: string): Promise<str
   // est un garde-fou contre une boucle qui s'emballe.
   for (let tour = 0; tour < 6; tour++) {
     const rep = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8",
+      // Haiku par défaut : sur Telegram, la vitesse prime, et créer/cocher une
+      // tâche ou répondre court n'exige pas Opus. Surchargeable via l'env si un
+      // jour on veut plus de finesse.
+      model: process.env.BRAIN_TELEGRAM_MODEL ?? "claude-haiku-4-5",
       max_tokens: 1024,
       system: [
         { type: "text", text: CONSIGNE_AGENT },

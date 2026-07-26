@@ -8,6 +8,7 @@ import {
   downloadVoice,
   editMessageText,
   secretWebhookTelegram,
+  sendChatAction,
   sendMessage,
   todoKeyboard,
 } from "@/lib/telegram";
@@ -140,6 +141,9 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
 
   // 2. Le message part au Brain, qui comprend, AGIT sur l'OS (crée une tâche,
   //    la coche, ajoute une idée…) et répond. Fini la boîte à notes passive.
+  // « en train d'écrire… » tout de suite, pour ne pas laisser Twaylo devant un
+  // silence pendant que le Brain réfléchit. Sans attente ni blocage si ça rate.
+  void sendChatAction(chatId).catch(() => {});
   try {
     const reponse = await repondreEtAgir(texte, localDateKey());
     await sendMessage(chatId, reponse);

@@ -129,6 +129,15 @@ export async function answerCallbackQuery(id: string, text: string): Promise<voi
   await call("answerCallbackQuery", { callback_query_id: id, text });
 }
 
+/**
+ * Affiche « en train d'écrire… » dans le fil, le temps que le Brain réfléchit.
+ * L'indicateur dure ~5 s côté Telegram ; sans réponse d'ici là il s'efface, ce
+ * qui suffit à dire à Twaylo que le bot a bien reçu et travaille.
+ */
+export async function sendChatAction(chatId: number, action = "typing"): Promise<void> {
+  await call("sendChatAction", { chat_id: chatId, action });
+}
+
 export async function editMessageText(
   chatId: number,
   messageId: number,
