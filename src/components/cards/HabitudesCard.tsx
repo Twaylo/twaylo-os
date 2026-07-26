@@ -25,6 +25,7 @@ function Ligne({
   habit,
   faites,
   deplie,
+  masque,
   onDeplier,
   onBasculer,
   onCocherOption,
@@ -32,6 +33,8 @@ function Ligne({
   habit: Habit;
   faites: string[];
   deplie: boolean;
+  /** Vrai si l'habitude est privée et non révélée : on floute son libellé. */
+  masque: boolean;
   onDeplier: () => void;
   onBasculer: () => void;
   onCocherOption: (option: string) => void;
@@ -86,8 +89,14 @@ function Ligne({
         </span>
 
         <span
-          className="flex-1 truncate text-[12px] font-bold"
-          style={{ color: faite ? "rgba(255,255,255,0.6)" : "var(--color-fg)" }}
+          className="flex-1 truncate text-[12px] font-bold transition-[filter]"
+          style={{
+            color: faite ? "rgba(255,255,255,0.6)" : "var(--color-fg)",
+            // Floutée tant que non révélée : Twaylo peut toujours la cocher, mais
+            // le libellé ne s'affiche pas en clair à l'écran quand il filme.
+            filter: masque ? "blur(6px)" : "none",
+            userSelect: masque ? "none" : "auto",
+          }}
         >
           {habit.nom}
         </span>
@@ -142,8 +151,10 @@ export function HabitudesCard() {
     faitesDuJour,
     cocherOption,
     basculerHabitude,
+    basculerHabitudePrivee,
     ajouterHabitude,
     supprimerHabitude,
+    revealed,
   } = useOs();
 
   const [deplie, setDeplie] = useState<string | null>(null);
@@ -226,24 +237,42 @@ export function HabitudesCard() {
                     habit={h}
                     faites={faitesDuJour[h.id] ?? []}
                     deplie={deplie === h.id}
+                    masque={Boolean(h.prive) && !revealed}
                     onDeplier={() => setDeplie(deplie === h.id ? null : h.id)}
                     onBasculer={() => basculerHabitude(h.id)}
                     onCocherOption={(o) => cocherOption(h.id, o)}
                   />
                   {reglage && (
-                    <button
-                      type="button"
-                      onClick={() => supprimerHabitude(h.id)}
-                      title={`Supprimer ${h.nom}`}
-                      aria-label={`Supprimer ${h.nom}`}
-                      className="absolute right-[8px] top-[7px] cursor-pointer rounded-[5px] px-[5px] text-[11px] font-black"
-                      style={{
-                        color: "var(--color-mag-soft)",
-                        background: "rgba(255,61,139,0.14)",
-                      }}
-                    >
-                      ×
-                    </button>
+                    <div className="absolute right-[8px] top-[7px] flex items-center gap-[4px]">
+                      <button
+                        type="button"
+                        onClick={() => basculerHabitudePrivee(h.id)}
+                        title={h.prive ? "Ne plus flouter" : "Flouter (habitude privée)"}
+                        aria-label={h.prive ? `Ne plus flouter ${h.nom}` : `Flouter ${h.nom}`}
+                        className="cursor-pointer rounded-[5px] px-[5px] text-[11px] font-black transition-all hover:brightness-125"
+                        style={{
+                          color: h.prive ? "var(--color-vio-soft)" : "rgba(255,255,255,0.4)",
+                          background: h.prive
+                            ? "rgba(176,107,255,0.18)"
+                            : "rgba(255,255,255,0.07)",
+                        }}
+                      >
+                        {h.prive ? "🙈" : "👁"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => supprimerHabitude(h.id)}
+                        title={`Supprimer ${h.nom}`}
+                        aria-label={`Supprimer ${h.nom}`}
+                        className="cursor-pointer rounded-[5px] px-[5px] text-[11px] font-black"
+                        style={{
+                          color: "var(--color-mag-soft)",
+                          background: "rgba(255,61,139,0.14)",
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

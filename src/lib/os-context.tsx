@@ -109,6 +109,8 @@ type OsState = {
   cocherOption: (habitId: string, option: string) => void;
   /** Pour les habitudes sans variante : coche ou décoche tout court. */
   basculerHabitude: (habitId: string) => void;
+  /** Floute/dé-floute une habitude sensible (visible seulement une fois « Révélé »). */
+  basculerHabitudePrivee: (habitId: string) => void;
   /** Format libre : « Nom · Catégorie · Option1, Option2 ». */
   ajouterHabitude: (saisie: string) => Promise<void>;
   supprimerHabitude: (habitId: string) => void;
@@ -975,6 +977,22 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[habitudes] suppression impossible :", err));
   }, []);
 
+  /** Bascule le floutage « privé » d'une habitude (ex. nudité), et persiste. */
+  const basculerHabitudePrivee = useCallback((habitId: string) => {
+    if (demoModeRef.current) return;
+    touchePendantChargement.current.habitudes = true;
+    const suivantes = habitsRef.current.map((h) =>
+      h.id === habitId ? { ...h, prive: !h.prive } : h,
+    );
+    setHabits(suivantes);
+    writeJSON("twaylo-habitudes-def", suivantes);
+    void fetch("/api/habitudes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ habitudes: suivantes }),
+    }).catch((err) => console.error("[habitudes] floutage impossible :", err));
+  }, []);
+
   const changerNiveauTache = useCallback((id: string, niveau: Niveau) => {
     setTasks((prev) =>
       prev.map((t) => ((t as { id?: string }).id === id ? { ...t, niveau } : t)),
@@ -1605,6 +1623,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       faitesDuJour,
       cocherOption,
       basculerHabitude,
+      basculerHabitudePrivee,
       ajouterHabitude,
       supprimerHabitude,
       objectifs,
@@ -1666,6 +1685,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       faitesDuJour,
       cocherOption,
       basculerHabitude,
+      basculerHabitudePrivee,
       ajouterHabitude,
       supprimerHabitude,
       objectifs,

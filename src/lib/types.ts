@@ -101,6 +101,11 @@ export type Habit = {
   categorie: string;
   /** Variantes cochables. Vide = simple bascule. */
   options: string[];
+  /**
+   * Habitude à flouter tant qu'on n'a pas « Révélé » — pour ne pas l'exposer à
+   * l'écran quand Twaylo filme (ex. « zéro vidéo avec nudité »).
+   */
+  prive?: boolean;
 };
 
 /** Ce qui a été fait aujourd'hui : identifiant d'habitude → options cochées. */
