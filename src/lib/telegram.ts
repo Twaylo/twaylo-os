@@ -56,6 +56,27 @@ export function urgenceKeyboard(captureId: string) {
   };
 }
 
+/**
+ * La liste des tâches, un bouton par ligne, à cocher d'un tap depuis Telegram.
+ *
+ * Une ligne par tâche : au doigt, sur un téléphone, des boutons empilés se
+ * visent bien mieux que deux colonnes serrées. Le libellé est tronqué — un
+ * bouton Telegram trop long est coupé sans prévenir, autant le faire nous-mêmes
+ * proprement. `callback_data` reste sous les 64 octets qu'impose l'API :
+ * « t:  » plus un identifiant tient large.
+ */
+export function todoKeyboard(taches: { id: string; titre: string; faite: boolean }[]) {
+  if (taches.length === 0) return undefined;
+  return {
+    inline_keyboard: taches.slice(0, 40).map((t) => [
+      {
+        text: `${t.faite ? "✅" : "⬜️"} ${t.titre}`.slice(0, 58),
+        callback_data: `t:${t.id}`,
+      },
+    ]),
+  };
+}
+
 export async function sendMessage(
   chatId: number,
   text: string,
@@ -77,12 +98,17 @@ export async function editMessageText(
   chatId: number,
   messageId: number,
   text: string,
+  replyMarkup?: unknown,
 ): Promise<void> {
   await call("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
     parse_mode: "HTML",
+    // Absent, Telegram retire le clavier : c'est ce qu'on veut après une
+    // correction d'urgence. Présent, il remplace les boutons — pour recocher
+    // la todo sur place.
+    reply_markup: replyMarkup,
   });
 }
 

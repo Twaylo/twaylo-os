@@ -8,6 +8,7 @@ import {
   downloadVoice,
   editMessageText,
   sendMessage,
+  todoKeyboard,
   urgenceKeyboard,
 } from "@/lib/telegram";
 import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
@@ -118,6 +119,13 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
 
   const chatId = message.chat.id;
 
+  // Une commande (/todo, /aide…) : on la traite à part, avant la capture.
+  // Seul le texte peut en porter une ; un vocal tombe toujours en capture.
+  const commande = message.text?.trim();
+  if (commande?.startsWith("/")) {
+    return await gererCommande(chatId, commande);
+  }
+
   // 1. Obtenir le texte — tapé, ou transcrit depuis le vocal.
   let texte: string;
   let source: "voix" | "texte";
@@ -162,13 +170,138 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
   return NextResponse.json({ ok: true, type: classification.type, persiste });
 }
 
+/* ------------------------------------------------------------------ */
+/* Commandes — la télécommande de l'OS depuis Telegram                 */
+/* ------------------------------------------------------------------ */
+
+type TacheBrute = { id: string; titre: string; statut: string };
+type TacheVue = { id: string; titre: string; faite: boolean };
+
+const AIDE = [
+  "<b>Twaylo OS · bot</b>",
+  "",
+  "Envoie une note — écrite ou vocale — je la range tout seul (tâche, idée, contact, objectif, journal).",
+  "",
+  "<b>/todo</b> — tes tâches, à cocher d'un tap",
+  "<b>/aide</b> — ce message",
+].join("\n");
+
+/** Aiguille les commandes. Le `@nom_du_bot` que Telegram ajoute est retiré. */
+async function gererCommande(chatId: number, texte: string) {
+  const cmd = texte.split(/\s+/)[0].toLowerCase().replace(/@.*/, "");
+  switch (cmd) {
+    case "/todo":
+    case "/taches":
+    case "/tâches":
+      return await envoyerTodo(chatId);
+    case "/start":
+    case "/aide":
+    case "/help":
+      await sendMessage(chatId, AIDE);
+      return NextResponse.json({ ok: true, commande: cmd });
+    default:
+      await sendMessage(chatId, "Commande inconnue. <b>/todo</b> pour tes tâches, ou envoie une note à ranger.");
+      return NextResponse.json({ ok: true, ignore: "commande inconnue" });
+  }
+}
+
+/** Lit les tâches de Twaylo, les plus anciennes d'abord. */
+async function lireTachesBot(): Promise<TacheVue[]> {
+  const { data } = await supabaseAdmin()
+    .from("tasks")
+    .select("id, titre, statut")
+    .eq("user_id", USER_ID)
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((t: TacheBrute) => ({
+    id: t.id,
+    titre: t.titre,
+    faite: t.statut === "faite",
+  }));
+}
+
+/** Le texte d'en-tête de la vue todo — combien de faites sur le total. */
+function enteteTodo(taches: TacheVue[]): string {
+  const faites = taches.filter((t) => t.faite).length;
+  return `<b>Tâches</b> · ${faites}/${taches.length} faites\nTape une ligne pour cocher ou décocher.`;
+}
+
+async function envoyerTodo(chatId: number) {
+  if (!isSupabaseConfigured()) {
+    await sendMessage(chatId, "Base non connectée — impossible de lire tes tâches.");
+    return NextResponse.json({ ok: true, persiste: false });
+  }
+  const taches = await lireTachesBot();
+  if (taches.length === 0) {
+    await sendMessage(chatId, "Aucune tâche pour l'instant. Envoie-m'en une à ranger.");
+    return NextResponse.json({ ok: true, taches: 0 });
+  }
+  await sendMessage(chatId, enteteTodo(taches), todoKeyboard(taches));
+  return NextResponse.json({ ok: true, taches: taches.length });
+}
+
+/** Coche ou décoche une tâche depuis un bouton, puis rafraîchit la liste. */
+async function basculerTacheBouton(
+  query: NonNullable<TelegramUpdate["callback_query"]>,
+  taskId: string,
+) {
+  if (!isSupabaseConfigured()) {
+    await answerCallbackQuery(query.id, "Base non connectée");
+    return NextResponse.json({ ok: true, persiste: false });
+  }
+
+  const db = supabaseAdmin();
+  const { data: tache } = await db
+    .from("tasks")
+    .select("statut")
+    .eq("id", taskId)
+    .eq("user_id", USER_ID)
+    .single();
+
+  if (!tache) {
+    await answerCallbackQuery(query.id, "Tâche introuvable");
+    return NextResponse.json({ ok: true, ignore: "tâche inconnue" });
+  }
+
+  const faite = tache.statut !== "faite"; // on bascule
+  await db
+    .from("tasks")
+    .update({
+      statut: faite ? "faite" : "ouverte",
+      completed_at: faite ? new Date().toISOString() : null,
+    })
+    .eq("id", taskId)
+    .eq("user_id", USER_ID);
+
+  await answerCallbackQuery(query.id, faite ? "✅ Fait" : "⬜️ Décochée");
+
+  // On redessine la liste sur place : les cases reflètent le nouvel état sans
+  // renvoyer un second message.
+  if (query.message) {
+    const taches = await lireTachesBot();
+    await editMessageText(
+      query.message.chat.id,
+      query.message.message_id,
+      enteteTodo(taches),
+      todoKeyboard(taches),
+    );
+  }
+
+  return NextResponse.json({ ok: true, faite });
+}
+
 /** Correction d'urgence en un tap (spec Partie 5, étape 9). */
 async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>) {
   if (!expediteurAutorise(query.from?.id)) {
     return NextResponse.json({ ok: true, ignore: "expéditeur inconnu" });
   }
 
-  const [prefixe, valeur, captureId] = (query.data ?? "").split(":");
+  // La télécommande de la todo passe par le préfixe « t: ».
+  const donnees = query.data ?? "";
+  if (donnees.startsWith("t:")) {
+    return await basculerTacheBouton(query, donnees.slice(2));
+  }
+
+  const [prefixe, valeur, captureId] = donnees.split(":");
   if (prefixe !== "u" || !valeur || !captureId) {
     await answerCallbackQuery(query.id, "Action inconnue");
     return NextResponse.json({ ok: true, ignore: "callback_data illisible" });
