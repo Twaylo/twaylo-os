@@ -68,6 +68,7 @@ export const TABS = [
   "Revenus",
   "Journal",
   "Objectifs",
+  "Skill",
   "Revue",
   "Fichiers",
 ] as const;

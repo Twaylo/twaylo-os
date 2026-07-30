@@ -111,6 +111,23 @@ export type Habit = {
 /** Ce qui a été fait aujourd'hui : identifiant d'habitude → options cochées. */
 export type FaitesDuJour = Record<string, string[]>;
 
+/**
+ * Une compétence, façon RPG (esprit Solo Leveling).
+ *
+ * `niveau` va de 0 à 100 : c'est la maîtrise, dont on dérive un rang (E→S) et
+ * une barre d'XP. `historique` garde un point par mois pour suivre la
+ * progression dans le temps, un mois après l'autre.
+ */
+export type Skill = {
+  id: string;
+  nom: string;
+  categorie: string;
+  /** Maîtrise de 0 à 100. */
+  niveau: number;
+  /** Un instantané par mois (`AAAA-MM` → niveau), pour la progression. */
+  historique: { mois: string; niveau: number }[];
+};
+
 /** Ce qui bloque, et depuis combien de temps (Miles : KEY BLOCKERS). */
 /**
  * Un blocage tel qu'il est stocké : une date, pas un nombre de jours. Un

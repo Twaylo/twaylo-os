@@ -9,6 +9,7 @@ import { ContenuView } from "@/components/views/ContenuView";
 import { RevenusView } from "@/components/views/RevenusView";
 import { JournalView } from "@/components/views/JournalView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
+import { SkillView } from "@/components/views/SkillView";
 import { RevueView } from "@/components/views/RevueView";
 import { FichiersView } from "@/components/views/FichiersView";
 import { BrainView } from "@/components/views/BrainView";
@@ -24,6 +25,7 @@ const VIEWS = {
   Revenus: RevenusView,
   Journal: JournalView,
   Objectifs: ObjectifsView,
+  Skill: SkillView,
   Revue: RevueView,
   Fichiers: FichiersView,
 } as const;

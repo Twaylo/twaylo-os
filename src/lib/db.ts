@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
-import type { BlocageStocke, Contact, Niveau, Task, UneChose } from "./types";
+import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
 
 /**
  * L'accès aux données, côté serveur uniquement.
@@ -837,6 +837,59 @@ async function majSentinelle(patch: Record<string, unknown>): Promise<void> {
 
 export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
   await majSentinelle({ definitions });
+}
+
+/* ------------------------------------------------------------------ */
+/* Skills — les compétences façon RPG                                  */
+/* ------------------------------------------------------------------ */
+
+/** Les compétences de départ de Twaylo, groupées par domaine. */
+const SKILLS_DEFAUT: { nom: string; categorie: string }[] = [
+  { nom: "Anglais", categorie: "Langues" },
+  { nom: "Espagnol", categorie: "Langues" },
+  { nom: "Maps GeoLayers", categorie: "Création" },
+  { nom: "Montage", categorie: "Création" },
+  { nom: "Storytelling", categorie: "Création" },
+  { nom: "Shorts", categorie: "Création" },
+  { nom: "Branding", categorie: "Création" },
+  { nom: "Financier", categorie: "Business" },
+  { nom: "Muscu", categorie: "Corps" },
+  { nom: "Beauté", categorie: "Corps" },
+  { nom: "Physique", categorie: "Corps" },
+];
+
+/**
+ * Les compétences, rangées dans la sentinelle (config libre).
+ *
+ * Absentes de la config (premier accès), on sème le jeu de départ — une seule
+ * fois : une fois la clé écrite, même vidée, on la respecte. Twaylo reste
+ * maître de sa liste.
+ */
+export async function lireSkills(): Promise<Skill[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
+
+  if (error) throw error;
+  const skills = (data?.habitudes as { skills?: Skill[] } | null)?.skills;
+  if (Array.isArray(skills)) return skills;
+
+  const semes: Skill[] = SKILLS_DEFAUT.map((s, i) => ({
+    id: `skill-${i}-${s.nom.toLowerCase().replace(/[^a-z]/g, "")}`,
+    nom: s.nom,
+    categorie: s.categorie,
+    niveau: 0,
+    historique: [],
+  }));
+  await majSentinelle({ skills: semes });
+  return semes;
+}
+
+export async function ecrireSkills(skills: Skill[]): Promise<void> {
+  await majSentinelle({ skills });
 }
 
 
