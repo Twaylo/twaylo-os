@@ -762,6 +762,34 @@ export function TachesCard() {
                 )}
               </div>
 
+              {/*
+                Le champ d'ajout EN TÊTE de pile, jamais en bas : plus la liste
+                s'allonge, plus un champ en bas s'éloigne — Twaylo veut poser
+                une tâche d'un geste, pas défiler pour trouver où l'écrire.
+              */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void ajouterTache(nouvelle[niveau] ?? "", niveau);
+                  setNouvelle((p) => ({ ...p, [niveau]: "" }));
+                }}
+                className="mb-[5px]"
+              >
+                <input
+                  value={nouvelle[niveau] ?? ""}
+                  onChange={(e) =>
+                    setNouvelle((p) => ({ ...p, [niveau]: e.target.value }))
+                  }
+                  placeholder={`+ ${meta.nom.toLowerCase()}`}
+                  aria-label={`Ajouter une tâche — ${meta.nom.toLowerCase()}`}
+                  className="w-full rounded-[8px] px-[9px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px dashed rgba(255,255,255,0.12)",
+                  }}
+                />
+              </form>
+
               <div className="flex flex-col gap-[4px]">
                 {items.map(({ t, index }) => {
                   const id = (t as { id?: string }).id;
@@ -911,30 +939,6 @@ export function TachesCard() {
                 })}
               </div>
 
-              {/* Un champ par niveau : on ajoute directement au bon endroit
-                  plutôt que d'ajouter puis déplacer. */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void ajouterTache(nouvelle[niveau] ?? "", niveau);
-                  setNouvelle((p) => ({ ...p, [niveau]: "" }));
-                }}
-                className="mt-[5px]"
-              >
-                <input
-                  value={nouvelle[niveau] ?? ""}
-                  onChange={(e) =>
-                    setNouvelle((p) => ({ ...p, [niveau]: e.target.value }))
-                  }
-                  placeholder={`+ ${meta.nom.toLowerCase()}`}
-                  aria-label={`Ajouter une tâche — ${meta.nom.toLowerCase()}`}
-                  className="w-full rounded-[8px] px-[9px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
-                  style={{
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px dashed rgba(255,255,255,0.12)",
-                  }}
-                />
-              </form>
             </div>
           );
         })}
