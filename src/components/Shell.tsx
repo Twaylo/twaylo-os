@@ -14,11 +14,13 @@ import { RevueView } from "@/components/views/RevueView";
 import { FichiersView } from "@/components/views/FichiersView";
 import { BrainView } from "@/components/views/BrainView";
 import { BilanView } from "@/components/views/BilanView";
+import { JourneeTypeView } from "@/components/views/JourneeTypeView";
 
 const VIEWS = {
   Accueil: AccueilView,
   Brain: BrainView,
   Bilan: BilanView,
+  "Journée type": JourneeTypeView,
   Contacts: ContactsView,
   Sponsors: SponsorsView,
   Contenu: ContenuView,

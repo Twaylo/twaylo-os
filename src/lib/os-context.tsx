@@ -69,6 +69,7 @@ export const TABS = [
   "Accueil",
   "Brain",
   "Bilan",
+  "Journée type",
   "Contacts",
   "Sponsors",
   "Contenu",
