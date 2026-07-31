@@ -18,6 +18,11 @@ const CHEMINS_PUBLICS = new Set([
   "/api/auth/login",
   "/api/auth/logout",
   "/api/telegram/webhook",
+  // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
+  // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
+  // elle-même et refuse tout si la variable manque.
+  "/api/cron/brief-matin",
+  "/api/cron/recap-soir",
 ]);
 
 export async function middleware(req: NextRequest) {

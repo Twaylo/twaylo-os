@@ -18,6 +18,12 @@ import {
   type TacheDB,
 } from "./db";
 import { lireStatsHabitudes } from "./habitudes-stats";
+import {
+  ecrireBlocsFaits,
+  ecrireJournees,
+  lireBlocsFaits,
+  lireJournees,
+} from "./journees-db";
 import { lireStatsTaches } from "./taches-stats";
 import { lireStatsNutrition } from "./nutrition-stats";
 import { lireStatsYoutube } from "./youtube";
@@ -203,6 +209,34 @@ const OUTILS: Anthropic.Tool[] = [
         statut: { type: "string", enum: ["atteint", "abandonne", "en_cours"] },
       },
       required: ["objectif", "statut"],
+    },
+  },
+  {
+    name: "cocher_bloc_journee",
+    description:
+      "Coche (ou décoche) un bloc de la journée type d'aujourd'hui — « sport fait », « j'ai posté les shorts ». L'habitude liée au bloc se coche aussi, toute seule.",
+    input_schema: {
+      type: "object",
+      properties: {
+        bloc: {
+          type: "string",
+          description: "Le bloc, même approximatif : sport, scripts, rec, poster…",
+        },
+        fait: { type: "boolean", description: "false pour décocher. Par défaut true." },
+      },
+      required: ["bloc"],
+    },
+  },
+  {
+    name: "changer_journee_type",
+    description:
+      "Bascule le modèle de journée type actif — « je pars en déplacement », « retour à la maison ».",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom: { type: "string", description: "Le nom du modèle, même partiel." },
+      },
+      required: ["nom"],
     },
   },
 ];
@@ -400,6 +434,51 @@ async function executer(
       if (!cible) return `Aucun sponsor ne correspond à « ${entree.nom} ».`;
       await majDeal(cible.id, { montant });
       return `Montant de « ${cible.nom} » fixé à ${montant.toLocaleString("fr-FR")} €.`;
+    }
+    case "cocher_bloc_journee": {
+      const cfg = await lireJournees();
+      const active = cfg.liste.find((j) => j.id === cfg.active) ?? cfg.liste[0];
+      if (!active || active.blocs.length === 0) return "Aucune journée type configurée.";
+      const bloc = trouverParNom(String(entree.bloc ?? ""), active.blocs, (b) => b.titre);
+      if (!bloc) {
+        return `Aucun bloc ne correspond à « ${entree.bloc} » dans « ${active.nom} ».`;
+      }
+      const fait = entree.fait !== false;
+      const faits = await lireBlocsFaits(jour);
+      const suivants = fait
+        ? [...faits.filter((f) => f !== bloc.id), bloc.id]
+        : faits.filter((f) => f !== bloc.id);
+      await ecrireBlocsFaits(jour, suivants);
+
+      // L'habitude liée suit, comme à l'écran : poser/retirer, jamais de
+      // bascule aveugle qui éteindrait une habitude déjà cochée à la main.
+      if (bloc.habitude) {
+        const { etat } = await lireJour(jour);
+        const marque = bloc.habitudeOption || "fait";
+        const actuelles = etat.faites[bloc.habitude] ?? [];
+        const options = fait
+          ? actuelles.includes(marque)
+            ? actuelles
+            : [...actuelles, marque]
+          : actuelles.filter((o) => o !== marque);
+        await ecrireJour(jour, {
+          etat: { faites: { ...etat.faites, [bloc.habitude]: options } },
+        });
+      }
+
+      const n = active.blocs.filter((b) => suivants.includes(b.id)).length;
+      return `${fait ? "Coché" : "Décoché"} : « ${bloc.titre} » — ${n}/${active.blocs.length} de ta journée « ${active.nom} ».`;
+    }
+    case "changer_journee_type": {
+      const cfg = await lireJournees();
+      const cible = trouverParNom(String(entree.nom ?? ""), cfg.liste, (j) => j.nom);
+      if (!cible) {
+        return `Aucun modèle ne s'appelle « ${entree.nom} ». Modèles : ${cfg.liste
+          .map((j) => j.nom)
+          .join(", ")}.`;
+      }
+      await ecrireJournees({ ...cfg, active: cible.id });
+      return `Journée type basculée sur « ${cible.nom} » (${cible.blocs.length} blocs).`;
     }
     case "archiver_objectif": {
       const statut = String(entree.statut ?? "");

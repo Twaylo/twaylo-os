@@ -13,6 +13,7 @@ import {
 } from "./db";
 import { NIVEAUX, niveauDepuisUrgence, type Niveau } from "./types";
 import { lireAgendaSemaine } from "./agenda";
+import { lireBlocsFaits, lireJournees } from "./journees-db";
 
 /**
  * Ce que le brain sait de Twaylo.
@@ -50,7 +51,7 @@ async function lireJournalRecent(
 export async function assemblerContexte(jour: string): Promise<string> {
   // En parallèle : aucune de ces lectures ne dépend des autres, et le brain
   // doit répondre vite.
-  const [taches, journee, habitudes, blocages, deals, contacts, videos, serie, journal, agenda, ordre] =
+  const [taches, journee, habitudes, blocages, deals, contacts, videos, serie, journal, agenda, ordre, journeesCfg, blocsFaits] =
     await Promise.all([
       lireTaches(),
       lireJour(jour),
@@ -65,6 +66,8 @@ export async function assemblerContexte(jour: string): Promise<string> {
       // échouer toute la réponse.
       lireAgendaSemaine().catch(() => []),
       lireOrdreTaches(),
+      lireJournees(),
+      lireBlocsFaits(jour),
     ]);
 
   const bloc: string[] = [];
@@ -115,6 +118,21 @@ export async function assemblerContexte(jour: string): Promise<string> {
     return `[x] ${h.nom}${detail.length ? ` — ${detail.join(", ")}` : ""}`;
   });
   if (lignesHabitudes.length) bloc.push(`# Habitudes du jour\n${lignesHabitudes.join("\n")}`);
+
+  /* ---- Journée type — les immuables de Twaylo ---- */
+  const jActive =
+    journeesCfg.liste.find((j) => j.id === journeesCfg.active) ?? journeesCfg.liste[0];
+  if (jActive && jActive.blocs.length > 0) {
+    const lignesBlocs = jActive.blocs.map(
+      (b) => `${blocsFaits.includes(b.id) ? "[x]" : "[ ]"} ${b.debut} ${b.titre}`,
+    );
+    bloc.push(
+      `# Journée type — modèle actif « ${jActive.nom} »\n${lignesBlocs.join("\n")}\nAutres modèles : ${journeesCfg.liste
+        .filter((j) => j.id !== jActive.id)
+        .map((j) => j.nom)
+        .join(", ") || "aucun"}`,
+    );
+  }
 
   /* ---- Ce qui coince ---- */
   if (blocages.length) {

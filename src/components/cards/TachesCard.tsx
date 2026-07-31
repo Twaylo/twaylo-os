@@ -725,43 +725,6 @@ export function TachesCard() {
         </div>
       </div>
 
-      {/* La journée type — cochée ici ou sur sa carte, c'est le même état. */}
-      {blocsJour.length > 0 && (
-        <div className="mt-[11px]">
-          <div className="mb-[5px] flex items-baseline justify-between gap-2">
-            <div className="min-w-0">
-              <div
-                className="text-[9px] font-black tracking-[0.12em]"
-                style={{ color: "var(--color-ble-soft)" }}
-              >
-                JOURNÉE TYPE{journeeActive ? ` · ${journeeActive.nom.toUpperCase()}` : ""}
-              </div>
-              <div className="text-[8px] font-bold tracking-[0.08em] text-white/25">
-                IMMUABLES — REVIENNENT CHAQUE MATIN
-              </div>
-            </div>
-            <span
-              className="font-mono text-[10px] font-black"
-              style={{ color: "var(--color-ble-soft)" }}
-            >
-              {blocsCoches}/{blocsJour.length}
-            </span>
-          </div>
-          <div className="flex flex-col gap-[6px]">
-            {blocsJour.map((b) => (
-              <CheckRow
-                key={b.id}
-                label={b.titre}
-                done={blocsFaits.includes(b.id)}
-                accent="var(--color-ble)"
-                onToggle={() => basculerBlocFait(b.id)}
-                meta={b.debut}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       {enChargement && tasks.length === 0 && (
         <div className="py-6 text-center text-[12px] font-bold text-white/25">
           Lecture des tâches…
@@ -976,6 +939,47 @@ export function TachesCard() {
           );
         })}
       </div>
+
+      {/*
+        La journée type — cochée ici ou sur sa carte, c'est le même état.
+        APRÈS les niveaux, jamais avant : le focus principal reste la première
+        chose que Twaylo voit en ouvrant sa carte (sa demande explicite).
+      */}
+      {blocsJour.length > 0 && (
+        <div className="mt-[13px]">
+          <div className="mb-[5px] flex items-baseline justify-between gap-2">
+            <div className="min-w-0">
+              <div
+                className="text-[9px] font-black tracking-[0.12em]"
+                style={{ color: "var(--color-ble-soft)" }}
+              >
+                JOURNÉE TYPE{journeeActive ? ` · ${journeeActive.nom.toUpperCase()}` : ""}
+              </div>
+              <div className="text-[8px] font-bold tracking-[0.08em] text-white/25">
+                IMMUABLES — REVIENNENT CHAQUE MATIN
+              </div>
+            </div>
+            <span
+              className="font-mono text-[10px] font-black"
+              style={{ color: "var(--color-ble-soft)" }}
+            >
+              {blocsCoches}/{blocsJour.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-[6px]">
+            {blocsJour.map((b) => (
+              <CheckRow
+                key={b.id}
+                label={b.titre}
+                done={blocsFaits.includes(b.id)}
+                accent="var(--color-ble)"
+                onToggle={() => basculerBlocFait(b.id)}
+                meta={b.debut}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Passer au jour suivant : archive la todo, garde les tâches non faites. */}
       <div className="mt-[14px] border-t border-white/10 pt-[11px]">
