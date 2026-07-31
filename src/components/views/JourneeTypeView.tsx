@@ -6,6 +6,7 @@ import { useOs } from "@/lib/os-context";
 import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 import { EmptyState } from "@/components/ui";
+import { useHeure } from "@/lib/use-heure";
 import {
   CATEGORIES_BLOC,
   JOURNEES_DEFAUT,
@@ -34,21 +35,6 @@ function idLibre(prefixe: string, existants: { id: string }[]): string {
   let n = 0;
   while (existants.some((e) => e.id === `${prefixe}${n}`)) n++;
   return `${prefixe}${n}`;
-}
-
-/** L'heure courante HH:MM, rafraîchie toutes les 30 s (même pas que l'horloge du rail). */
-function useHeure(): string {
-  const [heure, setHeure] = useState("");
-  useEffect(() => {
-    const lire = () =>
-      setHeure(
-        new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      );
-    lire();
-    const id = setInterval(lire, 30_000);
-    return () => clearInterval(id);
-  }, []);
-  return heure;
 }
 
 export function JourneeTypeView() {

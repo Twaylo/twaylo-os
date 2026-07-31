@@ -14,6 +14,7 @@ import { SemaineCard } from "@/components/cards/SemaineCard";
 import { ObjectifsCard } from "@/components/cards/ObjectifsCard";
 import { JournalCard } from "@/components/cards/JournalCard";
 import { NutritionCard } from "@/components/cards/NutritionCard";
+import { JourneeCard } from "@/components/cards/JourneeCard";
 import { BlocagesCard } from "@/components/cards/BlocagesCard";
 
 export function AccueilView() {
@@ -54,6 +55,7 @@ export function AccueilView() {
         <HabitudesCard />
         <BlocagesCard />
         <NutritionCard />
+        <JourneeCard />
         <SemaineCard />
         <ObjectifsCard />
       </div>
