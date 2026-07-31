@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { placerEnTeteOrdre } from "@/lib/db";
-import { niveauDepuisUrgence } from "@/lib/types";
+import { niveauDepuisUrgence, type Niveau } from "@/lib/types";
+import { estQuadrant } from "@/lib/eisenhower";
 import {
   archiverTachesOubliees,
+  classerOubliee,
   lireOubliees,
   reprendreOubliee,
   supprimerOubliee,
@@ -28,7 +30,7 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!isSupabaseConfigured()) return NextResponse.json({ persiste: false });
 
-  let corps: { id?: unknown };
+  let corps: { id?: unknown; niveau?: unknown };
   try {
     corps = await req.json();
   } catch {
@@ -37,9 +39,14 @@ export async function POST(req: Request) {
   if (typeof corps.id !== "string" || !corps.id) {
     return NextResponse.json({ error: "Identifiant manquant." }, { status: 400 });
   }
+  const niveau = (["principal", "secondaire", "annexe"] as const).includes(
+    corps.niveau as Niveau,
+  )
+    ? (corps.niveau as Niveau)
+    : undefined;
 
   try {
-    const reprise = await reprendreOubliee(corps.id);
+    const reprise = await reprendreOubliee(corps.id, niveau);
     if (!reprise) {
       return NextResponse.json({ error: "Oublié introuvable." }, { status: 404 });
     }
@@ -65,6 +72,32 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[oublies] reprise impossible :", err);
+    return NextResponse.json({ error: "Écriture impossible." }, { status: 500 });
+  }
+}
+
+/** Déplace un oublié dans une autre case de la matrice. */
+export async function PATCH(req: Request) {
+  if (!isSupabaseConfigured()) return NextResponse.json({ persiste: false });
+
+  let corps: { id?: unknown; quadrant?: unknown };
+  try {
+    corps = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
+  }
+  if (typeof corps.id !== "string" || !corps.id || !estQuadrant(corps.quadrant)) {
+    return NextResponse.json(
+      { error: "Identifiant ou case invalide." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await classerOubliee(corps.id, corps.quadrant);
+    return NextResponse.json({ persiste: true });
+  } catch (err) {
+    console.error("[oublies] classement impossible :", err);
     return NextResponse.json({ error: "Écriture impossible." }, { status: 500 });
   }
 }

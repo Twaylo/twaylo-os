@@ -220,7 +220,7 @@ type OsState = {
    * Remet un oublié dans la todo : il réapparaît en tête, tout de suite —
    * sans ça il fallait recharger la page pour le revoir.
    */
-  reprendreOublie: (id: string) => Promise<boolean>;
+  reprendreOublie: (id: string, niveau?: Niveau) => Promise<boolean>;
 
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
@@ -1691,13 +1691,15 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const reprendreOublie = useCallback(async (id: string): Promise<boolean> => {
+  const reprendreOublie = useCallback(async (id: string, niveau?: Niveau) => {
     if (demoModeRef.current) return true;
     try {
       const res = await fetch("/api/oublies", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
+        // Le niveau vient de la case dans la matrice d'Eisenhower : ce qui
+        // sort de « Faire » revient en focus principal, pas en annexe.
+        body: JSON.stringify({ id, niveau }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { tache } = (await res.json()) as { tache?: Task & { id: string } };
