@@ -33,6 +33,7 @@ import {
   ordonnerOnglets,
   type CustomConfig,
 } from "./custom";
+import { JOURNEES_DEFAUT, type JourneesConfig } from "./journees";
 import {
   KEYS,
   dailyKey,
@@ -96,6 +97,16 @@ type OsState = {
   majCustom: (patch: Partial<CustomConfig>) => void;
   /** Les onglets du rail : dans l'ordre choisi, sans les masqués. */
   ongletsVisibles: Tab[];
+
+  /**
+   * Les journées types — les immuables de Twaylo. Le modèle ne se remet
+   * jamais à zéro ; seules les coches du jour repartent vierges le matin.
+   */
+  journees: JourneesConfig | null;
+  majJournees: (config: JourneesConfig) => void;
+  /** Les blocs cochés aujourd'hui (identifiants). */
+  blocsFaits: string[];
+  basculerBlocFait: (blocId: string) => void;
 
   /** Les données affichées — REAL_DATA ou DEMO_DATA selon le mode. */
   data: OsData;
@@ -269,6 +280,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const customTouche = useRef(false);
   const customRef = useRef<CustomConfig>(CUSTOM_DEFAUT);
   customRef.current = custom;
+
+  const [journees, setJournees] = useState<JourneesConfig | null>(null);
+  const [blocsFaits, setBlocsFaits] = useState<string[]>([]);
+  const journeesMinuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
@@ -402,6 +417,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     journal: false,
     uneChose: false,
     repas: false,
+    journee: false,
   });
 
   /** Relit tout le stockage local et remplit l'état. */
@@ -418,6 +434,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setJournalText(readJSON<string>(dailyKey("journal"), ""));
     setUneChose(readJSON<UneChose>(dailyKey("unechose"), { texte: "", fait: false }));
     setRepas(readJSON<Repas[]>(dailyKey("nutrition"), []));
+    setBlocsFaits(readJSON<string[]>(dailyKey("journee"), []));
     setTodoCloturee(readJSON<string>("twaylo-todo-cloturee", ""));
   }, []);
 
@@ -477,6 +494,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     pruneOldDailyKeys("journal");
     pruneOldDailyKeys("unechose");
     pruneOldDailyKeys("nutrition");
+    pruneOldDailyKeys("journee");
 
     // L'ambiance et les onglets se repeignent AVANT la première image, même
     // en démo : filmer l'OS doit montrer l'OS tel que Twaylo l'a réglé.
@@ -563,6 +581,64 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /*
+   * Les journées types, partagées entre la carte d'accueil, la carte Tâches
+   * clés et l'onglet dédié : un seul état, sinon cocher ici n'apparaît pas là.
+   * Les coches du serveur ne s'appliquent que si rien n'a été touché — même
+   * garde que le journal face au bot Telegram.
+   */
+  useEffect(() => {
+    if (demoMode) {
+      setJournees(JOURNEES_DEFAUT);
+      return;
+    }
+    let annule = false;
+    void fetch(`/api/journees?jour=${localDateKey()}`)
+      .then((r) => r.json())
+      .then((d: { journees?: JourneesConfig; faits?: string[] }) => {
+        if (annule) return;
+        if (d.journees) setJournees(d.journees);
+        if (Array.isArray(d.faits) && d.faits.length > 0 && !modifie.current.journee) {
+          setBlocsFaits(d.faits);
+        }
+      })
+      .catch((err) => console.error("[journees] chargement impossible :", err));
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (!hydrate || demoMode || !modifie.current.journee) return;
+    writeJSON(dailyKey("journee"), blocsFaits);
+    void fetch("/api/journees", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jour: localDateKey(), faits: blocsFaits }),
+    }).catch((err) => console.error("[journees] coche impossible :", err));
+  }, [blocsFaits, demoMode, hydrate]);
+
+  const basculerBlocFait = useCallback((blocId: string) => {
+    modifie.current.journee = true;
+    setBlocsFaits((prev) =>
+      prev.includes(blocId) ? prev.filter((b) => b !== blocId) : [...prev, blocId],
+    );
+  }, []);
+
+  /** Écrit les modèles : écran tout de suite, base derrière (débouncée). */
+  const majJournees = useCallback((config: JourneesConfig) => {
+    setJournees(config);
+    if (demoModeRef.current) return;
+    if (journeesMinuteur.current) clearTimeout(journeesMinuteur.current);
+    journeesMinuteur.current = setTimeout(() => {
+      void fetch("/api/journees", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(config),
+      }).catch((err) => console.error("[journees] enregistrement impossible :", err));
+    }, 600);
+  }, []);
+
+  /*
    * Le passage de minuit.
    *
    * Un onglet resté ouvert toute la nuit continuait d'écrire dans la journée
@@ -587,15 +663,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setJourCourant(maintenant);
       // Rien n'a encore été touché aujourd'hui : sans cette remise à zéro,
       // les drapeaux « modifié » d'hier autoriseraient une écriture immédiate.
-      modifie.current = { faites: false, journal: false, uneChose: false, repas: false };
+      modifie.current = {
+        faites: false,
+        journal: false,
+        uneChose: false,
+        repas: false,
+        journee: false,
+      };
       setFaitesDuJour({});
       setJournalText("");
       setUneChose({ texte: "", fait: false });
       setRepas([]);
+      // Les modèles de journée restent ; seules les coches repartent vierges —
+      // c'est ce qui fait des blocs des habitudes, pas des tâches jetables.
+      setBlocsFaits([]);
       pruneOldDailyKeys("habits");
       pruneOldDailyKeys("journal");
       pruneOldDailyKeys("unechose");
       pruneOldDailyKeys("nutrition");
+      pruneOldDailyKeys("journee");
     };
 
     const minuteur = setInterval(verifier, 30_000);
@@ -1737,6 +1823,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
       custom,
       majCustom,
       ongletsVisibles,
+      journees,
+      majJournees,
+      blocsFaits,
+      basculerBlocFait,
       data,
       revealed,
       toggleRevealed: () => setRevealed((v) => !v),
@@ -1804,6 +1894,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
       custom,
       majCustom,
       ongletsVisibles,
+      journees,
+      majJournees,
+      blocsFaits,
+      basculerBlocFait,
       data,
       revealed,
       captureText,

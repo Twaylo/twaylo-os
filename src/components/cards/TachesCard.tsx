@@ -88,7 +88,22 @@ export function TachesCard() {
     todoCloturee,
     tachesPretes,
     demoMode,
+    journees,
+    blocsFaits,
+    basculerBlocFait,
   } = useOs();
+
+  /*
+   * Les immuables de la journée type, en tête de la carte : ce sont eux qui
+   * structurent le jour. Ils ne passent PAS par la table des tâches — donc
+   * « passer au jour suivant » ne les efface jamais : ils reviennent chaque
+   * matin, vierges, comme des habitudes.
+   */
+  const journeeActive = journees
+    ? (journees.liste.find((j) => j.id === journees.active) ?? journees.liste[0] ?? null)
+    : null;
+  const blocsJour = journeeActive?.blocs ?? [];
+  const blocsCoches = blocsJour.filter((b) => blocsFaits.includes(b.id)).length;
 
   // En démo, la liste est fournie sans passer par la base : rien à attendre.
   const enChargement = !tachesPretes && !demoMode;
@@ -709,6 +724,43 @@ export function TachesCard() {
           {done}/{tasks.length}
         </div>
       </div>
+
+      {/* La journée type — cochée ici ou sur sa carte, c'est le même état. */}
+      {blocsJour.length > 0 && (
+        <div className="mt-[11px]">
+          <div className="mb-[5px] flex items-baseline justify-between gap-2">
+            <div className="min-w-0">
+              <div
+                className="text-[9px] font-black tracking-[0.12em]"
+                style={{ color: "var(--color-ble-soft)" }}
+              >
+                JOURNÉE TYPE{journeeActive ? ` · ${journeeActive.nom.toUpperCase()}` : ""}
+              </div>
+              <div className="text-[8px] font-bold tracking-[0.08em] text-white/25">
+                IMMUABLES — REVIENNENT CHAQUE MATIN
+              </div>
+            </div>
+            <span
+              className="font-mono text-[10px] font-black"
+              style={{ color: "var(--color-ble-soft)" }}
+            >
+              {blocsCoches}/{blocsJour.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-[6px]">
+            {blocsJour.map((b) => (
+              <CheckRow
+                key={b.id}
+                label={b.titre}
+                done={blocsFaits.includes(b.id)}
+                accent="var(--color-ble)"
+                onToggle={() => basculerBlocFait(b.id)}
+                meta={b.debut}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {enChargement && tasks.length === 0 && (
         <div className="py-6 text-center text-[12px] font-bold text-white/25">

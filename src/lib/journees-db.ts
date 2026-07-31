@@ -26,6 +26,56 @@ export async function lireJournees(): Promise<JourneesConfig> {
   return bornerJournees(journees);
 }
 
+/**
+ * Les blocs cochés d'UN jour donné — la journée type vécue, pas le modèle.
+ *
+ * Rangés sur la ligne du jour (pas la sentinelle) : c'est une donnée datée,
+ * comme les habitudes cochées. Le modèle ne se remet jamais à zéro ; seules
+ * les coches repartent vierges chaque matin, ce qui en fait des habitudes
+ * de long terme plutôt que des tâches jetables.
+ */
+export async function lireBlocsFaits(jour: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", jour)
+    .maybeSingle();
+
+  if (error) throw error;
+  const faits = (data?.habitudes as { journeeFaits?: unknown } | null)?.journeeFaits;
+  return Array.isArray(faits) ? faits.slice(0, 48).map((f) => String(f).slice(0, 40)) : [];
+}
+
+export async function ecrireBlocsFaits(jour: string, faits: string[]): Promise<void> {
+  const db = supabaseAdmin();
+
+  // Relire-fusionner : la ligne du jour porte aussi les habitudes cochées,
+  // le journal… — écrire les coches ne doit rien effacer d'autre.
+  const { data, error: erreurLecture } = await db
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", USER_ID)
+    .eq("jour", jour)
+    .maybeSingle();
+
+  if (erreurLecture) throw erreurLecture;
+
+  const { error } = await db.from("daily_logs").upsert(
+    {
+      user_id: USER_ID,
+      jour,
+      habitudes: {
+        ...((data?.habitudes ?? {}) as object),
+        journeeFaits: faits.slice(0, 48).map((f) => String(f).slice(0, 40)),
+      },
+    },
+    { onConflict: "user_id,jour" },
+  );
+
+  if (error) throw error;
+}
+
 /** Relit puis fusionne : écrire ici ne doit pas effacer le reste de la sentinelle. */
 export async function ecrireJournees(config: JourneesConfig): Promise<void> {
   const db = supabaseAdmin();

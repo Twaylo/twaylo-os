@@ -47,7 +47,14 @@ export type JourneesConfig = {
   active: string;
 };
 
-/** Les deux modèles de départ — la maison, et le terrain. */
+/**
+ * Les deux modèles de départ — le déroulé RÉEL de Twaylo, dicté par lui :
+ * sport au réveil, scripts des shorts, rec + envoi au monteur (maps,
+ * globaux, armée, news), formats longs et tâches annexes, un passage sur
+ * Momentum / Twaylo OS, et le soir la publication des shorts reçus.
+ * Ce sont ses immuables : ils reviennent chaque jour tant qu'il ne les
+ * change pas lui-même.
+ */
 export const JOURNEES_DEFAUT: JourneesConfig = {
   active: "maison",
   liste: [
@@ -55,25 +62,26 @@ export const JOURNEES_DEFAUT: JourneesConfig = {
       id: "maison",
       nom: "À la maison",
       blocs: [
-        { id: "m1", debut: "07:00", fin: "08:00", titre: "Réveil + routine", categorie: "corps" },
-        { id: "m2", debut: "08:00", fin: "12:00", titre: "Session créative — scripts, écriture", categorie: "creation" },
-        { id: "m3", debut: "12:00", fin: "13:30", titre: "Repas + marche", categorie: "repos" },
-        { id: "m4", debut: "13:30", fin: "17:00", titre: "Tournage / montage", categorie: "tournage" },
-        { id: "m5", debut: "17:00", fin: "18:30", titre: "Sport", categorie: "corps" },
-        { id: "m6", debut: "18:30", fin: "20:00", titre: "Communauté + veille", categorie: "business" },
-        { id: "m7", debut: "20:00", fin: "", titre: "Libre", categorie: "repos" },
+        { id: "m1", debut: "07:00", fin: "08:00", titre: "Réveil + sport (run ou Seven)", categorie: "corps" },
+        { id: "m2", debut: "08:00", fin: "10:00", titre: "Script les shorts du jour", categorie: "creation" },
+        { id: "m3", debut: "10:00", fin: "12:00", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage" },
+        { id: "m4", debut: "12:00", fin: "13:30", titre: "Repas + marche", categorie: "repos" },
+        { id: "m5", debut: "13:30", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation" },
+        { id: "m6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business" },
+        { id: "m7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business" },
       ],
     },
     {
       id: "deplacement",
       nom: "En déplacement",
       blocs: [
-        { id: "d1", debut: "07:30", fin: "08:30", titre: "Réveil + point du jour", categorie: "corps" },
-        { id: "d2", debut: "08:30", fin: "12:30", titre: "Tournage terrain", categorie: "tournage" },
-        { id: "d3", debut: "12:30", fin: "14:00", titre: "Repas local", categorie: "repos" },
-        { id: "d4", debut: "14:00", fin: "18:00", titre: "Tournage / repérages", categorie: "tournage" },
-        { id: "d5", debut: "18:00", fin: "20:00", titre: "Tri des rushs + sauvegardes", categorie: "creation" },
-        { id: "d6", debut: "20:00", fin: "", titre: "Notes du jour + communauté", categorie: "business" },
+        { id: "d1", debut: "07:30", fin: "08:30", titre: "Réveil + sport (run ou Seven)", categorie: "corps" },
+        { id: "d2", debut: "08:30", fin: "10:30", titre: "Script les shorts du jour", categorie: "creation" },
+        { id: "d3", debut: "10:30", fin: "12:30", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage" },
+        { id: "d4", debut: "12:30", fin: "14:00", titre: "Repas", categorie: "repos" },
+        { id: "d5", debut: "14:00", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation" },
+        { id: "d6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business" },
+        { id: "d7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business" },
       ],
     },
   ],

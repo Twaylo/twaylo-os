@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { Panel } from "@/components/Panel";
@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/ui";
 import { useHeure } from "@/lib/use-heure";
 import {
   CATEGORIES_BLOC,
-  JOURNEES_DEFAUT,
   blocEnCours,
   type BlocJournee,
   type CategorieBloc,
@@ -38,54 +37,27 @@ function idLibre(prefixe: string, existants: { id: string }[]): string {
 }
 
 export function JourneeTypeView() {
-  const { demoMode } = useOs();
-  const [config, setConfig] = useState<JourneesConfig | null>(null);
+  /*
+   * L'état vit dans os-context, partagé avec la carte d'accueil et la carte
+   * Tâches clés : modifier ici repeint là-bas dans le même rendu, et c'est le
+   * contexte qui persiste (débounce compris).
+   */
+  const { journees, majJournees } = useOs();
   const [nouvelle, setNouvelle] = useState("");
   const [renommage, setRenommage] = useState<string | null>(null);
-  const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heure = useHeure();
 
-  useEffect(() => {
-    if (demoMode) {
-      setConfig(JOURNEES_DEFAUT);
-      return;
-    }
-    let annule = false;
-    void fetch("/api/journees")
-      .then((r) => r.json())
-      .then((d: { journees?: JourneesConfig }) => {
-        if (!annule) setConfig(d.journees ?? JOURNEES_DEFAUT);
-      })
-      .catch((err) => {
-        console.error("[journees] lecture impossible :", err);
-        if (!annule) setConfig(JOURNEES_DEFAUT);
-      });
-    return () => {
-      annule = true;
-    };
-  }, [demoMode]);
+  const config = journees;
 
-  /** Écran tout de suite, base derrière (débouncée) — le geste maison. */
+  /** Les blocs restent triés par heure : déplacer un bloc, c'est changer son heure. */
   function appliquer(next: JourneesConfig) {
-    // Les blocs restent triés par heure de début : déplacer un bloc, c'est
-    // changer son heure.
-    next = {
+    majJournees({
       ...next,
       liste: next.liste.map((j) => ({
         ...j,
         blocs: [...j.blocs].sort((a, b) => a.debut.localeCompare(b.debut)),
       })),
-    };
-    setConfig(next);
-    if (demoMode) return;
-    if (minuteur.current) clearTimeout(minuteur.current);
-    minuteur.current = setTimeout(() => {
-      void fetch("/api/journees", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
-      }).catch((err) => console.error("[journees] enregistrement impossible :", err));
-    }, 600);
+    });
   }
 
   if (!config) {

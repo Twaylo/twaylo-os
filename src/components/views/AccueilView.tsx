@@ -54,8 +54,9 @@ export function AccueilView() {
         <RevenusCard />
         <HabitudesCard />
         <BlocagesCard />
-        <NutritionCard />
+        {/* La journée type AVANT Nutrition : c'est elle qui structure le jour. */}
         <JourneeCard />
+        <NutritionCard />
         <SemaineCard />
         <ObjectifsCard />
       </div>
