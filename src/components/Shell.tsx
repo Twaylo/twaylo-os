@@ -11,7 +11,7 @@ import { JournalView } from "@/components/views/JournalView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { SkillView } from "@/components/views/SkillView";
 import { RevueView } from "@/components/views/RevueView";
-import { FichiersView } from "@/components/views/FichiersView";
+import { OubliesView } from "@/components/views/OubliesView";
 import { BrainView } from "@/components/views/BrainView";
 import { BilanView } from "@/components/views/BilanView";
 import { JourneeTypeView } from "@/components/views/JourneeTypeView";
@@ -29,7 +29,7 @@ const VIEWS = {
   Objectifs: ObjectifsView,
   Skill: SkillView,
   Revue: RevueView,
-  Fichiers: FichiersView,
+  Oubliés: OubliesView,
 } as const;
 
 function ActiveView() {

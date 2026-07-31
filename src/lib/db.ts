@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
+import { archiverTachesOubliees } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
 import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
@@ -119,10 +120,18 @@ export async function lireTaches(): Promise<TacheDB[]> {
   const db = supabaseAdmin();
   const COLONNES = "id, titre, statut, urgence, cle, categorie, completed_at";
 
+  /*
+   * Le balayage des Oubliés passe AVANT la lecture : une tâche secondaire ou
+   * annexe qui traîne depuis quatre jours glisse à l'archive (statut
+   * `abandonnee`, onglet Oubliés) et la todo affichée est déjà propre.
+   */
+  await archiverTachesOubliees();
+
   const { data, error } = await db
     .from("tasks")
     .select(COLONNES)
     .eq("user_id", USER_ID)
+    .neq("statut", "abandonnee")
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -154,6 +163,7 @@ export async function lireTaches(): Promise<TacheDB[]> {
     .from("tasks")
     .select(COLONNES)
     .eq("user_id", USER_ID)
+    .neq("statut", "abandonnee")
     .order("created_at", { ascending: true });
 
   if (erreurRelecture) throw erreurRelecture;
@@ -237,7 +247,10 @@ export async function supprimerToutesTaches(): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
     .delete()
-    .eq("user_id", USER_ID);
+    .eq("user_id", USER_ID)
+    // L'archive des Oubliés survit à tout vidage : elle ne se perd jamais,
+    // c'est sa raison d'être. On n'y touche que depuis l'onglet Oubliés.
+    .neq("statut", "abandonnee");
 
   if (error) throw error;
 }

@@ -79,7 +79,7 @@ export const TABS = [
   "Objectifs",
   "Skill",
   "Revue",
-  "Fichiers",
+  "Oubliés",
 ] as const;
 
 export type Tab = (typeof TABS)[number];
