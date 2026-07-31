@@ -69,6 +69,8 @@ export function JourneeCard() {
         fin: "",
         titre: ajout.titre.trim().slice(0, 80),
         categorie: "creation",
+        habitude: "",
+        habitudeOption: "",
       },
     ]);
     setAjout({ debut: "", titre: "" });

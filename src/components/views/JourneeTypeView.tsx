@@ -266,6 +266,8 @@ function TimelineJournee({
   courant: string | null;
   onMaj: (blocs: BlocJournee[]) => void;
 }) {
+  // Les habitudes servent au lien ⇄ : cocher le bloc coche l'habitude choisie.
+  const { habits } = useOs();
   const [ajout, setAjout] = useState({ debut: "", titre: "", categorie: "creation" as CategorieBloc });
 
   function majBloc(id: string, patch: Partial<BlocJournee>) {
@@ -287,6 +289,8 @@ function TimelineJournee({
         fin: "",
         titre: titre.slice(0, 80),
         categorie: ajout.categorie,
+        habitude: "",
+        habitudeOption: "",
       },
     ]);
     setAjout((a) => ({ ...a, debut: "", titre: "" }));
@@ -401,6 +405,49 @@ function TimelineJournee({
                     </option>
                   ))}
                 </select>
+                {/* Le lien ⇄ habitude : cocher ce bloc cochera aussi celle-ci. */}
+                <select
+                  value={b.habitude}
+                  onChange={(e) =>
+                    majBloc(b.id, { habitude: e.target.value, habitudeOption: "" })
+                  }
+                  aria-label="Habitude liée au bloc"
+                  title="Cocher ce bloc coche aussi cette habitude"
+                  className="flex-none cursor-pointer rounded-[7px] px-[6px] py-[3px] text-[10.5px] font-extrabold outline-none [color-scheme:dark]"
+                  style={{
+                    color: b.habitude ? "var(--color-ver-soft)" : "rgba(255,255,255,0.35)",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <option value="">⇄ aucune habitude</option>
+                  {habits.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      ⇄ {h.nom}
+                    </option>
+                  ))}
+                </select>
+                {b.habitude &&
+                  (habits.find((h) => h.id === b.habitude)?.options.length ?? 0) > 0 && (
+                    <select
+                      value={b.habitudeOption}
+                      onChange={(e) => majBloc(b.id, { habitudeOption: e.target.value })}
+                      aria-label="Option de l'habitude liée"
+                      className="flex-none cursor-pointer rounded-[7px] px-[6px] py-[3px] text-[10.5px] font-bold outline-none [color-scheme:dark]"
+                      style={{
+                        color: "var(--color-ver-soft)",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <option value="">toute l&apos;habitude</option>
+                      {(habits.find((h) => h.id === b.habitude)?.options ?? []).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 <button
                   type="button"
                   onClick={() => supprimerBloc(b.id)}

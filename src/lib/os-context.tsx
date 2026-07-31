@@ -284,6 +284,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [journees, setJournees] = useState<JourneesConfig | null>(null);
   const [blocsFaits, setBlocsFaits] = useState<string[]>([]);
   const journeesMinuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const journeesRef = useRef<JourneesConfig | null>(null);
+  journeesRef.current = journees;
+  const blocsFaitsRef = useRef<string[]>([]);
+  blocsFaitsRef.current = blocsFaits;
   const [revealed, setRevealed] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
@@ -619,9 +623,31 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const basculerBlocFait = useCallback((blocId: string) => {
     modifie.current.journee = true;
+    const fait = !blocsFaitsRef.current.includes(blocId);
     setBlocsFaits((prev) =>
-      prev.includes(blocId) ? prev.filter((b) => b !== blocId) : [...prev, blocId],
+      fait ? [...prev.filter((b) => b !== blocId), blocId] : prev.filter((b) => b !== blocId),
     );
+
+    /*
+     * L'habitude liée suit — faire son sport du matin ne se note qu'UNE fois.
+     * En « poser/retirer », jamais en bascule aveugle : si l'habitude était
+     * déjà cochée à la main, cocher le bloc ne doit pas l'éteindre.
+     */
+    const cfg = journeesRef.current;
+    const active = cfg?.liste.find((j) => j.id === cfg.active) ?? cfg?.liste[0];
+    const bloc = active?.blocs.find((b) => b.id === blocId);
+    if (!bloc?.habitude) return;
+    const marque = bloc.habitudeOption || "fait";
+    modifie.current.faites = true;
+    setFaitesDuJour((prev) => {
+      const actuelles = prev[bloc.habitude] ?? [];
+      const suivantes = fait
+        ? actuelles.includes(marque)
+          ? actuelles
+          : [...actuelles, marque]
+        : actuelles.filter((o) => o !== marque);
+      return { ...prev, [bloc.habitude]: suivantes };
+    });
   }, []);
 
   /** Écrit les modèles : écran tout de suite, base derrière (débouncée). */

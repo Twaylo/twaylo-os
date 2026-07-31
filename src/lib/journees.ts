@@ -33,6 +33,13 @@ export type BlocJournee = {
   fin: string;
   titre: string;
   categorie: CategorieBloc;
+  /**
+   * L'habitude liée : cocher le bloc coche AUSSI cette habitude — faire son
+   * sport du matin ne doit se noter qu'une fois. Vide : pas de lien.
+   */
+  habitude: string;
+  /** L'option cochée sur l'habitude (« Écriture » sur Session créative). */
+  habitudeOption: string;
 };
 
 export type JourneeType = {
@@ -62,26 +69,26 @@ export const JOURNEES_DEFAUT: JourneesConfig = {
       id: "maison",
       nom: "À la maison",
       blocs: [
-        { id: "m1", debut: "07:00", fin: "08:00", titre: "Réveil + sport (run ou Seven)", categorie: "corps" },
-        { id: "m2", debut: "08:00", fin: "10:00", titre: "Script les shorts du jour", categorie: "creation" },
-        { id: "m3", debut: "10:00", fin: "12:00", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage" },
-        { id: "m4", debut: "12:00", fin: "13:30", titre: "Repas + marche", categorie: "repos" },
-        { id: "m5", debut: "13:30", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation" },
-        { id: "m6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business" },
-        { id: "m7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business" },
+        { id: "m1", debut: "07:00", fin: "08:00", titre: "Réveil + sport (run ou Seven)", categorie: "corps", habitude: "sport", habitudeOption: "" },
+        { id: "m2", debut: "08:00", fin: "10:00", titre: "Script les shorts du jour", categorie: "creation", habitude: "creatif", habitudeOption: "Écriture" },
+        { id: "m3", debut: "10:00", fin: "12:00", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage", habitude: "creatif", habitudeOption: "Tournage" },
+        { id: "m4", debut: "12:00", fin: "13:30", titre: "Repas + marche", categorie: "repos", habitude: "", habitudeOption: "" },
+        { id: "m5", debut: "13:30", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation", habitude: "", habitudeOption: "" },
+        { id: "m6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business", habitude: "", habitudeOption: "" },
+        { id: "m7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business", habitude: "", habitudeOption: "" },
       ],
     },
     {
       id: "deplacement",
       nom: "En déplacement",
       blocs: [
-        { id: "d1", debut: "07:30", fin: "08:30", titre: "Réveil + sport (run ou Seven)", categorie: "corps" },
-        { id: "d2", debut: "08:30", fin: "10:30", titre: "Script les shorts du jour", categorie: "creation" },
-        { id: "d3", debut: "10:30", fin: "12:30", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage" },
-        { id: "d4", debut: "12:30", fin: "14:00", titre: "Repas", categorie: "repos" },
-        { id: "d5", debut: "14:00", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation" },
-        { id: "d6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business" },
-        { id: "d7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business" },
+        { id: "d1", debut: "07:30", fin: "08:30", titre: "Réveil + sport (run ou Seven)", categorie: "corps", habitude: "sport", habitudeOption: "" },
+        { id: "d2", debut: "08:30", fin: "10:30", titre: "Script les shorts du jour", categorie: "creation", habitude: "creatif", habitudeOption: "Écriture" },
+        { id: "d3", debut: "10:30", fin: "12:30", titre: "Rec les shorts + envoi au monteur (maps, globaux, armée, news)", categorie: "tournage", habitude: "creatif", habitudeOption: "Tournage" },
+        { id: "d4", debut: "12:30", fin: "14:00", titre: "Repas", categorie: "repos", habitude: "", habitudeOption: "" },
+        { id: "d5", debut: "14:00", fin: "17:00", titre: "Tâches annexes + scripts format long", categorie: "creation", habitude: "", habitudeOption: "" },
+        { id: "d6", debut: "17:00", fin: "18:00", titre: "Passage Momentum + Twaylo OS", categorie: "business", habitude: "", habitudeOption: "" },
+        { id: "d7", debut: "20:00", fin: "", titre: "Poster les shorts reçus du monteur", categorie: "business", habitude: "", habitudeOption: "" },
       ],
     },
   ],
@@ -113,6 +120,8 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
             (bl as BlocJournee).categorie in CATEGORIES_BLOC
               ? (bl as BlocJournee).categorie
               : "autre",
+          habitude: texte((bl as BlocJournee).habitude, 40),
+          habitudeOption: texte((bl as BlocJournee).habitudeOption, 40),
         }))
         .filter((bl) => bl.id && bl.titre)
         .sort((a, z) => a.debut.localeCompare(z.debut)),
@@ -124,6 +133,26 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
   const active = liste.some((j) => j.id === b.active) ? String(b.active) : liste[0].id;
   return { liste, active };
 }
+
+/**
+ * Les titres semés par la TOUTE première version, avant que Twaylo ne dicte
+ * ses vrais immuables. En retrouver un en base signifie que la configuration
+ * stockée est ce vieux semis (il n'a jamais édité ces blocs-là) : on la
+ * remplace par ses blocs réels au lieu de lui reservir des blocs inventés.
+ */
+export const TITRES_SEMIS_V1 = [
+  "Réveil + routine",
+  "Session créative — scripts, écriture",
+  "Tournage / montage",
+  "Communauté + veille",
+  "Libre",
+  "Réveil + point du jour",
+  "Tournage terrain",
+  "Repas local",
+  "Tournage / repérages",
+  "Tri des rushs + sauvegardes",
+  "Notes du jour + communauté",
+];
 
 /**
  * Le bloc en cours à l'heure donnée (HH:MM) : le dernier commencé, s'il n'est
