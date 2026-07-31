@@ -201,7 +201,33 @@ export async function creerTache(
     .single();
 
   if (error) throw error;
-  return data as TacheDB;
+  const tache = data as TacheDB;
+
+  /*
+   * La nouvelle tâche prend la TÊTE de la pile, pas la queue.
+   *
+   * L'ordre d'affichage vient de la liste rangée sur la sentinelle, et une
+   * tâche absente de cette liste est renvoyée en dernier (`trierSelon`). Sans
+   * ce placement, ce que Twaylo vient de taper atterrissait tout en bas d'une
+   * liste de vingt lignes — c'est-à-dire hors de vue. On la met donc devant,
+   * ici plutôt que côté navigateur : le Brain Telegram crée des tâches par le
+   * même chemin et doit se comporter pareil.
+   *
+   * L'échec n'annule pas la création : au pire la tâche s'affiche en bas, ce
+   * qui reste très loin de mériter de perdre ce que Twaylo vient d'écrire.
+   */
+  try {
+    const ordre = await lireOrdreTaches();
+    await ecrireOrdreTaches(
+      // Dédoublonné et borné : la liste ne doit pas enfler indéfiniment au fil
+      // des créations, les identifiants des tâches supprimées y traînant.
+      [...new Set([tache.id, ...ordre])].slice(0, 300),
+    );
+  } catch (err) {
+    console.error("[taches] placement en tête impossible :", err);
+  }
+
+  return tache;
 }
 
 /** Fait passer une tâche d'un niveau à l'autre. */

@@ -1616,7 +1616,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
     const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
     const provisoire = { id: cleTemp, text: propre, done: false, niveau } as Task;
-    setTasks((prev) => [...prev, provisoire]);
+    // En TÊTE de pile : ce que Twaylo vient de taper est ce qu'il a en tête,
+    // et une liste de vingt lignes le renverrait hors de vue. Le serveur fait
+    // le même placement dans la liste d'ordre (voir `creerTache`), donc le
+    // rechargement suivant le retrouve au même endroit.
+    setTasks((prev) => [provisoire, ...prev]);
 
     try {
       const res = await fetch("/api/tasks", {
