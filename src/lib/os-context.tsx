@@ -27,6 +27,13 @@ const useEffetAvantPeinture =
 import { DEMO_DATA } from "./data-demo";
 import { REAL_DATA } from "./data-real";
 import {
+  AMBIANCES,
+  CUSTOM_DEFAUT,
+  bornerCustom,
+  ordonnerOnglets,
+  type CustomConfig,
+} from "./custom";
+import {
   KEYS,
   dailyKey,
   pruneOldDailyKeys,
@@ -82,6 +89,12 @@ type OsState = {
   /** Bascule vers le jeu de données factices, pour filmer l'OS. */
   demoMode: boolean;
   toggleDemo: () => void;
+
+  /** Les réglages de personnalisation — ambiance, onglets, identité. */
+  custom: CustomConfig;
+  majCustom: (patch: Partial<CustomConfig>) => void;
+  /** Les onglets du rail : dans l'ordre choisi, sans les masqués. */
+  ongletsVisibles: Tab[];
 
   /** Les données affichées — REAL_DATA ou DEMO_DATA selon le mode. */
   data: OsData;
@@ -250,6 +263,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
+  const [custom, setCustom] = useState<CustomConfig>(CUSTOM_DEFAUT);
+  /** Vrai dès que Twaylo a touché un réglage : la réponse serveur ne l'écrase plus. */
+  const customTouche = useRef(false);
+  const customRef = useRef<CustomConfig>(CUSTOM_DEFAUT);
+  customRef.current = custom;
   const [revealed, setRevealed] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
@@ -459,6 +477,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
     pruneOldDailyKeys("unechose");
     pruneOldDailyKeys("nutrition");
 
+    // L'ambiance et les onglets se repeignent AVANT la première image, même
+    // en démo : filmer l'OS doit montrer l'OS tel que Twaylo l'a réglé.
+    setCustom(bornerCustom(readJSON<CustomConfig>("twaylo-custom", CUSTOM_DEFAUT)));
+
     if (readJSON<string>(KEYS.demo, "0") === "1") {
       // En démo on n'ouvre jamais le stockage réel.
       setDemoMode(true);
@@ -477,6 +499,67 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, [hydrateFromStorage, appliquerCache]);
 
   useEffect(() => surChangementSync(setSync), []);
+
+  /*
+   * Les réglages de personnalisation, depuis la base — pour retrouver SON
+   * OS sur un autre appareil. La copie navigateur a déjà repeint l'écran ;
+   * la base ne corrige que si rien n'a été touché entre-temps.
+   */
+  useEffect(() => {
+    if (demoMode) return;
+    let annule = false;
+    void fetch("/api/custom")
+      .then((r) => r.json())
+      .then((d: { custom?: Partial<CustomConfig> }) => {
+        if (annule || customTouche.current || !d?.custom) return;
+        const propre = bornerCustom(d.custom);
+        setCustom(propre);
+        writeJSON("twaylo-custom", propre);
+      })
+      .catch((err) => console.error("[custom] chargement impossible :", err));
+    return () => {
+      annule = true;
+    };
+  }, [demoMode]);
+
+  /*
+   * L'ambiance s'applique en variables CSS sur la racine : le dégradé
+   * signature et les halos du fond suivent, partout, sans qu'aucun composant
+   * n'ait à connaître le réglage.
+   */
+  useEffect(() => {
+    const amb = AMBIANCES[custom.ambiance] ?? AMBIANCES.signature;
+    const racine = document.documentElement.style;
+    racine.setProperty("--grad", amb.grad);
+    amb.halos.forEach((h, i) => racine.setProperty(`--halo-${i + 1}`, h));
+  }, [custom.ambiance]);
+
+  const ongletsVisibles = useMemo<Tab[]>(() => {
+    const caches = new Set(custom.ongletsCaches);
+    return ordonnerOnglets(TABS, custom.ordreOnglets).filter(
+      (t) => t === "Accueil" || !caches.has(t),
+    );
+  }, [custom.ongletsCaches, custom.ordreOnglets]);
+
+  // Masquer l'onglet où l'on se trouve ne doit pas laisser un écran orphelin.
+  useEffect(() => {
+    if (!ongletsVisibles.includes(activeTab)) setActiveTab("Accueil");
+  }, [ongletsVisibles, activeTab]);
+
+  const majCustom = useCallback((patch: Partial<CustomConfig>) => {
+    customTouche.current = true;
+    // Calculé ICI et non dans l'updater : la requête partirait deux fois en
+    // mode strict (même règle que toggleTask).
+    const suivant = bornerCustom({ ...customRef.current, ...patch });
+    setCustom(suivant);
+    writeJSON("twaylo-custom", suivant);
+    if (demoModeRef.current) return;
+    void fetch("/api/custom", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(suivant),
+    }).catch((err) => console.error("[custom] enregistrement impossible :", err));
+  }, []);
 
   /*
    * Le passage de minuit.
@@ -1650,6 +1733,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setActiveTab,
       demoMode,
       toggleDemo,
+      custom,
+      majCustom,
+      ongletsVisibles,
       data,
       revealed,
       toggleRevealed: () => setRevealed((v) => !v),
@@ -1714,6 +1800,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       activeTab,
       demoMode,
       toggleDemo,
+      custom,
+      majCustom,
+      ongletsVisibles,
       data,
       revealed,
       captureText,

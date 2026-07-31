@@ -45,26 +45,31 @@ function ActiveView() {
   return <View />;
 }
 
-/** Les trois halos flous en fond. Purement décoratifs (spec Partie 3). */
+/**
+ * Les trois halos flous en fond. Purement décoratifs (spec Partie 3).
+ * Leurs couleurs viennent des variables `--halo-N`, posées sur la racine par
+ * l'ambiance choisie dans « Personnaliser » — les valeurs par défaut vivent
+ * dans globals.css.
+ */
 function Glow() {
   return (
     <>
       <div
         className="pointer-events-none absolute -right-[100px] -top-[140px] h-[460px] w-[460px] rounded-full blur-[90px]"
         style={{
-          background: "radial-gradient(circle, rgba(255,61,139,0.13), transparent 70%)",
+          background: "radial-gradient(circle, var(--halo-1), transparent 70%)",
         }}
       />
       <div
         className="pointer-events-none absolute -bottom-[160px] -left-20 h-[440px] w-[440px] rounded-full blur-[90px]"
         style={{
-          background: "radial-gradient(circle, rgba(34,211,238,0.11), transparent 70%)",
+          background: "radial-gradient(circle, var(--halo-2), transparent 70%)",
         }}
       />
       <div
         className="pointer-events-none absolute left-1/2 top-[38%] h-[380px] w-[380px] -translate-x-1/2 rounded-full blur-[90px]"
         style={{
-          background: "radial-gradient(circle, rgba(255,198,61,0.07), transparent 70%)",
+          background: "radial-gradient(circle, var(--halo-3), transparent 70%)",
         }}
       />
     </>

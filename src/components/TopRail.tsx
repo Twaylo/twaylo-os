@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TABS, useOs } from "@/lib/os-context";
+import { useOs } from "@/lib/os-context";
+import { Personnaliser } from "@/components/Personnaliser";
 
 /**
  * L'horloge doit rester côté client : la rendre au SSR produirait une heure
@@ -160,8 +161,16 @@ function DemoToggle() {
  * qui est connecté, où vivent les données, et la déconnexion.
  */
 function Compte() {
-  const { data, sync } = useOs();
+  const { data, sync, custom, demoMode } = useOs();
   const [ouvert, setOuvert] = useState(false);
+  const [reglages, setReglages] = useState(false);
+
+  /*
+   * L'identité personnalisée s'affiche partout où le nom apparaît — sauf en
+   * démo, qui doit rester le personnage factice du jeu de démonstration.
+   */
+  const nom = !demoMode && custom.nom ? custom.nom : data.operator.name;
+  const role = !demoMode && custom.role ? custom.role : data.operator.role;
 
   // Fermer sur Échap : un panneau qu'on ne sait pas fermer est une impasse.
   useEffect(() => {
@@ -172,7 +181,7 @@ function Compte() {
   }, [ouvert]);
 
   const lignes: { label: string; valeur: string }[] = [
-    { label: "Rôle", valeur: data.operator.role },
+    { label: "Rôle", valeur: role },
     {
       label: "Série en cours",
       valeur: `${data.operator.streakDays} jour${data.operator.streakDays > 1 ? "s" : ""}`,
@@ -195,7 +204,7 @@ function Compte() {
         style={{ background: "var(--grad)" }}
       >
         <span className="flex h-full w-full items-center justify-center rounded-full bg-[#07121d] text-[15px] font-black">
-          {data.operator.name.charAt(0).toUpperCase()}
+          {nom.charAt(0).toUpperCase()}
         </span>
       </button>
 
@@ -213,7 +222,7 @@ function Compte() {
               backdropFilter: "blur(18px)",
             }}
           >
-            <div className="text-[15px] font-black">{data.operator.name}</div>
+            <div className="text-[15px] font-black">{nom}</div>
             <div className="mt-[2px] text-[11px] text-white/40">{data.operator.status}</div>
 
             <div className="mt-[11px] flex flex-col gap-[7px]">
@@ -227,7 +236,22 @@ function Compte() {
               ))}
             </div>
 
-            <div className="mt-[13px]">
+            <div className="mt-[13px] flex flex-col gap-[7px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setOuvert(false);
+                  setReglages(true);
+                }}
+                className="w-full cursor-pointer rounded-[9px] py-[7px] text-[11.5px] font-extrabold transition-all hover:brightness-125"
+                style={{
+                  color: "var(--color-cya-soft)",
+                  background: "rgba(34,211,238,0.1)",
+                  border: "1px solid rgba(34,211,238,0.25)",
+                }}
+              >
+                Personnaliser l&apos;OS
+              </button>
               <button
                 type="button"
                 onClick={async () => {
@@ -249,12 +273,14 @@ function Compte() {
           </div>
         </>
       )}
+
+      {reglages && <Personnaliser onClose={() => setReglages(false)} />}
     </div>
   );
 }
 
 export function TopRail() {
-  const { activeTab, setActiveTab, data, demoMode, youtube } = useOs();
+  const { activeTab, setActiveTab, data, demoMode, youtube, ongletsVisibles } = useOs();
 
   /*
    * Les trois compteurs du haut. En mode réel ils viennent de YouTube — vides
@@ -305,7 +331,7 @@ export function TopRail() {
             border: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          {TABS.map((tab) => {
+          {ongletsVisibles.map((tab) => {
             const on = tab === activeTab;
             return (
               <button
