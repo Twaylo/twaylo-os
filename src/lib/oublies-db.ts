@@ -68,16 +68,27 @@ export async function lireOubliees(): Promise<TacheOubliee[]> {
  * tâche repartirait à l'archive dès la lecture suivante, puisque sa date de
  * création est précisément ce qui l'y a envoyée.
  */
-export async function reprendreOubliee(id: string): Promise<void> {
-  const { error } = await supabaseAdmin()
+export async function reprendreOubliee(id: string): Promise<TacheReprise | null> {
+  const { data, error } = await supabaseAdmin()
     .from("tasks")
     .update({ statut: "ouverte", created_at: new Date().toISOString() })
     .eq("id", id)
     .eq("user_id", USER_ID)
-    .eq("statut", "abandonnee");
+    .eq("statut", "abandonnee")
+    .select("id, titre, urgence")
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    titre: data.titre as string,
+    urgence: data.urgence as string,
+  };
 }
+
+/** Ce que le navigateur a besoin de savoir pour réafficher la tâche reprise. */
+export type TacheReprise = { id: string; titre: string; urgence: string };
 
 /** Jette un oublié pour de bon — le seul effacement, et il est volontaire. */
 export async function supprimerOubliee(id: string): Promise<void> {

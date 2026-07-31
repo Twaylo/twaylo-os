@@ -34,7 +34,7 @@ const DEMO: TacheOubliee[] = [
 ];
 
 export function OubliesView() {
-  const { demoMode } = useOs();
+  const { demoMode, reprendreOublie } = useOs();
   const [oubliees, setOubliees] = useState<TacheOubliee[] | null>(null);
 
   useEffect(() => {
@@ -57,15 +57,17 @@ export function OubliesView() {
     };
   }, [demoMode]);
 
-  /** Retour dans la todo — l'oublié disparaît d'ici, son compteur repart. */
+  /**
+   * Retour dans la todo — l'oublié disparaît d'ici et réapparaît en tête de
+   * sa section, sans rechargement. Un échec le remet dans l'archive plutôt
+   * que de le faire disparaître des deux côtés.
+   */
   function reprendre(id: string) {
+    const avant = oubliees;
     setOubliees((prev) => (prev ? prev.filter((o) => o.id !== id) : prev));
-    if (demoMode) return;
-    void fetch("/api/oublies", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id }),
-    }).catch((err) => console.error("[oublies] reprise impossible :", err));
+    void reprendreOublie(id).then((ok) => {
+      if (!ok) setOubliees(avant);
+    });
   }
 
   function jeter(id: string) {

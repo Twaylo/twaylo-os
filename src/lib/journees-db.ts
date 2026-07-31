@@ -1,10 +1,5 @@
 import { USER_ID, supabaseAdmin } from "./supabase";
-import {
-  JOURNEES_DEFAUT,
-  TITRES_SEMIS_V1,
-  bornerJournees,
-  type JourneesConfig,
-} from "./journees";
+import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
 
 /**
  * L'accès base des journées types, côté serveur uniquement.
@@ -28,32 +23,19 @@ export async function lireJournees(): Promise<JourneesConfig> {
   const journees = (data?.habitudes as { journees?: Partial<JourneesConfig> } | null)
     ?.journees;
   if (!journees || typeof journees !== "object") return JOURNEES_DEFAUT;
-  const config = bornerJournees(journees);
 
   /*
-   * Migration du premier semis. La toute première version avait écrit en base
-   * des blocs inventés (« Tournage terrain »…) AVANT que Twaylo ne dicte ses
-   * vrais immuables — et une base remplie masque les nouveaux défauts. Si un
-   * titre de ce vieux semis traîne encore, c'est que la configuration est
-   * celle-là : on la remplace par ses blocs réels, une fois pour toutes
-   * (l'écriture fait disparaître les titres marqueurs, donc la migration ne
-   * rejoue jamais).
+   * Plus aucune migration ici, volontairement.
+   *
+   * Une version précédente remplaçait toute la configuration dès qu'UN bloc
+   * portait l'un des onze titres du premier semis (« Libre », « Repas local »,
+   * « Tournage / montage »…). Le but était de chasser des blocs inventés que
+   * Twaylo n'avait jamais demandés, et c'est fait — mais ces libellés sont
+   * parfaitement ordinaires : en nommer un ainsi aurait suffi, plus tard, à
+   * faire disparaître d'un coup toutes ses journées types. Une lecture ne doit
+   * pas pouvoir détruire ce qu'elle lit.
    */
-  const vieuxSemis = config.liste.some((j) =>
-    j.blocs.some((b) => TITRES_SEMIS_V1.includes(b.titre)),
-  );
-  if (vieuxSemis) {
-    const remplacement: JourneesConfig = {
-      ...JOURNEES_DEFAUT,
-      active: JOURNEES_DEFAUT.liste.some((j) => j.id === config.active)
-        ? config.active
-        : JOURNEES_DEFAUT.active,
-    };
-    await ecrireJournees(remplacement);
-    return remplacement;
-  }
-
-  return config;
+  return bornerJournees(journees);
 }
 
 /**

@@ -21,6 +21,8 @@ export async function POST(req: Request) {
     uneChose?: { texte: string; fait: boolean };
     nutrition?: { repas: unknown[] };
     taches?: unknown;
+    /** Les blocs de la journée type cochés aujourd'hui. */
+    journeeFaits?: unknown;
   };
 
   try {
@@ -41,6 +43,19 @@ export async function POST(req: Request) {
   if (corps.uneChose !== undefined) etat.une_chose = corps.uneChose;
   if (corps.nutrition !== undefined) etat.nutrition = corps.nutrition;
   if (corps.taches !== undefined) etat.taches = corps.taches;
+  /*
+   * Les coches de la journée type passent par ICI, et non par leur propre
+   * route.
+   *
+   * Cocher un bloc lié à une habitude change deux choses de la journée d'un
+   * seul geste. Deux requêtes séparées, c'était deux lire-fusionner-écrire
+   * concurrents sur la MÊME ligne daily_logs : la seconde repartait d'une
+   * lecture prise avant la première, et l'une des deux coches était perdue.
+   * Le canal `synchroniserJour` regroupe les changements en une écriture.
+   */
+  if (Array.isArray(corps.journeeFaits)) {
+    etat.journeeFaits = corps.journeeFaits.slice(0, 48).map((f) => String(f).slice(0, 40));
+  }
 
   try {
     await ecrireJour(jour, {

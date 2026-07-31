@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { placerEnTeteOrdre } from "@/lib/db";
+import { niveauDepuisUrgence } from "@/lib/types";
 import {
   archiverTachesOubliees,
   lireOubliees,
@@ -37,8 +39,30 @@ export async function POST(req: Request) {
   }
 
   try {
-    await reprendreOubliee(corps.id);
-    return NextResponse.json({ persiste: true });
+    const reprise = await reprendreOubliee(corps.id);
+    if (!reprise) {
+      return NextResponse.json({ error: "Oublié introuvable." }, { status: 404 });
+    }
+    /*
+     * Reprise = « je m'y remets maintenant » : la tâche reparaît EN TÊTE.
+     * Sans ce placement elle serait absente de la liste d'ordre, donc renvoyée
+     * tout en bas d'une liste de vingt lignes — exactement là où elle s'était
+     * fait oublier.
+     */
+    try {
+      await placerEnTeteOrdre(reprise.id);
+    } catch (err) {
+      console.error("[oublies] placement en tête impossible :", err);
+    }
+    return NextResponse.json({
+      persiste: true,
+      tache: {
+        id: reprise.id,
+        text: reprise.titre,
+        done: false,
+        niveau: niveauDepuisUrgence(reprise.urgence),
+      },
+    });
   } catch (err) {
     console.error("[oublies] reprise impossible :", err);
     return NextResponse.json({ error: "Écriture impossible." }, { status: 500 });

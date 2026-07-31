@@ -983,7 +983,7 @@ export function TachesCard() {
             {blocsJour.map((b) => (
               <CheckRow
                 key={b.id}
-                label={b.titre}
+                label={b.titre || "Sans titre"}
                 done={blocsFaits.includes(b.id)}
                 accent="var(--color-ble)"
                 onToggle={() => basculerBlocFait(b.id)}

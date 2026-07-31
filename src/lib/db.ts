@@ -37,6 +37,12 @@ export type EtatJour = {
    * qui avait été coché.
    */
   taches?: SnapshotTaches;
+  /**
+   * Les blocs de la journée type cochés ce jour-là. Rangés ici, avec le reste
+   * de la journée, pour qu'une coche de bloc et la coche d'habitude qu'elle
+   * entraîne partent dans la MÊME écriture.
+   */
+  journeeFaits?: string[];
 };
 
 /** Ce qu'on garde d'une journée de tâches, pour le bilan dans le temps. */
@@ -247,7 +253,7 @@ const MAX_ORDRE = 300;
  * Au passage, les identifiants morts sont purgés : sans ça ils consommaient
  * le plafond et finissaient par évincer des tâches vivantes.
  */
-async function placerEnTeteOrdre(id: string): Promise<void> {
+export async function placerEnTeteOrdre(id: string): Promise<void> {
   const db = supabaseAdmin();
 
   for (let essai = 0; essai < 3; essai++) {

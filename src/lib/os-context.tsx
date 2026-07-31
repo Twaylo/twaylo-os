@@ -216,6 +216,12 @@ type OsState = {
   /** Date (clé locale) où la todo a été clôturée à la main — sinon "". */
   todoCloturee: string;
 
+  /**
+   * Remet un oublié dans la todo : il réapparaît en tête, tout de suite —
+   * sans ça il fallait recharger la page pour le revoir.
+   */
+  reprendreOublie: (id: string) => Promise<boolean>;
+
   ajouterContact: (nom: string, type?: string) => Promise<void>;
   supprimerContact: (id: string) => void;
   /** Change la chaleur d'un contact — c'est ce que fait le glisser-déposer. */
@@ -624,14 +630,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
     };
   }, [demoMode]);
 
+  /*
+   * Les coches passent par `synchroniserJour`, comme les habitudes et le
+   * journal — surtout pas par une requête à part.
+   *
+   * Un bloc lié à une habitude change les deux d'un seul geste. Deux requêtes
+   * concurrentes, c'était deux lire-fusionner-écrire sur la même ligne du
+   * jour, et l'une des deux coches se perdait. Ici les changements sont
+   * regroupés en une seule écriture.
+   */
   useEffect(() => {
     if (!hydrate || demoMode || !modifie.current.journee) return;
     writeJSON(dailyKey("journee"), blocsFaits);
-    void fetch("/api/journees", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jour: localDateKey(), faits: blocsFaits }),
-    }).catch((err) => console.error("[journees] coche impossible :", err));
+    synchroniserJour({ jour: localDateKey(), journeeFaits: blocsFaits });
   }, [blocsFaits, demoMode, hydrate]);
 
   const basculerBlocFait = useCallback((blocId: string) => {
@@ -1680,6 +1691,30 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const reprendreOublie = useCallback(async (id: string): Promise<boolean> => {
+    if (demoModeRef.current) return true;
+    try {
+      const res = await fetch("/api/oublies", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { tache } = (await res.json()) as { tache?: Task & { id: string } };
+      if (!tache?.id) return true;
+      // Comme un ajout : en tête, et la réponse serveur encore en vol ne doit
+      // plus remplacer la liste par une photo prise avant cette reprise.
+      touchePendantChargement.current.taches = true;
+      setTasks((prev) =>
+        prev.some((t) => (t as { id?: string }).id === tache.id) ? prev : [tache, ...prev],
+      );
+      return true;
+    } catch (err) {
+      console.error("[oublies] reprise impossible :", err);
+      return false;
+    }
+  }, []);
+
   const supprimerTacheLocale = useCallback((id: string) => {
     setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== id));
     if (demoModeRef.current) return;
@@ -1946,6 +1981,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       passerJourSuivant,
       todoCloturee,
       changerNiveauTache,
+      reprendreOublie,
       ajouterContact,
       supprimerContact: supprimerContactLocal,
       deplacerContact,
@@ -2015,6 +2051,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       passerJourSuivant,
       todoCloturee,
       changerNiveauTache,
+      reprendreOublie,
       ajouterContact,
       supprimerContactLocal,
       deplacerContact,

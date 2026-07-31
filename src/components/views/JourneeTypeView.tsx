@@ -10,6 +10,7 @@ import { useHeure } from "@/lib/use-heure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
+  idBlocLibre,
   type BlocJournee,
   type CategorieBloc,
   type JourneesConfig,
@@ -208,6 +209,9 @@ export function JourneeTypeView() {
 
       {active && (
         <TimelineJournee
+          // Généré sur TOUTE la configuration : les coches du jour sont une
+          // liste plate, deux modèles ne peuvent pas partager un identifiant.
+          nouvelIdBloc={() => idBlocLibre(config)}
           journee={active}
           heure={heure}
           courant={courant}
@@ -260,11 +264,13 @@ function TimelineJournee({
   heure,
   courant,
   onMaj,
+  nouvelIdBloc,
 }: {
   journee: JourneeType;
   heure: string;
   courant: string | null;
   onMaj: (blocs: BlocJournee[]) => void;
+  nouvelIdBloc: () => string;
 }) {
   // Les habitudes servent au lien ⇄ : cocher le bloc coche l'habitude choisie.
   const { habits } = useOs();
@@ -284,7 +290,7 @@ function TimelineJournee({
     onMaj([
       ...journee.blocs,
       {
-        id: idLibre("b", journee.blocs),
+        id: nouvelIdBloc(),
         debut: ajout.debut,
         fin: "",
         titre: titre.slice(0, 80),

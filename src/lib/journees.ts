@@ -123,7 +123,15 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
           habitude: texte((bl as BlocJournee).habitude, 40),
           habitudeOption: texte((bl as BlocJournee).habitudeOption, 40),
         }))
-        .filter((bl) => bl.id && bl.titre)
+        /*
+         * Un intitulé vide ne supprime PAS le bloc.
+         *
+         * Le champ d'édition écrit à chaque frappe : effacer le texte pour le
+         * réécrire faisait disparaître le bloc en base, sans que l'écran le
+         * montre — il revenait manquant au rechargement suivant. Seul
+         * l'identifiant est requis ; l'affichage sait combler un titre vide.
+         */
+        .filter((bl) => bl.id)
         .sort((a, z) => a.debut.localeCompare(z.debut)),
     }))
     .filter((j) => j.id && j.nom);
@@ -135,24 +143,20 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
 }
 
 /**
- * Les titres semés par la TOUTE première version, avant que Twaylo ne dicte
- * ses vrais immuables. En retrouver un en base signifie que la configuration
- * stockée est ce vieux semis (il n'a jamais édité ces blocs-là) : on la
- * remplace par ses blocs réels au lieu de lui reservir des blocs inventés.
+ * Un identifiant de bloc libre dans TOUTE la configuration, pas seulement
+ * dans le modèle courant.
+ *
+ * Les coches du jour sont une liste plate d'identifiants, partagée par tous
+ * les modèles. Numéroter les blocs modèle par modèle donnait deux « b0 » —
+ * un à la maison, un en déplacement — et cocher l'un cochait l'autre. Le
+ * compteur balaie donc l'ensemble.
  */
-export const TITRES_SEMIS_V1 = [
-  "Réveil + routine",
-  "Session créative — scripts, écriture",
-  "Tournage / montage",
-  "Communauté + veille",
-  "Libre",
-  "Réveil + point du jour",
-  "Tournage terrain",
-  "Repas local",
-  "Tournage / repérages",
-  "Tri des rushs + sauvegardes",
-  "Notes du jour + communauté",
-];
+export function idBlocLibre(config: JourneesConfig): string {
+  const pris = new Set(config.liste.flatMap((j) => j.blocs.map((b) => b.id)));
+  let n = 0;
+  while (pris.has(`b${n}`)) n++;
+  return `b${n}`;
+}
 
 /**
  * Le bloc en cours à l'heure donnée (HH:MM) : le dernier commencé, s'il n'est

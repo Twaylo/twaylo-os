@@ -9,6 +9,7 @@ import { useHeure } from "@/lib/use-heure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
+  idBlocLibre,
   type BlocJournee,
   type CategorieBloc,
 } from "@/lib/journees";
@@ -58,13 +59,13 @@ export function JourneeCard() {
   }
 
   function ajouterBloc() {
-    if (!active || !ajout.titre.trim() || !ajout.debut) return;
-    let n = 0;
-    while (active.blocs.some((b) => b.id === `b${n}`)) n++;
+    if (!active || !journees || !ajout.titre.trim() || !ajout.debut) return;
     majBlocs([
       ...active.blocs,
       {
-        id: `b${n}`,
+        // Libre dans TOUTE la configuration : les coches du jour sont une
+        // liste plate, deux modèles ne peuvent pas partager un identifiant.
+        id: idBlocLibre(journees),
         debut: ajout.debut,
         fin: "",
         titre: ajout.titre.trim().slice(0, 80),
@@ -263,7 +264,7 @@ function LigneCoche({
           textDecoration: fait ? "line-through" : "none",
         }}
       >
-        {bloc.titre}
+        {bloc.titre || "Sans titre"}
       </span>
       {enCours && !fait && (
         <span
