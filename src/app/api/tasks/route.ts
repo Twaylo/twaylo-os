@@ -6,6 +6,7 @@ import {
   changerNiveauTache,
   creerTache,
   ecrireOrdreTaches,
+  lireOrdreTaches,
   renommerTache,
   supprimerTache,
   supprimerTachesFaites,
@@ -72,10 +73,29 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    // Réordonnancement : une liste d'identifiants, sans id unique.
+    /*
+     * Réordonnancement : une liste d'identifiants, sans id unique.
+     *
+     * Fusion plutôt que remplacement. L'écran qui envoie cette liste ne
+     * connaît que SES tâches, telles qu'il les voyait : une tâche créée
+     * entre-temps ailleurs (le Brain Telegram, un autre onglet) en est
+     * absente, et l'écrire telle quelle effaçait sa place — `trierSelon` la
+     * renvoyait alors tout en bas. On réinsère donc les identifiants connus
+     * du serveur mais absents de l'envoi, à leur rang d'origine.
+     *
+     * Les `tmp-…` sont écartés : ce sont des lignes que la base ne connaît pas.
+     */
     if (Array.isArray(corps.ordre)) {
-      const ids = corps.ordre.filter((x): x is string => typeof x === "string");
-      await ecrireOrdreTaches(ids);
+      const ids = corps.ordre.filter(
+        (x): x is string => typeof x === "string" && !x.startsWith("tmp-"),
+      );
+      const anciens = await lireOrdreTaches();
+      const envoyes = new Set(ids);
+      const fusion = [...ids];
+      anciens.forEach((id, rang) => {
+        if (!envoyes.has(id)) fusion.splice(Math.min(rang, fusion.length), 0, id);
+      });
+      await ecrireOrdreTaches([...new Set(fusion)].slice(0, 300));
       return NextResponse.json({ persiste: true });
     }
 

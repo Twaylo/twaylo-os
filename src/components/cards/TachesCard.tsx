@@ -302,12 +302,21 @@ export function TachesCard() {
         });
       }
 
-      // Les identifiants `tmp-…` sont ceux d'une tâche que le serveur n'a pas
-      // encore confirmée : les envoyer dans l'ordre enregistrerait une position
-      // pour une tâche qui n'existe pas en base.
+      /*
+       * TOUS les identifiants, y compris les `tmp-…` que le serveur n'a pas
+       * encore confirmés.
+       *
+       * Les exclure ici était un piège : l'ordre visuel pilote l'affichage
+       * pendant le glissement, et une tâche absente de cet ordre est rejetée
+       * à la fin (`extras`). La tâche à peine tapée, posée en tête, sautait
+       * donc en bas de sa section dès qu'on attrapait une autre ligne — puis
+       * y restait après le dépôt. Le filtrage a bien lieu, mais au seul
+       * moment où il compte : la composition du corps envoyé au serveur
+       * (voir `deposerTache`).
+       */
       const ordre = tasks
         .map((t) => (t as { id?: string }).id)
-        .filter((x): x is string => Boolean(x) && !x!.startsWith("tmp-"));
+        .filter((x): x is string => Boolean(x));
       ordreRef.current = ordre;
       niveauRef.current = niveau;
       niveauInitialRef.current = niveau;

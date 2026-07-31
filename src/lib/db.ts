@@ -217,17 +217,60 @@ export async function creerTache(
    * qui reste très loin de mériter de perdre ce que Twaylo vient d'écrire.
    */
   try {
-    const ordre = await lireOrdreTaches();
-    await ecrireOrdreTaches(
-      // Dédoublonné et borné : la liste ne doit pas enfler indéfiniment au fil
-      // des créations, les identifiants des tâches supprimées y traînant.
-      [...new Set([tache.id, ...ordre])].slice(0, 300),
-    );
+    await placerEnTeteOrdre(tache.id);
   } catch (err) {
     console.error("[taches] placement en tête impossible :", err);
   }
 
   return tache;
+}
+
+/** La liste d'ordre est bornée : au-delà, les plus anciennes places tombent. */
+const MAX_ORDRE = 300;
+
+/**
+ * Met un identifiant en tête de la liste d'ordre — en vérifiant qu'il y est
+ * resté.
+ *
+ * Lire puis écrire la sentinelle n'est pas atomique : deux tâches tapées coup
+ * sur coup partent en deux invocations serverless distinctes, qui lisent la
+ * MÊME liste avant que l'une ou l'autre n'écrive. La seconde écrasait alors le
+ * placement de la première, dont l'identifiant disparaissait de la liste — et
+ * `trierSelon` la renvoyait tout en bas au rechargement suivant, précisément
+ * ce que le placement en tête vise à éviter.
+ *
+ * Pas de verrou possible (aucune DDL : le jeton d'accès a été révoqué), donc
+ * on relit après écriture et on recommence si notre identifiant a été emporté.
+ * La séquence converge : l'écrivain écrasé se réinsère PAR-DESSUS la liste
+ * gagnante au lieu de la remplacer, personne ne perd sa place.
+ *
+ * Au passage, les identifiants morts sont purgés : sans ça ils consommaient
+ * le plafond et finissaient par évincer des tâches vivantes.
+ */
+async function placerEnTeteOrdre(id: string): Promise<void> {
+  const db = supabaseAdmin();
+
+  for (let essai = 0; essai < 3; essai++) {
+    const { data: vivantes, error } = await db
+      .from("tasks")
+      .select("id")
+      .eq("user_id", USER_ID);
+    if (error) throw error;
+    const existants = new Set((vivantes ?? []).map((t) => t.id as string));
+
+    const ordre = await lireOrdreTaches();
+    await ecrireOrdreTaches(
+      [id, ...ordre.filter((x) => x !== id && existants.has(x))].slice(0, MAX_ORDRE),
+    );
+
+    // Notre identifiant est-il bien dans la liste ? Peu importe son rang exact :
+    // si une création concurrente s'est glissée devant, les deux sont placées.
+    const relu = await lireOrdreTaches();
+    if (relu.includes(id)) return;
+
+    // Une écriture concurrente nous a emportés : on laisse passer l'orage.
+    await new Promise((resoudre) => setTimeout(resoudre, 60 + essai * 90));
+  }
 }
 
 /** Fait passer une tâche d'un niveau à l'autre. */

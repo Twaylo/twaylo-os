@@ -269,6 +269,15 @@ export type DealVue = {
 
 const OsContext = createContext<OsState | null>(null);
 
+/**
+ * Vrai pour une ligne créée à l'écran dont le serveur n'a pas encore renvoyé
+ * l'identifiant réel. Aucune requête ne doit partir avec un tel identifiant :
+ * la ligne n'existe pas en base, et l'appel échouerait sans rien apprendre.
+ */
+function estProvisoire(id: string | undefined): boolean {
+  return Boolean(id?.startsWith("tmp-"));
+}
+
 export function OsProvider({ children }: { children: ReactNode }) {
   /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
   const demoModeRef = useRef(false);
@@ -349,7 +358,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * et si on en supprimait un autre dans la foulée, la liste amputée était
    * renvoyée en base et la perte devenait définitive.
    */
-  const touchePendantChargement = useRef({ habitudes: false, blocages: false });
+  const touchePendantChargement = useRef({
+    habitudes: false,
+    blocages: false,
+    taches: false,
+  });
 
   /*
    * Miroirs de l'état, rafraîchis à chaque rendu.
@@ -805,7 +818,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
       // prochain démarrage plutôt que carte après carte.
       writeJSON(KEYS.etatCache, { jour, etat: distant });
 
-      if (distant.taches) {
+      /*
+       * Même garde que les habitudes et les blocages, et pour la même raison :
+       * cette réponse a été calculée AVANT une tâche ajoutée pendant le
+       * chargement. L'appliquer telle quelle faisait disparaître de l'écran ET
+       * du cache ce que Twaylo venait de taper — la substitution de l'identifiant
+       * provisoire ne retrouvait plus sa ligne, et la tâche restait invisible
+       * jusqu'au rechargement suivant. Il la retapait, et se retrouvait avec un
+       * doublon en base.
+       */
+      if (distant.taches && !touchePendantChargement.current.taches) {
         setTasks(distant.taches);
         // De quoi repeindre l'écran instantanément au prochain démarrage,
         // pendant que la fonction serveur sort de veille.
@@ -1122,7 +1144,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
     // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
     // d'annuler le geste sous les doigts de Twaylo.
-    if (cible.id && !demoModeRef.current) {
+    // Une tâche encore provisoire n'existe pas en base : lui envoyer son
+    // identifiant `tmp-…` ne ferait qu'une erreur serveur de plus. Le POST de
+    // création est en vol, et la coche part au prochain geste.
+    if (cible.id && !estProvisoire(cible.id) && !demoModeRef.current) {
       void basculerTacheDistante(cible.id, done);
     }
   }, []);
@@ -1322,12 +1347,23 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
 
       if (demoModeRef.current) return;
-      void fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ordre: ordreIds }),
-      }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
-      if (changementNiveau) {
+      /*
+       * Le filtrage des `tmp-…` a lieu ICI, et seulement ici.
+       *
+       * L'ordre affiché les garde (sinon la tâche à peine tapée sauterait en
+       * bas de sa section pendant le glissement), mais les envoyer en base
+       * enregistrerait la place d'une tâche qui n'existe pas encore — et
+       * l'identifiant réel, lui, en serait absent.
+       */
+      const ordreDistant = ordreIds.filter((id) => !id.startsWith("tmp-"));
+      if (ordreDistant.length > 0) {
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ordre: ordreDistant }),
+        }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
+      }
+      if (changementNiveau && !estProvisoire(changementNiveau.id)) {
         void fetch("/api/tasks", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -1616,6 +1652,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
     const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
     const provisoire = { id: cleTemp, text: propre, done: false, niveau } as Task;
+    // La liste distante encore en vol ne doit plus remplacer la nôtre : sa
+    // photo a été prise avant cet ajout, et l'appliquer effacerait la tâche
+    // de l'écran.
+    touchePendantChargement.current.taches = true;
     // En TÊTE de pile : ce que Twaylo vient de taper est ce qu'il a en tête,
     // et une liste de vingt lignes le renverrait hors de vue. Le serveur fait
     // le même placement dans la liste d'ordre (voir `creerTache`), donc le
