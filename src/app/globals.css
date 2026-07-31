@@ -457,6 +457,95 @@ textarea::placeholder {
   animation: balayage 0.7s ease-out forwards;
 }
 
+/* ------------------------------------------------------------------ */
+/* Montée de rang (onglet Skill, esprit Solo Leveling)                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Franchir un rang (E→D…→S) est rare — quelques fois par mois au mieux.
+ * L'animation peut donc se permettre d'être spectaculaire : c'est la
+ * récompense d'un travail long, pas un geste répété vingt fois par jour.
+ * Comme partout : transform et opacity seulement, rien qui fasse sauter
+ * la mise en page.
+ */
+
+/* L'annonce « RANG A » qui surgit au centre de la carte. */
+@keyframes rangUp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4) rotate(-6deg);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.18) rotate(2deg);
+  }
+  34% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
+.rang-up {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  pointer-events: none;
+  animation: rangUp 1.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* La bordure de la carte s'embrase le temps de l'annonce. */
+@keyframes lueurRang {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.lueur-rang {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  animation: lueurRang 1.5s ease-out forwards;
+}
+
+/* Le petit « +2 XP » qui s'envole du bouton. */
+@keyframes xpFlottant {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scale(0.9);
+  }
+}
+
+.xp-flottant {
+  position: absolute;
+  right: 0;
+  top: -6px;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: xpFlottant 0.9s ease-out forwards;
+}
+
 /* Journée bouclée : le message qui traverse l'écran. */
 @keyframes journeePliee {
   0% {
@@ -501,14 +590,20 @@ textarea::placeholder {
   .eclat,
   .balayage-validation,
   .balayage-validation::after,
-  .journee-pliee {
+  .journee-pliee,
+  .rang-up,
+  .lueur-rang,
+  .xp-flottant {
     animation: none;
   }
   /* Sans animation, ces éléments purement décoratifs n'ont plus d'objet. */
   .onde-validation,
   .eclat,
   .balayage-validation,
-  .journee-pliee {
+  .journee-pliee,
+  .rang-up,
+  .lueur-rang,
+  .xp-flottant {
     display: none;
   }
 }

@@ -42,8 +42,10 @@ const COULEURS_ECLAT = [
  * donnerait un résultat différent entre le rendu serveur et le rendu
  * navigateur, et React signalerait une divergence d'hydratation. Un éventail
  * régulier est de toute façon plus lisible qu'un vrai hasard.
+ *
+ * Exporté : la montée de rang de l'onglet Skill projette les mêmes éclats.
  */
-function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
+export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
   return (
     <>
       {Array.from({ length: nombre }, (_, i) => {
