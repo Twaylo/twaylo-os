@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, hasValidApiSecret, verifySessionToken } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { construireBriefMatin } from "@/lib/brief";
 import { sendMessage } from "@/lib/telegram";
@@ -12,18 +13,23 @@ export const maxDuration = 60;
  * Le programme du matin, envoyé sur Telegram par le cron Vercel (6 h Paris).
  *
  * La route est publique dans le middleware — Vercel ne sait envoyer que
- * `Authorization: Bearer CRON_SECRET` — donc le secret est vérifié ICI, et
- * sans secret configuré on refuse tout : un endpoint qui écrit chez Twaylo
- * ne s'ouvre pas par défaut.
+ * `Authorization: Bearer CRON_SECRET` — donc l'autorisation est vérifiée ICI.
+ * Trois clés ouvrent : le secret du cron, l'API secret, ou la session du
+ * dashboard — pour que Twaylo, connecté, déclenche un test en ouvrant
+ * simplement l'URL. Rien de configuré = tout est refusé.
  */
-function autorise(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+async function autorise(req: NextRequest): Promise<boolean> {
+  const cron = process.env.CRON_SECRET;
+  if (cron && req.headers.get("authorization") === `Bearer ${cron}`) return true;
+  if (hasValidApiSecret(req.headers.get("x-api-secret"))) return true;
+  const secret = process.env.AUTH_SECRET;
+  const mdp = process.env.DASHBOARD_PASSWORD;
+  if (!secret || !mdp) return false;
+  return verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, secret, mdp);
 }
 
-export async function GET(req: Request) {
-  if (!autorise(req)) {
+export async function GET(req: NextRequest) {
+  if (!(await autorise(req))) {
     return NextResponse.json({ error: "non autorisé" }, { status: 401 });
   }
   if (!isSupabaseConfigured() || !process.env.TELEGRAM_BOT_TOKEN) {
