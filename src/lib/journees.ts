@@ -117,7 +117,9 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
           fin: HEURE.test(String((bl as BlocJournee).fin)) ? (bl as BlocJournee).fin : "",
           titre: texte((bl as BlocJournee).titre, 80),
           categorie:
-            (bl as BlocJournee).categorie in CATEGORIES_BLOC
+            // `Object.hasOwn` : `in` accepterait « toString », hérité du
+            // prototype, et le bloc n'aurait plus de couleur ni de libellé.
+            Object.hasOwn(CATEGORIES_BLOC, (bl as BlocJournee).categorie)
               ? (bl as BlocJournee).categorie
               : "autre",
           habitude: texte((bl as BlocJournee).habitude, 40),

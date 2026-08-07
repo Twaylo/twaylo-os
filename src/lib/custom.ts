@@ -73,7 +73,9 @@ export function bornerCustom(brut: Partial<CustomConfig> | null | undefined): Cu
       .filter(Boolean);
 
   return {
-    ambiance: b.ambiance in AMBIANCES ? b.ambiance : "signature",
+    // `Object.hasOwn` et non `in` : ce dernier accepte « toString » ou
+    // « constructor », hérités du prototype, et l'ambiance devenait introuvable.
+    ambiance: Object.hasOwn(AMBIANCES, b.ambiance) ? b.ambiance : "signature",
     // Sans Accueil, plus aucun moyen de revenir quelque part : jamais caché.
     ongletsCaches: listeTexte(b.ongletsCaches).filter((o) => o !== "Accueil"),
     ordreOnglets: listeTexte(b.ordreOnglets),

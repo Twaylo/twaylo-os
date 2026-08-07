@@ -68,10 +68,16 @@ export function OubliesView() {
    * dans l'archive plutôt que de le faire disparaître des deux côtés.
    */
   function reprendre(o: TacheOubliee) {
-    const avant = oubliees;
     setOubliees((prev) => (prev ? prev.filter((x) => x.id !== o.id) : prev));
     void reprendreOublie(o.id, QUADRANTS[o.quadrant].niveauRetour).then((ok) => {
-      if (!ok) setOubliees(avant);
+      if (ok) return;
+      /*
+       * On remet CET oublié, pas la liste d'avant : restaurer l'instantané
+       * complet ressuscitait ce qui avait été jeté pendant l'aller-retour.
+       */
+      setOubliees((prev) =>
+        prev ? (prev.some((x) => x.id === o.id) ? prev : [o, ...prev]) : [o],
+      );
     });
   }
 

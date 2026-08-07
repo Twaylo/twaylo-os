@@ -65,9 +65,23 @@ export async function POST(req: Request) {
      * journées types de Twaylo. Un appel qui ne dit pas ce qu'il veut écrire
      * doit être refusé, pas interprété.
      */
-    if (!Array.isArray(corps.liste) || corps.liste.length === 0) {
+    const utilisables =
+      Array.isArray(corps.liste) &&
+      corps.liste.some(
+        (j) =>
+          j &&
+          typeof j === "object" &&
+          typeof (j as { id?: unknown }).id === "string" &&
+          (j as { id: string }).id.length > 0 &&
+          typeof (j as { nom?: unknown }).nom === "string" &&
+          (j as { nom: string }).nom.trim().length > 0,
+      );
+    // Le compte des entrées ne suffit pas : une liste de coquilles vides est
+    // rejetée par `bornerJournees`, qui retombe alors sur les modèles d'usine
+    // — et les écrit. On exige donc au moins une journée réellement nommée.
+    if (!utilisables) {
       return NextResponse.json(
-        { error: "Corps invalide : `liste` de journées attendue." },
+        { error: "Corps invalide : liste de journées attendue." },
         { status: 400 },
       );
     }

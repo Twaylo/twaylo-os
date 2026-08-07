@@ -78,27 +78,38 @@ export const ORDRE_QUADRANTS: Quadrant[] = [
 ];
 
 export function estQuadrant(v: unknown): v is Quadrant {
-  return typeof v === "string" && v in QUADRANTS;
+  // `Object.hasOwn` et non `in` : ce dernier accepte « toString » ou
+  // « constructor », hérités du prototype. Une tâche rangée sous un tel nom
+  // ne correspondait à aucune case et disparaissait de l'écran tout en
+  // restant en base.
+  return typeof v === "string" && Object.hasOwn(QUADRANTS, v);
 }
+
+/** Au-delà, une tâche qui n'a rien cassé n'était pas urgente. */
+const JOURS_ENCORE_CHAUD = 7;
 
 /**
  * Le rangement d'office, à l'arrivée dans l'archive.
  *
  * Twaylo n'a rien à trier pour que la grille soit lisible : on part de ce que
- * la tâche disait déjà d'elle-même. Son ancien niveau porte l'importance
- * (le focus principal était ce qui faisait la journée) ; l'âge porte
- * l'urgence, mais à l'envers de l'intuition — quelque chose qui attend depuis
- * deux semaines sans que rien ne casse n'était pas urgent. Twaylo corrige
- * d'un geste, et son choix est mémorisé.
+ * la tâche disait déjà d'elle-même. Son ancien niveau porte l'importance,
+ * son âge porte l'urgence — mais à l'envers de l'intuition : ce qui attend
+ * depuis trois semaines sans que rien ne casse n'était pas urgent, tandis que
+ * ce qui vient tout juste de tomber l'est peut-être encore.
+ *
+ * L'importance ne peut PAS venir du focus principal : l'archivage l'épargne
+ * justement (`archiverTachesOubliees` écarte l'urgence « aujourdhui »), donc
+ * aucune tâche archivée n'est de ce niveau. S'y fier laissait la case FAIRE
+ * — la première de la grille, celle qu'on lit d'abord — vide à tout jamais.
+ * C'est le secondaire, « ce qui soutient la journée », qui porte ici
+ * l'importance ; l'annexe, « à sortir de la tête », ne la porte pas.
+ *
+ * Twaylo corrige d'un geste, et son choix est mémorisé.
  */
 export function quadrantParDefaut(urgence: string, jours: number): Quadrant {
-  const niveau = niveauDepuisUrgence(urgence);
-  const important = niveau === "principal" || niveau === "secondaire";
-  // Passé deux semaines, l'urgence supposée ne tient plus : si ça n'a pas
-  // explosé, ce n'était pas urgent.
-  const urgent = niveau === "principal" && jours < 14;
+  const important = niveauDepuisUrgence(urgence) !== "annexe";
+  const urgent = jours < JOURS_ENCORE_CHAUD;
 
-  if (important && urgent) return "faire";
-  if (important) return "planifier";
-  return jours < 14 ? "deleguer" : "eliminer";
+  if (important) return urgent ? "faire" : "planifier";
+  return urgent ? "deleguer" : "eliminer";
 }

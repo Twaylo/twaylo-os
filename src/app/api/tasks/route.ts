@@ -33,8 +33,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Titre manquant." }, { status: 400 });
   }
 
+  // `Object.hasOwn` et non `in` : ce dernier accepterait « toString », hérité
+  // du prototype, et NIVEAUX[niveau] serait alors indéfini.
   const estNiveau = (v: unknown): v is Niveau =>
-    typeof v === "string" && v in NIVEAUX;
+    typeof v === "string" && Object.hasOwn(NIVEAUX, v);
 
   try {
     const ligne = await creerTache(
@@ -103,9 +105,20 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Paramètre `id` manquant." }, { status: 400 });
     }
 
-    if (typeof corps.niveau === "string" && corps.niveau in NIVEAUX) {
+    /*
+     * TOUS les champs fournis sont appliqués, pas seulement le premier.
+     *
+     * La version précédente rendait la main dès qu'elle en reconnaissait un :
+     * un appel portant à la fois un niveau et un titre — ce que fait le
+     * rattrapage des gestes joués avant confirmation d'une tâche — perdait
+     * silencieusement le renommage, qui réapparaissait à l'ancien nom au
+     * rechargement.
+     */
+    let applique = false;
+
+    if (typeof corps.niveau === "string" && Object.hasOwn(NIVEAUX, corps.niveau)) {
       await changerNiveauTache(corps.id, corps.niveau as Niveau);
-      return NextResponse.json({ persiste: true });
+      applique = true;
     }
 
     if (typeof corps.titre === "string") {
@@ -114,14 +127,15 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Titre vide." }, { status: 400 });
       }
       await renommerTache(corps.id, titre.slice(0, 200));
-      return NextResponse.json({ persiste: true });
+      applique = true;
     }
 
     if (typeof corps.faite === "boolean") {
       await basculerTache(corps.id, corps.faite);
-      return NextResponse.json({ persiste: true });
+      applique = true;
     }
 
+    if (applique) return NextResponse.json({ persiste: true });
     return NextResponse.json({ error: "Rien à modifier." }, { status: 400 });
   } catch (err) {
     console.error("[tasks] mise à jour impossible :", err);

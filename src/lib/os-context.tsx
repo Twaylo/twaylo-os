@@ -644,8 +644,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
     let annule = false;
     void fetch(`/api/journees?jour=${localDateKey()}`)
       .then((r) => r.json())
-      .then((d: { journees?: JourneesConfig; faits?: string[] }) => {
+      .then((d: { connecte?: boolean; journees?: JourneesConfig; faits?: string[] }) => {
         if (annule) return;
+        // Base injoignable ou non configurée : la réponse est un gabarit vide,
+        // pas un état. L'appliquer effacerait les coches du jour.
+        if (d.connecte === false) return;
         if (d.journees) setJournees(d.journees);
         /*
          * Une liste vide s'applique comme les autres.
@@ -748,8 +751,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
         console.error("[journees] envoi de dernière minute impossible :", err);
       }
     };
+    // `pagehide` seul ne couvre pas le téléphone : passer l'app en arrière-plan
+    // ne le déclenche pas toujours, alors que `visibilitychange` oui.
+    const surVisibilite = () => {
+      if (document.visibilityState === "hidden") vider();
+    };
     window.addEventListener("pagehide", vider);
-    return () => window.removeEventListener("pagehide", vider);
+    document.addEventListener("visibilitychange", surVisibilite);
+    return () => {
+      window.removeEventListener("pagehide", vider);
+      document.removeEventListener("visibilitychange", surVisibilite);
+    };
   }, []);
 
   /*
@@ -1452,15 +1464,23 @@ export function OsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ ordre: ordreDistant }),
         }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
       }
-      if (changementNiveau && !estProvisoire(changementNiveau.id)) {
-        void fetch("/api/tasks", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(changementNiveau),
-        }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
+      if (changementNiveau) {
+        // Tâche pas encore confirmée : le changement de niveau est mis de côté
+        // et rejoué sur le vrai identifiant, comme les autres gestes.
+        if (estProvisoire(changementNiveau.id)) {
+          noterGesteProvisoire(changementNiveau.id, { niveau: changementNiveau.niveau });
+        } else {
+          void fetch("/api/tasks", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(changementNiveau),
+          }).catch((err) =>
+            console.error("[tasks] changement de niveau impossible :", err),
+          );
+        }
       }
     },
-    [],
+    [noterGesteProvisoire],
   );
 
   /** Ajout optimiste, même raison que pour les tâches : l'écran n'attend pas. */
