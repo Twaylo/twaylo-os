@@ -56,6 +56,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ persiste: true });
     }
 
+    /*
+     * Une liste absente ou vide n'écrit RIEN.
+     *
+     * `bornerJournees` retombe sur les deux modèles d'usine quand il ne
+     * reconnaît rien — c'est le bon repli à la LECTURE, mais à l'écriture il
+     * transformait le moindre corps mal formé en effacement de toutes les
+     * journées types de Twaylo. Un appel qui ne dit pas ce qu'il veut écrire
+     * doit être refusé, pas interprété.
+     */
+    if (!Array.isArray(corps.liste) || corps.liste.length === 0) {
+      return NextResponse.json(
+        { error: "Corps invalide : `liste` de journées attendue." },
+        { status: 400 },
+      );
+    }
+
     const propre = bornerJournees(corps);
     await ecrireJournees(propre);
     return NextResponse.json({ persiste: true, journees: propre });

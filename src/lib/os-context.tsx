@@ -299,6 +299,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [journees, setJournees] = useState<JourneesConfig | null>(null);
   const [blocsFaits, setBlocsFaits] = useState<string[]>([]);
   const journeesMinuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** La configuration qui attend son écriture, pour la sauver à la fermeture. */
+  const journeesEnAttente = useRef<JourneesConfig | null>(null);
   const journeesRef = useRef<JourneesConfig | null>(null);
   journeesRef.current = journees;
   const blocsFaitsRef = useRef<string[]>([]);
@@ -401,6 +403,31 @@ export function OsProvider({ children }: { children: ReactNode }) {
   // Numérote les identifiants provisoires des créations optimistes, le temps
   // que le serveur renvoie le vrai.
   const compteurTemp = useRef(0);
+
+  /**
+   * Ce que Twaylo a fait à une tâche AVANT que le serveur ne confirme sa
+   * création.
+   *
+   * La nouvelle tâche apparaît en tête de pile : la cocher, la renommer ou la
+   * jeter dans la seconde qui suit est le geste le plus naturel du monde — et
+   * pendant cette seconde elle ne porte qu'un identifiant `tmp-…` que la base
+   * ne connaît pas. Envoyer les requêtes tout de suite donnait des erreurs
+   * serveur ; ne rien envoyer perdait le geste en silence, et la coche
+   * disparaissait au moment de la substitution. On mémorise donc ce qui a été
+   * fait, et on le rejoue sur le vrai identifiant dès qu'il arrive.
+   */
+  const gestesAvantConfirmation = useRef<
+    Map<string, { done?: boolean; titre?: string; niveau?: Niveau; supprimee?: boolean }>
+  >(new Map());
+
+  /** Note un geste porté sur une tâche pas encore confirmée. */
+  const noterGesteProvisoire = useCallback(
+    (id: string, geste: { done?: boolean; titre?: string; niveau?: Niveau; supprimee?: boolean }) => {
+      const actuels = gestesAvantConfirmation.current.get(id) ?? {};
+      gestesAvantConfirmation.current.set(id, { ...actuels, ...geste });
+    },
+    [],
+  );
 
   // Le jour local, figé au montage : sert de clé pour la base comme pour le
   // cache navigateur. Les deux doivent parler du même jour.
@@ -620,7 +647,15 @@ export function OsProvider({ children }: { children: ReactNode }) {
       .then((d: { journees?: JourneesConfig; faits?: string[] }) => {
         if (annule) return;
         if (d.journees) setJournees(d.journees);
-        if (Array.isArray(d.faits) && d.faits.length > 0 && !modifie.current.journee) {
+        /*
+         * Une liste vide s'applique comme les autres.
+         *
+         * Écarter le cas vide gardait les coches locales périmées : décocher
+         * un bloc sur le téléphone laissait le portable le ressusciter au
+         * chargement suivant — et la coche zombie repartait en base. Le
+         * drapeau `modifie` suffit à protéger un geste en cours.
+         */
+        if (Array.isArray(d.faits) && !modifie.current.journee) {
           setBlocsFaits(d.faits);
         }
       })
@@ -679,13 +714,42 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setJournees(config);
     if (demoModeRef.current) return;
     if (journeesMinuteur.current) clearTimeout(journeesMinuteur.current);
+    journeesEnAttente.current = config;
     journeesMinuteur.current = setTimeout(() => {
+      journeesMinuteur.current = null;
+      journeesEnAttente.current = null;
       void fetch("/api/journees", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(config),
       }).catch((err) => console.error("[journees] enregistrement impossible :", err));
     }, 600);
+  }, []);
+
+  /*
+   * Une modification tapée juste avant de fermer l'onglet ne doit pas mourir
+   * dans le débounce — 600 ms suffisent à perdre un bloc réécrit. Même
+   * traitement que le reste de la journée (voir `viderSync`) : `sendBeacon`
+   * survit à la fermeture, contrairement à un `fetch` que le navigateur annule.
+   */
+  useEffect(() => {
+    const vider = () => {
+      const enAttente = journeesEnAttente.current;
+      if (!enAttente) return;
+      if (journeesMinuteur.current) clearTimeout(journeesMinuteur.current);
+      journeesMinuteur.current = null;
+      journeesEnAttente.current = null;
+      try {
+        navigator.sendBeacon(
+          "/api/journees",
+          new Blob([JSON.stringify(enAttente)], { type: "application/json" }),
+        );
+      } catch (err) {
+        console.error("[journees] envoi de dernière minute impossible :", err);
+      }
+    };
+    window.addEventListener("pagehide", vider);
+    return () => window.removeEventListener("pagehide", vider);
   }, []);
 
   /*
@@ -1155,13 +1219,15 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
     // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
     // d'annuler le geste sous les doigts de Twaylo.
-    // Une tâche encore provisoire n'existe pas en base : lui envoyer son
-    // identifiant `tmp-…` ne ferait qu'une erreur serveur de plus. Le POST de
-    // création est en vol, et la coche part au prochain geste.
-    if (cible.id && !estProvisoire(cible.id) && !demoModeRef.current) {
-      void basculerTacheDistante(cible.id, done);
+    if (!cible.id || demoModeRef.current) return;
+    // Tâche encore provisoire : son identifiant `tmp-…` n'existe pas en base.
+    // La coche est mise de côté et rejouée dès que le serveur répond.
+    if (estProvisoire(cible.id)) {
+      noterGesteProvisoire(cible.id, { done });
+      return;
     }
-  }, []);
+    void basculerTacheDistante(cible.id, done);
+  }, [noterGesteProvisoire]);
 
   /** Coche ou décoche une variante. Le clic sur une option déjà cochée l'enlève. */
   const cocherOption = useCallback((habitId: string, option: string) => {
@@ -1267,17 +1333,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }).catch((err) => console.error("[habitudes] floutage impossible :", err));
   }, []);
 
-  const changerNiveauTache = useCallback((id: string, niveau: Niveau) => {
-    setTasks((prev) =>
-      prev.map((t) => ((t as { id?: string }).id === id ? { ...t, niveau } : t)),
-    );
-    if (demoModeRef.current) return;
-    void fetch("/api/tasks", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, niveau }),
-    }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
-  }, []);
+  const changerNiveauTache = useCallback(
+    (id: string, niveau: Niveau) => {
+      setTasks((prev) =>
+        prev.map((t) => ((t as { id?: string }).id === id ? { ...t, niveau } : t)),
+      );
+      if (demoModeRef.current) return;
+      // Pas encore confirmée : on garde le geste pour le rejouer.
+      if (estProvisoire(id)) {
+        noterGesteProvisoire(id, { niveau });
+        return;
+      }
+      void fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, niveau }),
+      }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
+    },
+    [noterGesteProvisoire],
+  );
 
   const renommerTache = useCallback(
     (id: string, titre: string) => {
@@ -1287,13 +1361,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
         prev.map((t) => ((t as { id?: string }).id === id ? { ...t, text: propre } : t)),
       );
       if (demoModeRef.current) return;
+      if (estProvisoire(id)) {
+        noterGesteProvisoire(id, { titre: propre });
+        return;
+      }
       void fetch("/api/tasks", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, titre: propre }),
       }).catch((err) => console.error("[tasks] renommage impossible :", err));
     },
-    [],
+    [noterGesteProvisoire],
   );
 
 /**
@@ -1682,11 +1760,51 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { tache } = await res.json();
       if (!tache) throw new Error("réponse sans tâche");
+
+      /*
+       * Rejouer ce qui a été fait pendant l'attente, sur le vrai identifiant.
+       *
+       * Sans ça, la tâche du serveur — cochée à faux, avec son titre
+       * d'origine — remplaçait purement la ligne à l'écran : la coche posée
+       * une seconde plus tôt disparaissait sous les doigts de Twaylo, et une
+       * suppression laissait une ligne fantôme dans la base.
+       */
+      const gestes = gestesAvantConfirmation.current.get(cleTemp);
+      gestesAvantConfirmation.current.delete(cleTemp);
+
+      if (gestes?.supprimee) {
+        setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
+        void fetch(`/api/tasks?id=${encodeURIComponent(tache.id)}`, {
+          method: "DELETE",
+        }).catch((err) => console.error("[taches] suppression différée impossible :", err));
+        return;
+      }
+
+      const rattrapee: Task & { id: string } = {
+        ...tache,
+        ...(gestes?.done !== undefined ? { done: gestes.done } : {}),
+        ...(gestes?.titre ? { text: gestes.titre } : {}),
+        ...(gestes?.niveau ? { niveau: gestes.niveau } : {}),
+      };
       setTasks((prev) =>
-        prev.map((t) => ((t as { id?: string }).id === cleTemp ? tache : t)),
+        prev.map((t) => ((t as { id?: string }).id === cleTemp ? rattrapee : t)),
       );
+
+      if (gestes?.done !== undefined) void basculerTacheDistante(tache.id, gestes.done);
+      if (gestes?.titre || gestes?.niveau) {
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: tache.id,
+            ...(gestes.titre ? { titre: gestes.titre } : {}),
+            ...(gestes.niveau ? { niveau: gestes.niveau } : {}),
+          }),
+        }).catch((err) => console.error("[taches] rattrapage impossible :", err));
+      }
     } catch (err) {
       console.error("[taches] ajout impossible :", err);
+      gestesAvantConfirmation.current.delete(cleTemp);
       setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
     }
   }, []);
@@ -1717,13 +1835,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const supprimerTacheLocale = useCallback((id: string) => {
-    setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== id));
-    if (demoModeRef.current) return;
-    void fetch(`/api/tasks?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
-      (err) => console.error("[taches] suppression impossible :", err),
-    );
-  }, []);
+  const supprimerTacheLocale = useCallback(
+    (id: string) => {
+      setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== id));
+      if (demoModeRef.current) return;
+      /*
+       * Supprimer une tâche que le serveur n'a pas encore confirmée : la
+       * requête partirait avec un identifiant `tmp-…` inconnu de la base, et
+       * la vraie ligne, créée juste après, resterait là — invisible à l'écran,
+       * bien présente en base, et de retour au prochain chargement. On note la
+       * suppression, elle est exécutée dès que le vrai identifiant arrive.
+       */
+      if (estProvisoire(id)) {
+        noterGesteProvisoire(id, { supprimee: true });
+        return;
+      }
+      void fetch(`/api/tasks?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+        (err) => console.error("[taches] suppression impossible :", err),
+      );
+    },
+    [noterGesteProvisoire],
+  );
 
   /**
    * « Passer au jour suivant » : on archive la todo du jour dans l'historique,

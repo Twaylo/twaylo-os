@@ -271,6 +271,9 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => {
+              // Le minuteur d'identité en attente écrirait le nom qu'on vient
+              // d'effacer, une demi-seconde après la remise à zéro.
+              if (minuteur.current) clearTimeout(minuteur.current);
               majCustom(CUSTOM_DEFAUT);
               setIdent({ nom: "", role: "" });
             }}

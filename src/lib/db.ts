@@ -257,17 +257,27 @@ export async function placerEnTeteOrdre(id: string): Promise<void> {
   const db = supabaseAdmin();
 
   for (let essai = 0; essai < 3; essai++) {
-    const { data: vivantes, error } = await db
-      .from("tasks")
-      .select("id")
-      .eq("user_id", USER_ID);
-    if (error) throw error;
-    const existants = new Set((vivantes ?? []).map((t) => t.id as string));
-
     const ordre = await lireOrdreTaches();
-    await ecrireOrdreTaches(
-      [id, ...ordre.filter((x) => x !== id && existants.has(x))].slice(0, MAX_ORDRE),
-    );
+
+    /*
+     * Le ménage des identifiants morts ne se fait qu'à l'approche du plafond.
+     *
+     * Le faire à chaque création coûtait une lecture de toute la table pour
+     * rien : tant que la liste a de la place, un identifiant mort n'évince
+     * personne. On ne paie donc cette lecture que lorsqu'elle sert vraiment.
+     */
+    let retenus = ordre.filter((x) => x !== id);
+    if (retenus.length >= MAX_ORDRE - 20) {
+      const { data: vivantes, error } = await db
+        .from("tasks")
+        .select("id")
+        .eq("user_id", USER_ID);
+      if (error) throw error;
+      const existants = new Set((vivantes ?? []).map((t) => t.id as string));
+      retenus = retenus.filter((x) => existants.has(x));
+    }
+
+    await ecrireOrdreTaches([id, ...retenus].slice(0, MAX_ORDRE));
 
     // Notre identifiant est-il bien dans la liste ? Peu importe son rang exact :
     // si une création concurrente s'est glissée devant, les deux sont placées.

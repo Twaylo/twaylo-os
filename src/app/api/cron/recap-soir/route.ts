@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, hasValidApiSecret, verifySessionToken } from "@/lib/auth";
+import {
+  SESSION_COOKIE,
+  hasValidApiSecret,
+  timingSafeEqual,
+  verifySessionToken,
+} from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { construireRecapSoir } from "@/lib/brief";
 import { sendMessage } from "@/lib/telegram";
@@ -12,7 +17,10 @@ export const maxDuration = 60;
 /** Le récap du soir (21 h Paris) — mêmes trois clés que le brief du matin. */
 async function autorise(req: NextRequest): Promise<boolean> {
   const cron = process.env.CRON_SECRET;
-  if (cron && req.headers.get("authorization") === `Bearer ${cron}`) return true;
+  // Temps constant, comme le brief du matin — cette route n'est plus filtrée
+  // par le middleware.
+  const porteur = req.headers.get("authorization") ?? "";
+  if (cron && timingSafeEqual(porteur, `Bearer ${cron}`)) return true;
   if (hasValidApiSecret(req.headers.get("x-api-secret"))) return true;
   const secret = process.env.AUTH_SECRET;
   const mdp = process.env.DASHBOARD_PASSWORD;
