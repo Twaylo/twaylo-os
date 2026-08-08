@@ -628,7 +628,26 @@ export function TachesCard() {
    */
   const [celebre, setCelebre] = useState(false);
   const toutFaitAvant = useRef(toutFait);
+  /*
+   * Le garde ne suffisait pas au rechargement.
+   *
+   * `tasks` démarre à vide — donc « tout fait » est faux au premier rendu —
+   * puis se remplit depuis le cache du navigateur : la bascule faux → vrai se
+   * rejouait, et le message traversait l'écran à chaque ouverture de page
+   * d'une journée déjà bouclée. Exactement ce que le garde devait empêcher.
+   * On ne célèbre donc qu'une coche vue à l'écran, jamais un état trouvé là
+   * en arrivant.
+   */
+  const listeVueUneFois = useRef(false);
   useEffect(() => {
+    if (!listeVueUneFois.current) {
+      // Le premier remplissage de la liste est une lecture, pas un geste.
+      if (tasks.length > 0) {
+        listeVueUneFois.current = true;
+        toutFaitAvant.current = toutFait;
+      }
+      return;
+    }
     if (toutFait && !toutFaitAvant.current) {
       setCelebre(true);
       const t = setTimeout(() => setCelebre(false), 2200);
@@ -636,7 +655,9 @@ export function TachesCard() {
       return () => clearTimeout(t);
     }
     toutFaitAvant.current = toutFait;
-  }, [toutFait]);
+    // `tasks.length` participe : c'est son passage de zéro à la vraie liste
+    // qui marque la fin du chargement, et l'effet doit le voir.
+  }, [toutFait, tasks.length]);
 
   /*
    * La liste à afficher, avec pour chaque tâche son index d'origine dans
@@ -902,7 +923,22 @@ export function TachesCard() {
                           // déplacement : sans cette garde, ranger une tâche la
                           // cocherait dans la foulée.
                           onToggle={() => {
-                            if (glissementArmeRef.current) return;
+                            /*
+                             * La garde se désarme en la consommant.
+                             *
+                             * Elle n'était remise à faux qu'au début du
+                             * glissement suivant : après un rangement, tout
+                             * clic qui ne passe pas par là — sur la barre
+                             * d'actions, sur une ligne en cours de
+                             * renommage, ou au clavier, qui n'émet aucun
+                             * événement de pointeur — restait avalé en
+                             * silence. Elle ne bloque plus qu'une fois : le
+                             * clic né du déplacement.
+                             */
+                            if (glissementArmeRef.current) {
+                              glissementArmeRef.current = false;
+                              return;
+                            }
                             toggleTask(index);
                           }}
                         />

@@ -63,6 +63,17 @@ const LABEL_URGENCE: Record<string, string> = {
 };
 
 /** Vrai seulement si la requête porte le secret exact convenu avec Telegram. */
+/**
+ * Neutralise les trois caractères que Telegram lit comme du balisage.
+ *
+ * Les messages partent en `parse_mode: HTML` : un « < » dans un texte libre
+ * fait rejeter tout l'envoi. Seul le texte venant du modèle ou de Twaylo passe
+ * par ici — les gabarits du code gardent leurs balises.
+ */
+function echapperHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function secretValide(req: Request): boolean {
   // Le même nettoyage qu'à l'inscription : Telegram nous renvoie le secret déjà
   // épuré, on doit le comparer à sa version épurée, pas à la valeur brute.
@@ -146,7 +157,15 @@ async function gererMessage(message: NonNullable<TelegramUpdate["message"]>) {
   void sendChatAction(chatId).catch(() => {});
   try {
     const reponse = await repondreEtAgir(texte, localDateKey());
-    await sendMessage(chatId, reponse);
+    /*
+     * La réponse du Brain est échappée avant l'envoi.
+     *
+     * Elle part en `parse_mode: HTML` : un simple « < » dans le texte — une
+     * comparaison, une flèche — faisait rejeter le message par Telegram. Le
+     * Brain avait pourtant déjà agi en base ; Twaylo ne voyait qu'un « souci »
+     * et croyait son geste perdu, alors qu'il était fait.
+     */
+    await sendMessage(chatId, echapperHtml(reponse));
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[telegram] brain en échec :", err);
@@ -354,6 +373,10 @@ async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>)
       .from("captures")
       .select("routed_to")
       .eq("id", captureId)
+      // Filtré sur l'utilisateur comme toutes les autres requêtes de cette
+      // route : la clé service role contourne RLS, c'est donc ici que la
+      // frontière se tient.
+      .eq("user_id", USER_ID)
       .single();
 
     const route = capture?.routed_to as { table?: string; id?: string } | null;

@@ -84,6 +84,8 @@ const DELAI_MS = 1000;
 let enAttente: Record<string, unknown> | null = null;
 let minuteur: ReturnType<typeof setTimeout> | null = null;
 let envoiEnCours = false;
+/** Échecs consécutifs — espace les reprises au lieu de marteler le réseau. */
+let echecs = 0;
 
 async function envoyer() {
   if (envoiEnCours || !enAttente) return;
@@ -101,14 +103,32 @@ async function envoyer() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     poser(data.persiste ? "connecte" : "hors_ligne");
+    echecs = 0;
   } catch (err) {
     console.error("[sync] écriture impossible :", err);
     poser("erreur");
+    /*
+     * La charge est RENDUE à la file, jamais jetée.
+     *
+     * Elle était vidée avant l'envoi et perdue dès que celui-ci échouait :
+     * une habitude cochée dans le métro, une note écrite hors réseau, ne
+     * repartaient jamais — même une fois la connexion revenue. Ce qui est
+     * arrivé entre-temps reste prioritaire : c'est l'intention la plus
+     * récente qui doit gagner.
+     */
+    enAttente = { ...charge, ...(enAttente ?? {}) };
+    echecs += 1;
   } finally {
     envoiEnCours = false;
-    // Une modification est arrivée pendant l'envoi : on repart.
+    // Une modification est arrivée pendant l'envoi, ou l'envoi a échoué : on
+    // repart.
     if (enAttente) planifier();
   }
+}
+
+/** Une seconde, puis de plus en plus d'espace tant que ça échoue (30 s au plus). */
+function delaiCourant(): number {
+  return Math.min(DELAI_MS * 2 ** Math.min(echecs, 5), 30_000);
 }
 
 function planifier() {
@@ -116,7 +136,7 @@ function planifier() {
   minuteur = setTimeout(() => {
     minuteur = null;
     void envoyer();
-  }, DELAI_MS);
+  }, delaiCourant());
 }
 
 /** Empile une modification de la journée ; l'envoi part une seconde plus tard. */
@@ -133,15 +153,24 @@ export function viderSync(): void {
   }
   if (!enAttente) return;
 
-  // `sendBeacon` survit à la fermeture de l'onglet, contrairement à `fetch`
-  // que le navigateur annule.
+  /*
+   * `sendBeacon` survit à la fermeture de l'onglet, contrairement à `fetch`
+   * que le navigateur annule.
+   *
+   * La file n'est vidée QUE si le navigateur a bien pris la charge : il
+   * refuse au-delà d'une certaine taille (un journal un peu long suffit) en
+   * renvoyant `false`, et la vider d'avance perdait alors la journée. Refusée,
+   * elle reste en attente — l'onglet peut ne pas se fermer (retour de
+   * visibilité), et l'envoi repartira.
+   */
   const charge = enAttente;
-  enAttente = null;
   try {
-    navigator.sendBeacon(
+    const pris = navigator.sendBeacon(
       "/api/daily",
       new Blob([JSON.stringify(charge)], { type: "application/json" }),
     );
+    if (pris) enAttente = null;
+    else console.error("[sync] envoi final refusé par le navigateur (charge trop lourde ?)");
   } catch (err) {
     console.error("[sync] envoi final impossible :", err);
   }
