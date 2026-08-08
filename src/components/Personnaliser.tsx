@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { TABS, useOs, type Tab } from "@/lib/os-context";
 import { AMBIANCES, CUSTOM_DEFAUT, ordonnerOnglets, type AmbianceId } from "@/lib/custom";
@@ -58,7 +59,21 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
     majCustom({ ordreOnglets: suivant });
   }
 
-  return (
+  /*
+   * Le panneau est porté dans <body>, pas là où il est écrit.
+   *
+   * Il est déclaré depuis l'avatar, donc à l'intérieur du rail supérieur — et
+   * ce rail porte un `backdrop-blur`. Or un filtre d'arrière-plan fait de
+   * l'élément le référentiel de ses descendants en `position: fixed` : le
+   * panneau se centrait sur la bande de 60 px du rail, moitié hors écran, et
+   * le voile de fermeture ne couvrait que l'en-tête. Le portail le sort de ce
+   * référentiel et le rend au viewport, comme prévu.
+   *
+   * Rendu seulement côté navigateur : `document` n'existe pas au pré-rendu.
+   */
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       {/* Cliquer à côté referme — réflexe attendu de tout panneau. */}
       <div
@@ -287,6 +302,7 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

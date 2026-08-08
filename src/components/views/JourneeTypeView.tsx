@@ -7,6 +7,7 @@ import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 import { EmptyState } from "@/components/ui";
 import { useHeure } from "@/lib/use-heure";
+import { ChampHeure } from "@/components/ChampHeure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
@@ -356,21 +357,19 @@ function TimelineJournee({
                   style={{ background: cat.couleur }}
                   aria-hidden
                 />
-                <input
-                  type="time"
-                  value={b.debut}
-                  onChange={(e) => e.target.value && majBloc(b.id, { debut: e.target.value })}
-                  aria-label="Heure de début"
-                  className="rounded-[7px] px-[6px] py-[3px] font-mono text-[12px] font-bold text-white outline-none [color-scheme:dark]"
+                <ChampHeure
+                  valeur={b.debut}
+                  onValider={(h) => h && majBloc(b.id, { debut: h })}
+                  ariaLabel="Heure de début"
+                  className="rounded-[7px] px-[6px] py-[3px] font-mono text-[12px] font-bold text-white outline-none"
                   style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
                 />
                 <span className="text-[11px] text-white/25">→</span>
-                <input
-                  type="time"
-                  value={b.fin}
-                  onChange={(e) => majBloc(b.id, { fin: e.target.value })}
-                  aria-label="Heure de fin (optionnelle)"
-                  className="rounded-[7px] px-[6px] py-[3px] font-mono text-[12px] font-bold text-white/70 outline-none [color-scheme:dark]"
+                <ChampHeure
+                  valeur={b.fin}
+                  onValider={(h) => majBloc(b.id, { fin: h })}
+                  ariaLabel="Heure de fin (optionnelle)"
+                  className="rounded-[7px] px-[6px] py-[3px] font-mono text-[12px] font-bold text-white/70 outline-none"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
                 />
                 <input

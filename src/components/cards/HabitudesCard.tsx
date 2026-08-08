@@ -101,10 +101,17 @@ function Ligne({
           {habit.nom}
         </span>
 
-        {/* Ce qui a été fait, plutôt qu'un compteur muet. */}
-        {faite && aOptions && (
+        {/*
+          Ce qui a été fait, plutôt qu'un compteur muet.
+
+          « fait » est le marqueur des habitudes sans variante : il n'a rien
+          à faire dans cette liste. Il y apparaissait depuis qu'un bloc de
+          journée type peut cocher une habitude sans préciser laquelle de ses
+          options — et s'affichait comme une variante qui n'existe pas.
+        */}
+        {faite && aOptions && faites.some((o) => o !== "fait") && (
           <span className="flex-none truncate text-[9.5px] font-bold text-[color:var(--color-vio-soft)]">
-            {faites.join(" · ")}
+            {faites.filter((o) => o !== "fait").join(" · ")}
           </span>
         )}
 

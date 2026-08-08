@@ -6,6 +6,7 @@ import { useOs } from "@/lib/os-context";
 import { Panel } from "@/components/Panel";
 import { Eyebrow, EmptyState } from "@/components/ui";
 import { useHeure } from "@/lib/use-heure";
+import { ChampHeure } from "@/components/ChampHeure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
@@ -295,12 +296,11 @@ function LigneEdition({
       className="flex items-center gap-[6px] rounded-[9px] px-[7px] py-[4px]"
       style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
     >
-      <input
-        type="time"
-        value={bloc.debut}
-        onChange={(e) => e.target.value && onMaj({ debut: e.target.value })}
-        aria-label="Heure du bloc"
-        className="rounded-[6px] px-[4px] py-[2px] font-mono text-[10.5px] font-bold text-white outline-none [color-scheme:dark]"
+      <ChampHeure
+        valeur={bloc.debut}
+        onValider={(h) => h && onMaj({ debut: h })}
+        ariaLabel="Heure du bloc"
+        className="rounded-[6px] px-[4px] py-[2px] font-mono text-[10.5px] font-bold text-white outline-none"
         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
       />
       <input

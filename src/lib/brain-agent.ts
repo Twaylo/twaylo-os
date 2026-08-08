@@ -285,6 +285,16 @@ function trouverParNom<T>(requete: string, items: T[], libelle: (t: T) => string
   const contient = items
     .filter((t) => {
       const n = normaliser(libelle(t));
+      /*
+       * Un libellé vide n'est candidat à rien.
+       *
+       * `q.includes("")` est toujours vrai, et le tri par longueur mettait
+       * ensuite ce libellé vide en premier : un bloc de journée type dont
+       * Twaylo avait effacé l'intitulé — le stockage les conserve désormais —
+       * répondait à TOUTES les commandes vocales, et le Brain cochait ce
+       * bloc-là, plus l'habitude qui lui est liée.
+       */
+      if (!n) return false;
       return n.includes(q) || q.includes(n);
     })
     .sort((a, b) => libelle(a).length - libelle(b).length);

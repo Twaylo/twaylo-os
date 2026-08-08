@@ -94,7 +94,8 @@ export const JOURNEES_DEFAUT: JourneesConfig = {
   ],
 };
 
-const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** HH:MM, de 00:00 à 23:59. */
+export const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function texte(v: unknown, max: number): string {
   return String(v ?? "").slice(0, max);
