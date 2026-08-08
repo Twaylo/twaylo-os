@@ -284,6 +284,16 @@ function estProvisoire(id: string | undefined): boolean {
   return Boolean(id?.startsWith("tmp-"));
 }
 
+/** Ce que Twaylo a fait à une tâche avant que le serveur ne la confirme. */
+type GesteProvisoire = {
+  done?: boolean;
+  titre?: string;
+  niveau?: Niveau;
+  supprimee?: boolean;
+  /** Le rangement complet voulu, si la tâche a été déplacée. */
+  ordre?: string[];
+};
+
 export function OsProvider({ children }: { children: ReactNode }) {
   /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
   const demoModeRef = useRef(false);
@@ -416,17 +426,74 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * disparaissait au moment de la substitution. On mémorise donc ce qui a été
    * fait, et on le rejoue sur le vrai identifiant dès qu'il arrive.
    */
-  const gestesAvantConfirmation = useRef<
-    Map<string, { done?: boolean; titre?: string; niveau?: Niveau; supprimee?: boolean }>
-  >(new Map());
+  const gestesAvantConfirmation = useRef<Map<string, GesteProvisoire>>(new Map());
+
+  /**
+   * De l'identifiant provisoire au vrai, une fois la création confirmée.
+   *
+   * Un geste peut arriver PENDANT la substitution : la ligne a déjà pris son
+   * identifiant définitif, mais le glisser en cours porte encore l'ancien. Le
+   * geste était alors rangé dans une case que plus personne ne relit, et se
+   * perdait en silence. Avec cette correspondance il part directement au
+   * serveur, sur le bon identifiant.
+   */
+  const tmpVersReel = useRef<Map<string, string>>(new Map());
+
+  /** L'identifiant réel s'il est connu, sinon celui qu'on a sous la main. */
+  const resoudreId = useCallback((id: string) => tmpVersReel.current.get(id) ?? id, []);
+
+  /** Envoie au serveur un geste rattrapé, sur l'identifiant définitif. */
+  const appliquerGesteDistant = useCallback(
+    (id: string, geste: GesteProvisoire) => {
+      if (geste.supprimee) {
+        void fetch(`/api/tasks?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+          (err) => console.error("[taches] suppression différée impossible :", err),
+        );
+        return;
+      }
+      if (geste.done !== undefined) void basculerTacheDistante(id, geste.done);
+      if (geste.titre || geste.niveau) {
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id,
+            ...(geste.titre ? { titre: geste.titre } : {}),
+            ...(geste.niveau ? { niveau: geste.niveau } : {}),
+          }),
+        }).catch((err) => console.error("[taches] rattrapage impossible :", err));
+      }
+      if (geste.ordre) {
+        // Le rangement voulu pendant l'attente : les provisoires devenus réels
+        // sont traduits, les autres écartés.
+        const ordre = geste.ordre
+          .map((x) => tmpVersReel.current.get(x) ?? x)
+          .filter((x) => !estProvisoire(x));
+        if (ordre.length > 0) {
+          void fetch("/api/tasks", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ordre }),
+          }).catch((err) => console.error("[taches] ordre différé impossible :", err));
+        }
+      }
+    },
+    [],
+  );
 
   /** Note un geste porté sur une tâche pas encore confirmée. */
   const noterGesteProvisoire = useCallback(
-    (id: string, geste: { done?: boolean; titre?: string; niveau?: Niveau; supprimee?: boolean }) => {
+    (id: string, geste: GesteProvisoire) => {
+      // Confirmée entre-temps : plus rien à mettre de côté, on l'envoie.
+      const reel = tmpVersReel.current.get(id);
+      if (reel) {
+        appliquerGesteDistant(reel, geste);
+        return;
+      }
       const actuels = gestesAvantConfirmation.current.get(id) ?? {};
       gestesAvantConfirmation.current.set(id, { ...actuels, ...geste });
     },
-    [],
+    [appliquerGesteDistant],
   );
 
   // Le jour local, figé au montage : sert de clé pour la base comme pour le
@@ -646,19 +713,21 @@ export function OsProvider({ children }: { children: ReactNode }) {
       .then((r) => r.json())
       .then((d: { connecte?: boolean; journees?: JourneesConfig; faits?: string[] }) => {
         if (annule) return;
-        // Base injoignable ou non configurée : la réponse est un gabarit vide,
-        // pas un état. L'appliquer effacerait les coches du jour.
-        if (d.connecte === false) return;
+        // Les modèles arrivent même sans base — ce sont ceux d'usine, et sans
+        // eux l'écran resterait bloqué sur « Lecture de tes journées types… ».
         if (d.journees) setJournees(d.journees);
         /*
-         * Une liste vide s'applique comme les autres.
+         * Une liste vide s'applique comme les autres — mais seulement si elle
+         * vient vraiment de la base.
          *
          * Écarter le cas vide gardait les coches locales périmées : décocher
          * un bloc sur le téléphone laissait le portable le ressusciter au
          * chargement suivant — et la coche zombie repartait en base. Le
-         * drapeau `modifie` suffit à protéger un geste en cours.
+         * drapeau `modifie` suffit à protéger un geste en cours. En revanche,
+         * base injoignable, la réponse est un gabarit sans coches : l'appliquer
+         * effacerait la journée.
          */
-        if (Array.isArray(d.faits) && !modifie.current.journee) {
+        if (d.connecte !== false && Array.isArray(d.faits) && !modifie.current.journee) {
           setBlocsFaits(d.faits);
         }
       })
@@ -1429,7 +1498,20 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * fin plutôt que de la perdre.
    */
   const deposerTache = useCallback(
-    (ordreIds: string[], changementNiveau: { id: string; niveau: Niveau } | null) => {
+    (ordreIdsBruts: string[], changementBrut: { id: string; niveau: Niveau } | null) => {
+      /*
+       * Les identifiants sont traduits d'abord.
+       *
+       * Un glisser commencé avant la confirmation d'une tâche porte encore son
+       * identifiant provisoire ; si le serveur a répondu entre-temps, la ligne
+       * s'appelle déjà autrement et le dépôt ne la retrouvait plus — elle
+       * tombait dans les « restantes » et sautait en fin de liste.
+       */
+      const ordreIds = ordreIdsBruts.map(resoudreId);
+      const changementNiveau = changementBrut
+        ? { ...changementBrut, id: resoudreId(changementBrut.id) }
+        : null;
+
       setTasks((prev) => {
         const parId = new Map(prev.map((t) => [(t as { id?: string }).id, t]));
         const ordonnees = ordreIds
@@ -1448,15 +1530,24 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
 
       if (demoModeRef.current) return;
+
       /*
-       * Le filtrage des `tmp-…` a lieu ICI, et seulement ici.
-       *
-       * L'ordre affiché les garde (sinon la tâche à peine tapée sauterait en
-       * bas de sa section pendant le glissement), mais les envoyer en base
-       * enregistrerait la place d'une tâche qui n'existe pas encore — et
-       * l'identifiant réel, lui, en serait absent.
+       * Tâche encore non confirmée : le rangement ENTIER est mis de côté avec
+       * le changement de niveau, et rejoué d'un bloc sur le vrai identifiant.
+       * Envoyer l'ordre maintenant, amputé de la ligne déplacée, la renverrait
+       * en tête au rechargement — soit exactement là d'où Twaylo l'a tirée.
        */
-      const ordreDistant = ordreIds.filter((id) => !id.startsWith("tmp-"));
+      if (changementNiveau && estProvisoire(changementNiveau.id)) {
+        noterGesteProvisoire(changementNiveau.id, {
+          niveau: changementNiveau.niveau,
+          ordre: ordreIds,
+        });
+        return;
+      }
+
+      // Les `tmp-…` restants sont écartés du seul envoi : l'ordre affiché les
+      // garde, sinon une tâche à peine tapée sauterait en bas de sa section.
+      const ordreDistant = ordreIds.filter((id) => !estProvisoire(id));
       if (ordreDistant.length > 0) {
         void fetch("/api/tasks", {
           method: "PATCH",
@@ -1465,22 +1556,14 @@ export function OsProvider({ children }: { children: ReactNode }) {
         }).catch((err) => console.error("[tasks] réordonnancement impossible :", err));
       }
       if (changementNiveau) {
-        // Tâche pas encore confirmée : le changement de niveau est mis de côté
-        // et rejoué sur le vrai identifiant, comme les autres gestes.
-        if (estProvisoire(changementNiveau.id)) {
-          noterGesteProvisoire(changementNiveau.id, { niveau: changementNiveau.niveau });
-        } else {
-          void fetch("/api/tasks", {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(changementNiveau),
-          }).catch((err) =>
-            console.error("[tasks] changement de niveau impossible :", err),
-          );
-        }
+        void fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(changementNiveau),
+        }).catch((err) => console.error("[tasks] changement de niveau impossible :", err));
       }
     },
-    [noterGesteProvisoire],
+    [noterGesteProvisoire, resoudreId],
   );
 
   /** Ajout optimiste, même raison que pour les tâches : l'écran n'attend pas. */
@@ -1792,11 +1875,22 @@ export function OsProvider({ children }: { children: ReactNode }) {
       const gestes = gestesAvantConfirmation.current.get(cleTemp);
       gestesAvantConfirmation.current.delete(cleTemp);
 
+      /*
+       * La correspondance est posée AVANT d'appliquer quoi que ce soit : un
+       * geste qui arrive dans la milliseconde suivante porte encore l'ancien
+       * identifiant, et doit pouvoir être traduit plutôt que rangé dans une
+       * case que plus personne ne relit. Bornée, pour ne pas enfler sur une
+       * longue session.
+       */
+      tmpVersReel.current.set(cleTemp, tache.id);
+      if (tmpVersReel.current.size > 60) {
+        const plusAncien = tmpVersReel.current.keys().next().value;
+        if (plusAncien) tmpVersReel.current.delete(plusAncien);
+      }
+
       if (gestes?.supprimee) {
         setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
-        void fetch(`/api/tasks?id=${encodeURIComponent(tache.id)}`, {
-          method: "DELETE",
-        }).catch((err) => console.error("[taches] suppression différée impossible :", err));
+        appliquerGesteDistant(tache.id, { supprimee: true });
         return;
       }
 
@@ -1810,24 +1904,13 @@ export function OsProvider({ children }: { children: ReactNode }) {
         prev.map((t) => ((t as { id?: string }).id === cleTemp ? rattrapee : t)),
       );
 
-      if (gestes?.done !== undefined) void basculerTacheDistante(tache.id, gestes.done);
-      if (gestes?.titre || gestes?.niveau) {
-        void fetch("/api/tasks", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            id: tache.id,
-            ...(gestes.titre ? { titre: gestes.titre } : {}),
-            ...(gestes.niveau ? { niveau: gestes.niveau } : {}),
-          }),
-        }).catch((err) => console.error("[taches] rattrapage impossible :", err));
-      }
+      if (gestes) appliquerGesteDistant(tache.id, gestes);
     } catch (err) {
       console.error("[taches] ajout impossible :", err);
       gestesAvantConfirmation.current.delete(cleTemp);
       setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
     }
-  }, []);
+  }, [appliquerGesteDistant]);
 
   const reprendreOublie = useCallback(async (id: string, niveau?: Niveau) => {
     if (demoModeRef.current) return true;

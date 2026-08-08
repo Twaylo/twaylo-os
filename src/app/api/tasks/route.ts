@@ -114,6 +114,19 @@ export async function PATCH(req: Request) {
      * silencieusement le renommage, qui réapparaissait à l'ancien nom au
      * rechargement.
      */
+    /*
+     * TOUT est validé AVANT la première écriture.
+     *
+     * Le titre vide était refusé après que le changement de niveau eut déjà
+     * été enregistré : l'appelant recevait une erreur pour une requête à
+     * moitié appliquée, et ne pouvait pas savoir ce qui était passé.
+     */
+    const titreDemande =
+      typeof corps.titre === "string" ? corps.titre.trim() : undefined;
+    if (titreDemande !== undefined && titreDemande.length === 0) {
+      return NextResponse.json({ error: "Titre vide." }, { status: 400 });
+    }
+
     let applique = false;
 
     if (typeof corps.niveau === "string" && Object.hasOwn(NIVEAUX, corps.niveau)) {
@@ -121,12 +134,8 @@ export async function PATCH(req: Request) {
       applique = true;
     }
 
-    if (typeof corps.titre === "string") {
-      const titre = corps.titre.trim();
-      if (titre.length === 0) {
-        return NextResponse.json({ error: "Titre vide." }, { status: 400 });
-      }
-      await renommerTache(corps.id, titre.slice(0, 200));
+    if (titreDemande) {
+      await renommerTache(corps.id, titreDemande.slice(0, 200));
       applique = true;
     }
 
