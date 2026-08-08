@@ -43,6 +43,15 @@ export type EtatJour = {
    * entraîne partent dans la MÊME écriture.
    */
   journeeFaits?: string[];
+  /**
+   * La revue de la semaine, rangée sur la ligne du LUNDI.
+   *
+   * Elle passe par le même écrivain vérifié que le reste de la journée : sa
+   * route écrivait la ligne de son côté, et le lundi les deux se marchaient
+   * dessus — une revue en cours de frappe pouvait effacer les habitudes
+   * cochées le matin, ou l'inverse.
+   */
+  revue?: unknown;
 };
 
 /** Ce qu'on garde d'une journée de tâches, pour le bilan dans le temps. */
@@ -449,20 +458,48 @@ export async function ecrireJour(
   patch: { etat?: Partial<EtatJour>; journal?: string },
 ): Promise<void> {
   const db = supabaseAdmin();
-  const actuel = await lireJour(jour);
 
-  const ligne: Record<string, unknown> = {
-    user_id: USER_ID,
-    jour,
-    habitudes: { ...actuel.etat, ...(patch.etat ?? {}) },
-  };
-  if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
+  /*
+   * Même protection que la ligne sentinelle, et pour la même raison.
+   *
+   * Plusieurs choses vivent dans la ligne d'UN jour — habitudes cochées,
+   * repas, chose du jour, instantané des tâches, blocs de journée type, et la
+   * revue quand ce jour est un lundi — et plusieurs chemins l'écrivent. Deux
+   * écritures dont les lectures se croisent, et la seconde ressuscite ce que
+   * la première venait de changer : une coche perdue, une revue effacée.
+   *
+   * Sans verrou possible, on vérifie : après écriture, on relit et on s'assure
+   * que nos clés portent bien nos valeurs, sinon on refusionne sur la version
+   * fraîche.
+   */
+  const cles = Object.keys(patch.etat ?? {});
 
-  const { error } = await db
-    .from("daily_logs")
-    .upsert(ligne, { onConflict: "user_id,jour" });
+  for (let essai = 0; essai < 3; essai++) {
+    const actuel = await lireJour(jour);
 
-  if (error) throw error;
+    const ligne: Record<string, unknown> = {
+      user_id: USER_ID,
+      jour,
+      habitudes: { ...actuel.etat, ...(patch.etat ?? {}) },
+    };
+    if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
+
+    const { error } = await db
+      .from("daily_logs")
+      .upsert(ligne, { onConflict: "user_id,jour" });
+
+    if (error) throw error;
+
+    const relu = await lireJour(jour);
+    const etatRelu = relu.etat as unknown as Record<string, unknown>;
+    const attendu = (patch.etat ?? {}) as Record<string, unknown>;
+    const tenu =
+      cles.every((c) => JSON.stringify(etatRelu[c]) === JSON.stringify(attendu[c])) &&
+      (patch.journal === undefined || relu.journal === patch.journal);
+    if (tenu) return;
+  }
+
+  console.error(`[jour ${jour}] écriture emportée trois fois par une autre — abandon`);
 }
 
 /* ------------------------------------------------------------------ */

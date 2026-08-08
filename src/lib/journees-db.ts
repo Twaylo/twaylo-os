@@ -1,4 +1,5 @@
 import { USER_ID, supabaseAdmin } from "./supabase";
+import { ecrireJour } from "./db";
 import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
 
 /**
@@ -60,32 +61,17 @@ export async function lireBlocsFaits(jour: string): Promise<string[]> {
 }
 
 export async function ecrireBlocsFaits(jour: string, faits: string[]): Promise<void> {
-  const db = supabaseAdmin();
-
-  // Relire-fusionner : la ligne du jour porte aussi les habitudes cochées,
-  // le journal… — écrire les coches ne doit rien effacer d'autre.
-  const { data, error: erreurLecture } = await db
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", jour)
-    .maybeSingle();
-
-  if (erreurLecture) throw erreurLecture;
-
-  const { error } = await db.from("daily_logs").upsert(
-    {
-      user_id: USER_ID,
-      jour,
-      habitudes: {
-        ...((data?.habitudes ?? {}) as object),
-        journeeFaits: faits.slice(0, 48).map((f) => String(f).slice(0, 40)),
-      },
-    },
-    { onConflict: "user_id,jour" },
-  );
-
-  if (error) throw error;
+  /*
+   * Par le canal commun de la journée, qui fusionne PUIS vérifie.
+   *
+   * Cette fonction faisait sa propre lecture-fusion-écriture sur la ligne du
+   * jour — la même que celle des habitudes, des repas et de la revue. Deux
+   * écritures qui se croisent, et l'une effaçait l'autre : le Brain cochant
+   * un bloc pouvait annuler une habitude cochée à l'écran une seconde plus tôt.
+   */
+  await ecrireJour(jour, {
+    etat: { journeeFaits: faits.slice(0, 48).map((f) => String(f).slice(0, 40)) },
+  });
 }
 
 /** Relit puis fusionne : écrire ici ne doit pas effacer le reste de la sentinelle. */

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { ecrireJour } from "@/lib/db";
 import { REVUE_VIDE, type Revue } from "@/lib/types";
 
 /**
@@ -77,22 +78,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Fusion : la ligne du lundi porte aussi les compteurs d'habitudes et les
-    // repas de ce jour-là. Écrire la revue ne doit pas les effacer.
-    const etat = await lireLigne(corps.lundi);
-
-    const { error } = await supabaseAdmin()
-      .from("daily_logs")
-      .upsert(
-        {
-          user_id: USER_ID,
-          jour: corps.lundi,
-          habitudes: { ...etat, revue: corps.revue },
-        },
-        { onConflict: "user_id,jour" },
-      );
-
-    if (error) throw error;
+    /*
+     * Écriture par le canal commun de la journée, pas en direct.
+     *
+     * La ligne du lundi porte aussi les habitudes cochées et les repas de ce
+     * jour-là, et `ecrireJour` fusionne PUIS vérifie : deux écritures qui se
+     * croisent — la revue tapée pendant qu'une habitude se synchronise — ne
+     * s'effacent plus l'une l'autre.
+     */
+    await ecrireJour(corps.lundi, { etat: { revue: corps.revue } });
     return NextResponse.json({ persiste: true });
   } catch (err) {
     console.error("[revue] écriture impossible :", err);
