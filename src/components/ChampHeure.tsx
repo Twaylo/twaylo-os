@@ -22,18 +22,31 @@ export function ChampHeure({
   valeur,
   onValider,
   ariaLabel,
+  obligatoire = false,
   className = "",
   style,
 }: {
   valeur: string;
-  /** Appelé une seule fois, avec une heure valide (ou "" si le champ est vidé). */
+  /** Appelé une seule fois, avec une heure valide (ou "" si le vide est permis). */
   onValider: (heure: string) => void;
   ariaLabel: string;
+  /** Vrai pour une heure qui ne peut pas être absente (le début d'un bloc). */
+  obligatoire?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
   const [brouillon, setBrouillon] = useState(valeur);
   const edite = useRef(false);
+  /**
+   * Échap demande l'abandon.
+   *
+   * Un simple `setBrouillon(valeur)` ne suffisait pas : React met la mise à
+   * jour en file, tandis que le `blur()` qui suit déclenche la validation
+   * sur-le-champ — avec l'ancienne valeur capturée. Taper une heure puis
+   * faire Échap l'enregistrait donc quand même. Ce drapeau, lui, est lu
+   * immédiatement.
+   */
+  const annule = useRef(false);
 
   // La valeur peut changer ailleurs (bascule de modèle, réponse serveur) :
   // on la reprend, sauf pendant que Twaylo tape dedans.
@@ -43,10 +56,20 @@ export function ChampHeure({
 
   function valider() {
     edite.current = false;
+    if (annule.current) {
+      annule.current = false;
+      setBrouillon(valeur);
+      return;
+    }
     if (brouillon === valeur) return;
-    // Une saisie incomplète ne remplace pas une heure valide : on rend la
-    // main plutôt que d'enregistrer un « 00:00 » que personne n'a voulu.
-    if (brouillon === "" || HEURE.test(brouillon)) onValider(brouillon);
+    /*
+     * Une saisie que le parent n'accepterait pas revient à l'heure d'avant,
+     * plutôt que de laisser le champ dans un état que rien ne corrigera :
+     * `valeur` ne changeant pas, l'effet de resynchronisation ne se
+     * déclencherait jamais et le champ resterait vide pour toujours.
+     */
+    const recevable = HEURE.test(brouillon) || (brouillon === "" && !obligatoire);
+    if (recevable) onValider(brouillon);
     else setBrouillon(valeur);
   }
 
@@ -62,8 +85,7 @@ export function ChampHeure({
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         if (e.key === "Escape") {
-          edite.current = false;
-          setBrouillon(valeur);
+          annule.current = true;
           (e.target as HTMLInputElement).blur();
         }
       }}

@@ -359,8 +359,9 @@ function TimelineJournee({
                 />
                 <ChampHeure
                   valeur={b.debut}
-                  onValider={(h) => h && majBloc(b.id, { debut: h })}
+                  onValider={(h) => majBloc(b.id, { debut: h })}
                   ariaLabel="Heure de début"
+                  obligatoire
                   className="rounded-[7px] px-[6px] py-[3px] font-mono text-[12px] font-bold text-white outline-none"
                   style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
                 />

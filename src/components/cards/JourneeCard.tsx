@@ -298,8 +298,11 @@ function LigneEdition({
     >
       <ChampHeure
         valeur={bloc.debut}
-        onValider={(h) => h && onMaj({ debut: h })}
+        onValider={(h) => onMaj({ debut: h })}
         ariaLabel="Heure du bloc"
+        // Un bloc sans heure de début n'a pas de place dans la journée : le
+        // champ refuse le vide et revient de lui-même à l'heure d'avant.
+        obligatoire
         className="rounded-[6px] px-[4px] py-[2px] font-mono text-[10.5px] font-bold text-white outline-none"
         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
       />
