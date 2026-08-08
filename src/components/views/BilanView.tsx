@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Eyebrow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
+import { useOs } from "@/lib/os-context";
 import { HabitudesView } from "@/components/views/HabitudesView";
 
 /**
@@ -500,6 +501,26 @@ function NutritionBilan() {
 }
 
 export function BilanView() {
+  const { demoMode } = useOs();
+
+  /*
+   * En démo, on n'affiche RIEN de réel — et on ne va même pas le chercher.
+   *
+   * Les trois panneaux lisaient la base sans condition : filmer cet onglet
+   * exposait l'historique de Twaylo, ses repas, et jusqu'aux noms de ses
+   * habitudes marquées privées — dont le floutage ne protège que la carte
+   * d'accueil. Couper à la racine évite aussi les trois requêtes.
+   */
+  if (demoMode) {
+    return (
+      <Panel accent="var(--color-amb)">
+        <EmptyState hint="Coupe la démo pour retrouver tes vrais chiffres.">
+          Bilan masqué pendant la démo.
+        </EmptyState>
+      </Panel>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-[18px]">
       <TachesBilan />

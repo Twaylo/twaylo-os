@@ -40,7 +40,15 @@ export function surChangementSync(f: (e: Etat) => void): () => void {
 export type EtatDistant = {
   connecte: boolean;
   taches?: { id: string; text: string; done: boolean; categorie?: string }[];
-  habitudes?: { id: string; nom: string; categorie: string; options: string[] }[];
+  // `prive` déclaré ici aussi : sans lui, le `as Habit[]` de l'appelant
+  // masquait au compilateur la perte du floutage.
+  habitudes?: {
+    id: string;
+    nom: string;
+    categorie: string;
+    options: string[];
+    prive?: boolean;
+  }[];
   faites?: Record<string, string[]>;
   /** Jours d'affilée réellement remplis, calculé en base. */
   serie?: number;

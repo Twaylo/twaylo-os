@@ -45,6 +45,10 @@ export async function POST(req: Request) {
       options: Array.isArray(h.options)
         ? h.options.filter((o: unknown) => typeof o === "string" && o.trim()).map((o: string) => o.trim())
         : [],
+      // Le floutage fait partie de la définition. Ne pas le recopier ici le
+      // perdait à CHAQUE écriture de la liste — un ajout, un renommage, une
+      // suppression suffisaient à démasquer une habitude sensible.
+      ...(h.prive === true ? { prive: true } : {}),
     });
   }
 

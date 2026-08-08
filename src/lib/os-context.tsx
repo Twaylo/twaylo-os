@@ -1260,6 +1260,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
     const optimiste: Capture = { text, type: local.type };
     setCaptures((prev) => [optimiste, ...prev].slice(0, 4));
 
+    /*
+     * En démo, on s'arrête là — comme partout ailleurs.
+     *
+     * La barre de capture reste affichée pendant un tournage, et ce garde
+     * manquait : une phrase tapée pour la caméra partait en base, consommait
+     * un appel au classifieur, et chassait une vraie capture de la carte
+     * (seules les quatre dernières sont gardées).
+     */
+    if (demoModeRef.current) {
+      setCapturing(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/capture", {
         method: "POST",
@@ -1666,9 +1679,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   /** Enregistre la liste entière : elle est courte, et l'API la revalide. */
   const enregistrerBlocages = useCallback((suivants: BlocageStocke[]) => {
+    /*
+     * Le garde démo passe AVANT de toucher à l'état, pas après.
+     *
+     * Placé plus bas, il empêchait bien la requête — mais la ligne inventée
+     * pour la caméra entrait quand même dans la liste réelle. Elle repartait
+     * alors en base au premier vrai geste, une fois la démo coupée.
+     */
+    if (demoModeRef.current) return;
     touchePendantChargement.current.blocages = true;
     setBlocagesBruts(suivants);
-    if (demoModeRef.current) return;
     void fetch("/api/blocages", {
       method: "POST",
       headers: { "content-type": "application/json" },

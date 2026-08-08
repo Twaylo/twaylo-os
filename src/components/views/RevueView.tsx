@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { readJSON, writeJSON } from "@/lib/storage";
 import { localDateKey } from "@/lib/local-date";
 import { REVUE_VIDE, type Revue } from "@/lib/types";
@@ -130,6 +130,8 @@ export function RevueView() {
   const { demoMode } = useOs();
   const [revue, setRevue] = useState<Revue>(REVUE_VIDE);
   const [hydrate, setHydrate] = useState(false);
+  /** Vrai dès la première modification de Twaylo — pas au simple chargement. */
+  const touche = useRef(false);
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set([SECTIONS[0].titre]));
   const [meta, setMeta] = useState<{
     annee: number;
@@ -207,8 +209,17 @@ export function RevueView() {
       .catch((err) => console.error("[revue] chargement impossible :", err));
   }, [demoMode]);
 
+  /*
+   * On n'écrit que ce que Twaylo a réellement touché.
+   *
+   * L'effet partait dès l'hydratation : une seconde après l'ouverture de la
+   * page, la revue LOCALE — vide sur un appareil qui découvre la semaine —
+   * était postée en base. Elle pouvait ainsi effacer une semaine écrite
+   * ailleurs, avant même que la lecture distante n'ait répondu. Même garde
+   * que le journal face aux ajouts du bot Telegram.
+   */
   useEffect(() => {
-    if (!hydrate || !cle || demoMode || !meta) return;
+    if (!hydrate || !cle || demoMode || !meta || !touche.current) return;
     writeJSON(cle, revue);
 
     // Une seconde après la dernière frappe : écrire à chaque lettre
@@ -227,6 +238,7 @@ export function RevueView() {
 
   function set(cle: Champ["cle"], valeur: string) {
     if (revue.scelle) return;
+    touche.current = true;
     setRevue((r) => ({ ...r, [cle]: valeur }));
   }
 
@@ -242,7 +254,10 @@ export function RevueView() {
             </span>
             <button
               type="button"
-              onClick={() => setRevue((r) => ({ ...r, scelle: !r.scelle }))}
+              onClick={() => {
+                touche.current = true;
+                setRevue((r) => ({ ...r, scelle: !r.scelle }));
+              }}
               className="cursor-pointer rounded-[10px] px-[14px] py-[8px] text-[13px] font-extrabold transition-all hover:brightness-110"
               style={
                 revue.scelle
@@ -356,12 +371,13 @@ export function RevueView() {
                       {!revue.scelle && (
                         <div className="mt-[8px]">
                           <MicButton
-                            onTranscript={(t) =>
+                            onTranscript={(t) => {
+                              touche.current = true;
                               setRevue((r) => ({
                                 ...r,
                                 [champ.cle]: r[champ.cle] ? `${r[champ.cle]} ${t}` : t,
-                              }))
-                            }
+                              }));
+                            }}
                           />
                         </div>
                       )}

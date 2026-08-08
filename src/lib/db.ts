@@ -873,6 +873,14 @@ export type HabitudeDef = {
   nom: string;
   categorie: string;
   options: string[];
+  /**
+   * Habitude floutée à l'écran tant que « Révélé » n'est pas actif.
+   *
+   * Ce champ manquait ici, et la route qui écrit la liste ne le recopiait donc
+   * pas : le floutage tenait jusqu'au rechargement, puis l'habitude sensible
+   * revenait en clair — précisément quand Twaylo filme.
+   */
+  prive?: boolean;
 };
 
 export async function lireHabitudesDef(): Promise<HabitudeDef[]> {

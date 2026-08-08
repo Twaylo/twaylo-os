@@ -90,6 +90,17 @@ export function JournalView() {
       .then((r) => r.json())
       .then((d) => {
         if (annule) return;
+        /*
+         * Base injoignable : on le DIT, au lieu d'annoncer « aucune entrée ».
+         *
+         * Sans ce test, une panne de lecture était présentée à Twaylo comme
+         * un journal vide — de quoi croire des mois d'écriture perdus.
+         */
+        if (d?.error || d?.connecte === false) {
+          setErreur(true);
+          setPassees([]);
+          return;
+        }
         const jours = Array.isArray(d.entrees) ? (d.entrees as EntreePassee[]) : [];
         // L'entrée du jour en tête, pour que Twaylo la voie confirmée dès qu'il
         // enregistre — sinon elle n'apparaissait qu'à partir du lendemain.
