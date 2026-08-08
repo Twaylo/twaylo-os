@@ -175,9 +175,25 @@ async function rapport(
 export async function lireStatsYoutube(): Promise<StatsYoutube> {
   const token = await accessToken();
 
-  // 1. Les totaux non monétaires — toujours disponibles.
-  const totaux = await rapport(token, "views,estimatedMinutesWatched,subscribersGained");
-  const [vues = 0, minutes = 0, abonnes = 0] = (totaux.lignes[0] ?? []) as number[];
+  /*
+   * 1. Les totaux non monétaires — isolés comme les trois autres appels.
+   *
+   * Seul ce premier appel remontait son échec jusqu'à l'appelant, qui en
+   * concluait « Reconnecte ta chaîne ». Or un 429 ou un 503 passager de
+   * Google — il en sert régulièrement — n'a rien à voir avec un jeton mort :
+   * Twaylo se retrouvait invité à tout rebrancher alors que sa connexion
+   * était intacte. Une lecture partielle vaut mieux qu'une fausse alerte ;
+   * le vrai « jeton mort » est signalé plus haut, par `accessToken`.
+   */
+  let vues = 0;
+  let minutes = 0;
+  let abonnes = 0;
+  try {
+    const totaux = await rapport(token, "views,estimatedMinutesWatched,subscribersGained");
+    [vues = 0, minutes = 0, abonnes = 0] = (totaux.lignes[0] ?? []) as number[];
+  } catch (err) {
+    console.warn("[youtube] totaux indisponibles (incident passager ?) :", err);
+  }
 
   // 2. Les revenus, à part : l'appel échoue si la chaîne n'est pas monétisée.
   let revenuEstime: number | null = null;

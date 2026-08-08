@@ -99,8 +99,14 @@ function uuidStable(texte: string): string {
   ].join("-");
 }
 
-/** Le semis initial des tâches a-t-il déjà eu lieu, une fois pour toutes ? */
-async function tachesDejaSemees(): Promise<boolean> {
+/**
+ * Ce semis initial a-t-il déjà eu lieu, une fois pour toutes ?
+ *
+ * Le drapeau vit sur la ligne sentinelle. Sans lui, « table vide » serait
+ * confondu avec « jamais semé », et vider délibérément une liste la ferait
+ * repousser au chargement suivant.
+ */
+async function dejaSeme(cle: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
@@ -109,7 +115,11 @@ async function tachesDejaSemees(): Promise<boolean> {
     .maybeSingle();
 
   if (error) throw error;
-  return (data?.habitudes as { tachesSemees?: boolean } | null)?.tachesSemees === true;
+  return (data?.habitudes as Record<string, unknown> | null)?.[cle] === true;
+}
+
+async function tachesDejaSemees(): Promise<boolean> {
+  return dejaSeme("tachesSemees");
 }
 
 /**
@@ -492,6 +502,15 @@ export async function lireVideos(): Promise<VideoDB[]> {
   if (error) throw error;
   if (data.length > 0) return data as VideoDB[];
 
+  /*
+   * Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
+   *
+   * Ce garde manquait, contrairement aux tâches : supprimer les trois vidéos
+   * d'amorçage — des titres bouche-trou — les faisait revenir au chargement
+   * suivant, encore et encore. Un pipeline vide était impossible à atteindre.
+   */
+  if (await dejaSeme("videosSemees")) return [];
+
   // Même amorçage idempotent que les tâches : identifiant déduit du titre,
   // donc deux semis concurrents écrivent la même ligne.
   const semences = REAL_DATA.pipeline.flatMap((col) =>
@@ -510,6 +529,8 @@ export async function lireVideos(): Promise<VideoDB[]> {
       .upsert(semences, { onConflict: "id", ignoreDuplicates: true });
     if (erreurSemis) throw erreurSemis;
   }
+  // Marqué avant la relecture : le semis n'aura pas lieu deux fois.
+  await majSentinelle({ videosSemees: true });
 
   const { data: apres, error: erreurRelecture } = await db
     .from("videos")
@@ -537,10 +558,22 @@ export async function deplacerVideo(id: string, statut: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function creerVideo(titre: string, format = "long"): Promise<VideoDB> {
+export async function creerVideo(
+  titre: string,
+  format = "long",
+  // L'étape de destination. Saisir une vidéo dans la colonne « Montage »
+  // devait l'y créer ; elle atterrissait systématiquement dans « Idée », et
+  // Twaylo devait la reglisser à chaque fois.
+  statut = "idee",
+): Promise<VideoDB> {
   const { data, error } = await supabaseAdmin()
     .from("videos")
-    .insert({ user_id: USER_ID, titre, statut: "idee", format })
+    .insert({
+      user_id: USER_ID,
+      titre,
+      statut: ETAPES.includes(statut as (typeof ETAPES)[number]) ? statut : "idee",
+      format,
+    })
     .select(COLONNES_VIDEO)
     .single();
 
@@ -585,6 +618,10 @@ export async function lireContacts(): Promise<ContactDB[]> {
   if (error) throw error;
   if (data.length > 0) return data as ContactDB[];
 
+  // Même garde que les tâches et les vidéos : une liste vidée à la main le
+  // reste. Sans lui, les contacts d'amorçage revenaient à chaque chargement.
+  if (await dejaSeme("contactsSemes")) return [];
+
   const { error: erreurSemis } = await db.from("contacts").upsert(
     REAL_DATA.contacts.map((c) => ({
       id: uuidStable(c.nom),
@@ -598,6 +635,7 @@ export async function lireContacts(): Promise<ContactDB[]> {
     { onConflict: "id", ignoreDuplicates: true },
   );
   if (erreurSemis) throw erreurSemis;
+  await majSentinelle({ contactsSemes: true });
 
   const { data: apres, error: erreurRelecture } = await db
     .from("contacts")
@@ -920,25 +958,57 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
 async function majSentinelle(patch: Record<string, unknown>): Promise<void> {
   const db = supabaseAdmin();
 
-  const { data, error: erreurLecture } = await db
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
+  /*
+   * Relire avant de fusionner ne suffit pas.
+   *
+   * Cela protège d'un écrivain qui oublierait une clé, pas de DEUX écrivains
+   * simultanés : la sentinelle héberge les habitudes, les skills, les
+   * blocages, l'ordre des tâches, les journées types, les cases des Oubliés et
+   * le jeton YouTube, et six chemins distincts y écrivent — dont la création
+   * de tâche, qui est fréquente. Deux lectures prises avant la première
+   * écriture, et la seconde ressuscite ce que la première venait de changer.
+   *
+   * Aucun verrou n'est possible (pas de DDL : le jeton d'accès a été révoqué),
+   * alors on vérifie : après écriture, on relit et on s'assure que nos clés
+   * portent bien nos valeurs. Sinon on recommence sur la version fraîche —
+   * la fusion converge au lieu d'écraser.
+   */
+  const lire = async () => {
+    const { data, error } = await db
+      .from("daily_logs")
+      .select("habitudes")
+      .eq("user_id", USER_ID)
+      .eq("jour", JOUR_SENTINELLE)
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.habitudes ?? {}) as Record<string, unknown>;
+  };
 
-  if (erreurLecture) throw erreurLecture;
+  const cles = Object.keys(patch);
 
-  const { error } = await db.from("daily_logs").upsert(
-    {
-      user_id: USER_ID,
-      jour: JOUR_SENTINELLE,
-      habitudes: { ...((data?.habitudes ?? {}) as object), ...patch },
-    },
-    { onConflict: "user_id,jour" },
-  );
+  for (let essai = 0; essai < 3; essai++) {
+    const actuel = await lire();
 
-  if (error) throw error;
+    const { error } = await db.from("daily_logs").upsert(
+      {
+        user_id: USER_ID,
+        jour: JOUR_SENTINELLE,
+        habitudes: { ...actuel, ...patch },
+      },
+      { onConflict: "user_id,jour" },
+    );
+    if (error) throw error;
+
+    const relu = await lire();
+    // La comparaison porte sur la forme sérialisée : ces valeurs sont du JSON
+    // simple, et l'égalité de référence ne dirait rien après un aller-retour.
+    const tenu = cles.every(
+      (c) => JSON.stringify(relu[c]) === JSON.stringify(patch[c]),
+    );
+    if (tenu) return;
+  }
+
+  console.error("[sentinelle] écriture emportée trois fois par une autre — abandon");
 }
 
 export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {

@@ -8,8 +8,9 @@ export async function POST(req: Request) {
 
   let titre: unknown;
   let format: unknown;
+  let statut: unknown;
   try {
-    ({ titre, format } = await req.json());
+    ({ titre, format, statut } = await req.json());
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
   }
@@ -22,6 +23,7 @@ export async function POST(req: Request) {
     const video = await creerVideo(
       titre.trim(),
       format === "short" ? "short" : "long",
+      typeof statut === "string" ? statut : "idee",
     );
     return NextResponse.json({ persiste: true, video });
   } catch (err) {

@@ -302,6 +302,18 @@ export function useVoix(onQuestion: (texte: string) => void): Voix {
   useEffect(
     () => () => {
       actifRef.current = false;
+      /*
+       * Le minuteur de fin de phrase part AVANT tout le reste.
+       *
+       * Il n'était jamais annulé : quitter l'onglet Brain juste après avoir
+       * parlé le laissait courir, et il envoyait la question puis faisait
+       * répondre le Brain à voix haute depuis un écran que Twaylo avait
+       * quitté — sans plus aucun moyen de l'arrêter.
+       */
+      if (minuteurRef.current) {
+        clearTimeout(minuteurRef.current);
+        minuteurRef.current = null;
+      }
       recRef.current?.abort();
       if (typeof window !== "undefined") window.speechSynthesis.cancel();
     },

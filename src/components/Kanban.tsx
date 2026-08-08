@@ -41,7 +41,12 @@ export function Kanban<T>({
   onDeplacer: (id: string, colonneId: string) => void;
   onSupprimer?: (id: string) => void;
   /** Absent = pas de champ de création sur cette colonne. */
-  onAjouter?: (colonneId: string, texte: string) => void;
+  /**
+   * Ajout dans une colonne. Peut renvoyer une promesse : le champ n'est vidé
+   * qu'en cas de succès — l'effacer d'office faisait disparaître le titre tapé
+   * quand l'enregistrement échouait, sans un mot.
+   */
+  onAjouter?: (colonneId: string, texte: string) => void | Promise<boolean>;
   placeholderAjout?: string;
   hauteurMin?: number;
   compact?: boolean;
@@ -170,8 +175,14 @@ export function Kanban<T>({
                   e.preventDefault();
                   const texte = (saisies[col.id] ?? "").trim();
                   if (!texte) return;
-                  onAjouter(col.id, texte);
-                  setSaisies((s) => ({ ...s, [col.id]: "" }));
+                  const resultat = onAjouter(col.id, texte);
+                  if (resultat instanceof Promise) {
+                    void resultat.then((ok) => {
+                      if (ok) setSaisies((s) => ({ ...s, [col.id]: "" }));
+                    });
+                  } else {
+                    setSaisies((s) => ({ ...s, [col.id]: "" }));
+                  }
                 }}
                 className="mt-[8px]"
               >

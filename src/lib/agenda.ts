@@ -28,14 +28,41 @@ function normaliserUrl(url: string): string {
   return url.replace(/^webcal:\/\//i, "https://");
 }
 
-/** Lundi 00:00 de la semaine contenant `date`, en heure de Paris. */
+/** La date civile à Paris, au format AAAA-MM-JJ. */
+function cleParis(d: Date): string {
+  return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+}
+
+/**
+ * L'instant réel où il est minuit à Paris, le jour civil donné.
+ *
+ * On part de minuit UTC ce jour-là, on mesure de combien Paris est en avance
+ * à cet instant, et on recule d'autant. Le décalage est ainsi lu à la bonne
+ * saison — une heure en hiver, deux en été — au lieu d'être supposé.
+ */
+function minuitParis(cle: string): Date {
+  const approx = new Date(`${cle}T00:00:00Z`);
+  const mur = approx.toLocaleString("sv-SE", { timeZone: "Europe/Paris" });
+  const decalage = new Date(`${mur.replace(" ", "T")}Z`).getTime() - approx.getTime();
+  return new Date(approx.getTime() - decalage);
+}
+
+/**
+ * Lundi 00:00 de la semaine contenant `date`, en heure de Paris.
+ *
+ * Le calcul passait par une Date dont les champs LOCAUX portaient l'heure de
+ * Paris, puis appelait `setDate`/`setHours` — qui travaillent, eux, dans le
+ * fuseau du serveur. Juste en développement (machine à Paris), faux en ligne
+ * (Vercel tourne en heure universelle) : la semaine démarrait à 2 h du matin,
+ * et un rendez-vous de 1 h était rangé la veille — ou disparaissait.
+ */
 export function lundiDeLaSemaine(date: Date): Date {
-  const paris = new Date(date.toLocaleString("en-US", { timeZone: "Europe/Paris" }));
-  // getDay() renvoie 0 pour dimanche : on le ramène en fin de semaine.
-  const decalage = (paris.getDay() + 6) % 7;
-  paris.setDate(paris.getDate() - decalage);
-  paris.setHours(0, 0, 0, 0);
-  return paris;
+  // Le jour civil parisien, décalé jusqu'au lundi, en arithmétique de dates
+  // civiles ancrée à midi : aucune bascule d'heure ne la traverse.
+  const midi = new Date(`${cleParis(date)}T12:00:00Z`);
+  const decalage = (midi.getUTCDay() + 6) % 7;
+  midi.setUTCDate(midi.getUTCDate() - decalage);
+  return minuitParis(midi.toISOString().slice(0, 10));
 }
 
 /** Une valeur ICS est soit une chaîne, soit un objet portant des paramètres. */
@@ -55,9 +82,18 @@ function heureParis(d: Date): string {
   });
 }
 
+/**
+ * Le rang du jour dans la semaine (0 = lundi), compté en jours CIVILS
+ * parisiens.
+ *
+ * Une simple division par 24 h se décale d'un cran la semaine du changement
+ * d'heure, qui compte 167 ou 169 heures : un dimanche pouvait être compté
+ * lundi suivant.
+ */
 function jourIndexParis(d: Date, lundi: Date): number {
-  const jours = Math.floor((d.getTime() - lundi.getTime()) / 86_400_000);
-  return jours;
+  const a = new Date(`${cleParis(lundi)}T12:00:00Z`).getTime();
+  const b = new Date(`${cleParis(d)}T12:00:00Z`).getTime();
+  return Math.round((b - a) / 86_400_000);
 }
 
 /**
@@ -122,16 +158,33 @@ export async function lireAgendaSemaine(
     };
 
     if (vevent.rrule) {
-      // Les occurrences supprimées ou déplacées ne doivent pas réapparaître.
-      const exclues = new Set(
-        Object.keys(vevent.exdate ?? {}).map((k) => new Date(k).toDateString()),
-      );
+      /*
+       * Les occurrences déplacées comptent AUSSI comme exclues.
+       *
+       * Google n'écrit pas d'EXDATE quand un rendez-vous récurrent est
+       * déplacé : il ajoute une entrée « RECURRENCE-ID » à part, et laisse la
+       * règle inchangée. Ne regarder que les EXDATE laissait donc un fantôme
+       * à l'ancien créneau — un rendez-vous qui n'existe plus, à côté du vrai.
+       * La clé de chaque occurrence modifiée porte précisément l'instant
+       * d'origine : c'est lui qu'il faut retirer de la série.
+       */
+      const modifiees = vevent.recurrences ?? {};
+      const exclues = new Set([
+        ...Object.keys(vevent.exdate ?? {}).map((k) => new Date(k).toDateString()),
+        ...Object.keys(modifiees).map((k) => new Date(k).toDateString()),
+      ]);
       for (const occurrence of vevent.rrule.between(lundi, dimancheSoir, true)) {
         if (exclues.has(occurrence.toDateString())) continue;
         ajouter(occurrence);
       }
-      // Une occurrence déplacée est stockée à part, avec sa nouvelle date.
-      for (const modifiee of Object.values(vevent.recurrences ?? {})) {
+      /*
+       * Chaque occurrence déplacée n'est ajoutée qu'UNE fois.
+       *
+       * node-ical range le même objet sous deux clés (une date, une chaîne
+       * ISO) : parcourir les valeurs le sortait deux fois, et le rendez-vous
+       * déplacé apparaissait en double à sa nouvelle heure.
+       */
+      for (const modifiee of new Set(Object.values(modifiees))) {
         const debut = (modifiee as { start?: Date | string })?.start;
         if (debut) ajouter(new Date(debut));
       }

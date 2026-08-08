@@ -185,7 +185,12 @@ type OsState = {
   /** Fait avancer une vidéo d'une étape, ou la ramène en arrière. */
   deplacerVideo: (id: string, statut: string) => void;
   /** Ajoute une idée au pipeline. */
-  ajouterVideo: (titre: string, format?: "short" | "long") => Promise<boolean>;
+  ajouterVideo: (
+    titre: string,
+    format?: "short" | "long",
+    /** L'étape où la créer — la colonne dans laquelle Twaylo a tapé. */
+    statut?: string,
+  ) => Promise<boolean>;
   supprimerVideo: (id: string) => void;
   /** Renomme une vidéo sans changer son étape. */
   renommerVideo: (id: string, titre: string) => void;
@@ -1779,21 +1784,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ajouterVideo = useCallback(
-    async (titre: string, format: "short" | "long" = "long"): Promise<boolean> => {
+    async (
+      titre: string,
+      format: "short" | "long" = "long",
+      statut = "idee",
+    ): Promise<boolean> => {
       const propre = titre.trim();
       if (!propre || demoModeRef.current) return false;
       try {
         const res = await fetch("/api/videos", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ titre: propre, format }),
+          body: JSON.stringify({ titre: propre, format, statut }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { video } = await res.json();
         setPipeline((prev) =>
           prev
             ? prev.map((col) =>
-                col.status === "idee"
+                // La colonne renvoyée par le serveur fait foi : c'est celle
+                // où Twaylo a tapé, pas « Idée » par défaut.
+                col.status === video.statut
                   ? {
                       ...col,
                       videos: [

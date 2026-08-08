@@ -50,15 +50,10 @@ export function PipelineGrid({ compact = false }: { compact?: boolean }) {
       hauteurMin={compact ? 130 : 190}
       onDeplacer={deplacerVideo}
       onSupprimer={supprimerVideo}
-      onAjouter={(etape, titre) => {
-        // Une idée entre toujours par « Idée », puis on la déplace — sauf si
-        // Twaylo la saisit directement dans la colonne où il la veut.
-        void ajouterVideo(titre).then(() => {
-          if (etape !== "idee") {
-            /* le déplacement suivra au prochain rendu */
-          }
-        });
-      }}
+      // La vidéo est créée DANS la colonne où Twaylo a tapé. L'ancienne
+      // version la mettait toujours en « Idée » et prétendait la déplacer
+      // ensuite — le corps de la promesse ne contenait qu'un commentaire.
+      onAjouter={(etape, titre) => ajouterVideo(titre, "long", etape)}
       placeholderAjout="Nouvelle vidéo…"
       actionsSupplementaires={(v) =>
         v.id ? (
