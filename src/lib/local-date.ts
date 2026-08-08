@@ -19,11 +19,19 @@ export function localDateKey(date: Date = new Date(), timeZone = USER_TIMEZONE):
   }).format(date);
 }
 
-/** Le jour local décalé de `days` — négatif pour remonter dans le passé. */
+/**
+ * Le jour local décalé de `days` — négatif pour remonter dans le passé.
+ *
+ * Le décalage se fait en arithmétique de dates civiles, ancrée à midi UTC,
+ * jamais en ajoutant des jours à un instant. `setDate` travaillait dans le
+ * fuseau du serveur (UTC sur Vercel) puis on reformatait à Paris : autour d'un
+ * changement d'heure, un jour se retrouvait compté deux fois et un autre
+ * sauté. Midi est assez loin des deux bascules pour qu'aucune ne le franchisse.
+ */
 export function localDateKeyOffset(days: number, from: Date = new Date()): string {
-  const d = new Date(from);
-  d.setDate(d.getDate() + days);
-  return localDateKey(d);
+  const d = new Date(`${localDateKey(from)}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Les N derniers jours locaux, du plus ancien au plus récent. */
