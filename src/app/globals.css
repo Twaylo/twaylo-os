@@ -51,7 +51,18 @@ body {
   background: var(--color-ink-0);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  overflow-x: hidden;
+  /*
+   * `clip`, surtout pas `hidden`.
+   *
+   * Masquer le débordement horizontal avec `hidden` a un effet de bord que la
+   * spécification impose : l'axe vertical, laissé en `visible`, passe alors en
+   * `auto`. Le corps de page devenait donc une ZONE DÉFILANTE à part entière,
+   * imbriquée dans celle de la fenêtre — deux ascenseurs pour une seule page,
+   * et un défilement qui repart « en plusieurs fois » selon celui que la
+   * molette attrape. `clip` coupe ce qui dépasse sans rien rendre défilable :
+   * l'axe vertical reste au navigateur, et il n'y a plus qu'un ascenseur.
+   */
+  overflow-x: clip;
 }
 
 ::selection {

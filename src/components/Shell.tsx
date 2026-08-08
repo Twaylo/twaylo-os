@@ -81,7 +81,14 @@ function Glow() {
 export function Shell() {
   return (
     <OsProvider>
-      <div className="relative min-h-screen overflow-x-hidden">
+      {/*
+        `overflow-x-clip` et non `-hidden` : `hidden` aurait fait de ce cadre
+        une seconde zone défilante verticale (la spécification bascule l'axe
+        laissé en `visible` vers `auto`), empilée sous celle de la fenêtre —
+        d'où le défilement qui repartait en plusieurs fois. `clip` se contente
+        de couper les halos qui dépassent, sans créer d'ascenseur.
+      */}
+      <div className="relative min-h-screen overflow-x-clip">
         <Glow />
         <TopRail />
         <main className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4">
