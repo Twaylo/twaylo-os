@@ -28,9 +28,23 @@ export const metadata: Metadata = {
    * sinon le rail du haut se cacherait derrière l'encoche.
    */
   appleWebApp: {
-    capable: true,
     title: "Twaylo OS",
     statusBarStyle: "black-translucent",
+  },
+  /*
+   * Les deux balises « application », écrites à la main.
+   *
+   * Vérifié sur le HTML réellement produit : `appleWebApp.capable` n'émet QUE
+   * `mobile-web-app-capable`, la balise de Chrome, et ravale au passage toute
+   * balise Apple qu'on ajouterait à côté. Or Safari lit
+   * `apple-mobile-web-app-capable` : sans elle, l'icône posée sur l'écran
+   * d'accueil peut rouvrir un onglet Safari ordinaire, barre d'adresse
+   * comprise — exactement ce qu'on cherche à supprimer. On écrit donc les
+   * deux nous-mêmes, et on retire `capable` pour que Next ne s'en mêle plus.
+   */
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "mobile-web-app-capable": "yes",
   },
   formatDetection: { telephone: false },
 };
