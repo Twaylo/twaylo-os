@@ -5,6 +5,7 @@ import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
 import { localDateKey } from "./local-date";
 import { chiffrerJourStocke, jourALaisseUneTrace } from "./xp";
+import { JOUR_SENTINELLE, majSentinelle } from "./sentinelle";
 import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
 
 /**
@@ -979,8 +980,12 @@ export function statsDeals(deals: DealDB[]) {
  *
  * Le 1er janvier 2000 n'est le jour de personne : impossible de le confondre
  * avec une vraie journée de Twaylo.
+ *
+ * La date et l'écrivain vérifié vivent maintenant dans `sentinelle.ts` : six
+ * chemins écrivent cette ligne, et trois d'entre eux le faisaient sans
+ * vérifier — d'où des réglages qui disparaissaient quand deux écritures se
+ * croisaient.
  */
-const JOUR_SENTINELLE = "2000-01-01";
 
 /** Ce que Twaylo pratique réellement, à défaut d'avoir encore choisi. */
 const HABITUDES_DEFAUT: HabitudeDef[] = [
@@ -1037,65 +1042,6 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
   return HABITUDES_DEFAUT;
 }
 
-/**
- * La ligne sentinelle héberge plusieurs réglages (habitudes, blocages).
- * Écrire l'un ne doit pas effacer l'autre : on relit avant de fusionner.
- */
-async function majSentinelle(patch: Record<string, unknown>): Promise<void> {
-  const db = supabaseAdmin();
-
-  /*
-   * Relire avant de fusionner ne suffit pas.
-   *
-   * Cela protège d'un écrivain qui oublierait une clé, pas de DEUX écrivains
-   * simultanés : la sentinelle héberge les habitudes, les skills, les
-   * blocages, l'ordre des tâches, les journées types, les cases des Oubliés et
-   * le jeton YouTube, et six chemins distincts y écrivent — dont la création
-   * de tâche, qui est fréquente. Deux lectures prises avant la première
-   * écriture, et la seconde ressuscite ce que la première venait de changer.
-   *
-   * Aucun verrou n'est possible (pas de DDL : le jeton d'accès a été révoqué),
-   * alors on vérifie : après écriture, on relit et on s'assure que nos clés
-   * portent bien nos valeurs. Sinon on recommence sur la version fraîche —
-   * la fusion converge au lieu d'écraser.
-   */
-  const lire = async () => {
-    const { data, error } = await db
-      .from("daily_logs")
-      .select("habitudes")
-      .eq("user_id", USER_ID)
-      .eq("jour", JOUR_SENTINELLE)
-      .maybeSingle();
-    if (error) throw error;
-    return (data?.habitudes ?? {}) as Record<string, unknown>;
-  };
-
-  const cles = Object.keys(patch);
-
-  for (let essai = 0; essai < 3; essai++) {
-    const actuel = await lire();
-
-    const { error } = await db.from("daily_logs").upsert(
-      {
-        user_id: USER_ID,
-        jour: JOUR_SENTINELLE,
-        habitudes: { ...actuel, ...patch },
-      },
-      { onConflict: "user_id,jour" },
-    );
-    if (error) throw error;
-
-    const relu = await lire();
-    // La comparaison porte sur la forme sérialisée : ces valeurs sont du JSON
-    // simple, et l'égalité de référence ne dirait rien après un aller-retour.
-    const tenu = cles.every(
-      (c) => JSON.stringify(relu[c]) === JSON.stringify(patch[c]),
-    );
-    if (tenu) return;
-  }
-
-  console.error("[sentinelle] écriture emportée trois fois par une autre — abandon");
-}
 
 export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
   await majSentinelle({ definitions });

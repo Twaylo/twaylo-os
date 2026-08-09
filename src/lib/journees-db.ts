@@ -1,5 +1,6 @@
 import { USER_ID, supabaseAdmin } from "./supabase";
 import { ecrireJour } from "./db";
+import { lireSentinelle, majSentinelle } from "./sentinelle";
 import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
 
 /**
@@ -10,19 +11,11 @@ import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees
  * table possible). Absentes de la sentinelle, on renvoie les modèles de
  * départ SANS les écrire — la première vraie modification écrira le tout.
  */
-const JOUR_SENTINELLE = "2000-01-01";
 
 export async function lireJournees(): Promise<JourneesConfig> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-  const journees = (data?.habitudes as { journees?: Partial<JourneesConfig> } | null)
-    ?.journees;
+  const journees = (await lireSentinelle()).journees as
+    | Partial<JourneesConfig>
+    | undefined;
   if (!journees || typeof journees !== "object") return JOURNEES_DEFAUT;
 
   /*
@@ -74,30 +67,14 @@ export async function ecrireBlocsFaits(jour: string, faits: string[]): Promise<v
   });
 }
 
-/** Relit puis fusionne : écrire ici ne doit pas effacer le reste de la sentinelle. */
+/**
+ * Par l'écrivain vérifié de la sentinelle.
+ *
+ * Cette fonction relisait puis écrasait de son côté. Cela protège d'un
+ * écrivain distrait, pas de deux écritures qui se croisent : modifier sa
+ * journée type pendant que l'OS enregistre l'ordre des tâches ou une
+ * habitude pouvait faire disparaître l'autre réglage.
+ */
 export async function ecrireJournees(config: JourneesConfig): Promise<void> {
-  const db = supabaseAdmin();
-
-  const { data, error: erreurLecture } = await db
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (erreurLecture) throw erreurLecture;
-
-  const { error } = await db.from("daily_logs").upsert(
-    {
-      user_id: USER_ID,
-      jour: JOUR_SENTINELLE,
-      habitudes: {
-        ...((data?.habitudes ?? {}) as object),
-        journees: bornerJournees(config),
-      },
-    },
-    { onConflict: "user_id,jour" },
-  );
-
-  if (error) throw error;
+  await majSentinelle({ journees: bornerJournees(config) });
 }

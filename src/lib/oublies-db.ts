@@ -1,4 +1,5 @@
 import { USER_ID, supabaseAdmin } from "./supabase";
+import { lireSentinelle, majSentinelle } from "./sentinelle";
 import { estQuadrant, quadrantParDefaut, type Quadrant } from "./eisenhower";
 import { NIVEAUX, type Niveau } from "./types";
 
@@ -30,9 +31,6 @@ export type TacheOubliee = {
   quadrantChoisi: boolean;
 };
 
-/** La ligne de configuration partagée, comme pour les skills et les journées. */
-const JOUR_SENTINELLE = "2000-01-01";
-
 /**
  * Les cases choisies à la main, par identifiant de tâche.
  *
@@ -42,16 +40,7 @@ const JOUR_SENTINELLE = "2000-01-01";
  * n'a pas à être stocké.
  */
 async function lireQuadrants(): Promise<Record<string, Quadrant>> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-  const brut = (data?.habitudes as { oubliesQuadrants?: unknown } | null)
-    ?.oubliesQuadrants;
+  const brut = (await lireSentinelle()).oubliesQuadrants;
   if (!brut || typeof brut !== "object") return {};
 
   const propre: Record<string, Quadrant> = {};
@@ -61,29 +50,15 @@ async function lireQuadrants(): Promise<Record<string, Quadrant>> {
   return propre;
 }
 
-/** Relit puis fusionne : la sentinelle porte aussi les skills, les journées… */
+/**
+ * Par l'écrivain vérifié de la sentinelle, qui porte aussi les skills, les
+ * journées types, l'ordre des tâches et les habitudes.
+ *
+ * Cette fonction relisait puis écrasait de son côté : ranger un oublié
+ * pendant que l'OS enregistrait autre chose pouvait effacer l'autre réglage.
+ */
 async function ecrireQuadrants(quadrants: Record<string, Quadrant>): Promise<void> {
-  const db = supabaseAdmin();
-
-  const { data, error: erreurLecture } = await db
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", USER_ID)
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (erreurLecture) throw erreurLecture;
-
-  const { error } = await db.from("daily_logs").upsert(
-    {
-      user_id: USER_ID,
-      jour: JOUR_SENTINELLE,
-      habitudes: { ...((data?.habitudes ?? {}) as object), oubliesQuadrants: quadrants },
-    },
-    { onConflict: "user_id,jour" },
-  );
-
-  if (error) throw error;
+  await majSentinelle({ oubliesQuadrants: quadrants });
 }
 
 /** Range un oublié dans une case — le choix de Twaylo prime sur le rangement d'office. */
