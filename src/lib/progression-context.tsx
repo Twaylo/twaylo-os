@@ -55,6 +55,7 @@ type ProgressionDistante = {
   connecte: boolean;
   jours: { jour: string; xp: number }[];
   xpAvant: number;
+  xpAujourdhui: number;
   serie: number;
   meilleureSerie: number;
   cumuls: Cumuls;
@@ -103,6 +104,7 @@ const DISTANTE_VIDE: ProgressionDistante = {
   connecte: false,
   jours: [],
   xpAvant: 0,
+  xpAujourdhui: 0,
   serie: 0,
   meilleureSerie: 0,
   cumuls: CUMULS_VIDES,
@@ -212,21 +214,42 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
    */
   const [acquis, setAcquis] = useState<string[]>([]);
   const [jourDesAcquis, setJourDesAcquis] = useState(jourVoulu);
-
-  if (jourDesAcquis !== jourVoulu) {
-    // Minuit : la journée repart vierge de bonus.
-    setJourDesAcquis(jourVoulu);
-    setAcquis([]);
-  } else if (pret) {
-    const attendus = [
-      ...new Set([...(distant?.bonusAujourdhui ?? []), ...bonusMerites(brut)]),
-    ];
-    const manquants = attendus.filter((id) => !acquis.includes(id));
-    if (manquants.length > 0) setAcquis([...acquis, ...manquants]);
-  }
+  /**
+   * Le plus haut total atteint aujourd'hui.
+   *
+   * Sans ce plancher, l'XP du jour REDESCENDAIT dans un cas très réel :
+   * « passer au jour suivant » archive la todo et retire les tâches faites de
+   * la liste vivante — les points qu'elles rapportaient disparaissaient donc
+   * de l'écran, et la barre de niveau reculait le soir même. Une XP acquise
+   * est acquise ; décocher corrige la liste, pas le crédit.
+   */
+  const [plancher, setPlancher] = useState(0);
 
   const jour = useMemo<JourChiffre>(() => ({ ...brut, bonus: acquis }), [brut, acquis]);
-  const xpJour = useMemo(() => xpDuJour(jour), [jour]);
+  const xpCalcule = useMemo(() => xpDuJour(jour), [jour]);
+  const xpJour = Math.max(xpCalcule, plancher, distant?.xpAujourdhui ?? 0);
+
+  /*
+   * Ajustements PENDANT le rendu — le motif que React recommande pour
+   * corriger un état quand une entrée change : le rendu est immédiatement
+   * rejoué avec la bonne valeur, sans passage par l'écran ni cascade d'effets.
+   */
+  if (jourDesAcquis !== jourVoulu) {
+    // Minuit : la journée repart vierge.
+    setJourDesAcquis(jourVoulu);
+    setAcquis([]);
+    setPlancher(0);
+  } else {
+    if (pret) {
+      const attendus = [
+        ...new Set([...(distant?.bonusAujourdhui ?? []), ...bonusMerites(brut)]),
+      ];
+      const manquants = attendus.filter((id) => !acquis.includes(id));
+      if (manquants.length > 0) setAcquis([...acquis, ...manquants]);
+    }
+    if (xpJour > plancher) setPlancher(xpJour);
+  }
+
   const detailJour = useMemo(() => detailXp(jour), [jour]);
   const xpTotal = (distant?.xpAvant ?? 0) + xpJour;
   const palier = useMemo(() => palierDe(xpTotal), [xpTotal]);

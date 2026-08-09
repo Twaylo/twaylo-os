@@ -110,6 +110,25 @@ export async function verifySessionToken(
 }
 
 /**
+ * L'instant d'expiration porté par un jeton, sans le revérifier.
+ *
+ * À n'appeler QU'APRÈS `verifySessionToken` : la charge utile n'est pas
+ * authentifiée par cette lecture seule. Elle sert à savoir s'il est temps de
+ * réémettre le cookie, pas à décider si l'accès est permis.
+ */
+export function lireExpiration(token: string | undefined): number | null {
+  if (!token) return null;
+  const [payload] = token.split(".");
+  if (!payload) return null;
+  try {
+    const decoded = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    return typeof decoded.exp === "number" ? decoded.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Comparaison à durée constante. Un `===` sur le mot de passe fuiterait sa
  * longueur et son préfixe via le temps de réponse.
  */

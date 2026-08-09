@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, hasValidApiSecret, verifySessionToken } from "@/lib/auth";
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  createSessionToken,
+  hasValidApiSecret,
+  lireExpiration,
+  verifySessionToken,
+} from "@/lib/auth";
 
 /**
  * Routes ouvertes, listées une par une.
@@ -18,6 +25,19 @@ const CHEMINS_PUBLICS = new Set([
   "/api/auth/login",
   "/api/auth/logout",
   "/api/telegram/webhook",
+  /*
+   * Le manifeste et les icônes : ouverts, et il le FAUT.
+   *
+   * Le navigateur va chercher `manifest.webmanifest` sans envoyer les
+   * cookies (requête sans identifiants, par spécification). Derrière la
+   * porte, il recevait donc la page de connexion à la place du JSON — le
+   * manifeste était invalide et l'OS ne s'installait pas comme application.
+   *
+   * Ce qu'on ouvre : un nom, une couleur de fond et un logo. Aucune donnée.
+   */
+  "/manifest.webmanifest",
+  "/icon",
+  "/apple-icon",
   // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
   // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
   // elle-même et refuse tout si la variable manque.
@@ -50,14 +70,41 @@ export async function middleware(req: NextRequest) {
 
   // DASHBOARD_PASSWORD est garanti non vide par le garde ci-dessus. Il entre
   // dans la validation pour qu'en changer révoque toutes les sessions.
-  const validee = await verifySessionToken(
-    req.cookies.get(SESSION_COOKIE)?.value,
-    secret,
-    process.env.DASHBOARD_PASSWORD,
-  );
+  const jeton = req.cookies.get(SESSION_COOKIE)?.value;
+  const validee = await verifySessionToken(jeton, secret, process.env.DASHBOARD_PASSWORD);
 
   if (validee) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+
+    /*
+     * Session glissante : le cookie se renouvelle quand il a vieilli.
+     *
+     * Posé sur l'écran d'accueil, l'OS est une application ; une application
+     * qui redemande un mot de passe toutes les semaines n'en est pas une.
+     * Mais rallonger simplement la durée allongerait aussi la fenêtre pendant
+     * laquelle un cookie volé reste utilisable. Le glissement règle les deux :
+     * qui ouvre l'OS régulièrement n'est plus jamais déconnecté, et un cookie
+     * laissé de côté meurt toujours au bout de sept jours.
+     *
+     * Renouvelé au plus une fois tous les deux jours — pas à chaque requête,
+     * sinon chaque page renverrait un Set-Cookie inutile.
+     */
+    const exp = lireExpiration(jeton);
+    const restant = exp === null ? null : exp - Date.now();
+    if (restant !== null && restant < (SESSION_MAX_AGE - 2 * 86_400) * 1000) {
+      res.cookies.set(
+        SESSION_COOKIE,
+        await createSessionToken(secret, process.env.DASHBOARD_PASSWORD),
+        {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
+          path: "/",
+          maxAge: SESSION_MAX_AGE,
+        },
+      );
+    }
+    return res;
   }
 
   // Les routes API répondent 401 ; les pages redirigent vers le formulaire.

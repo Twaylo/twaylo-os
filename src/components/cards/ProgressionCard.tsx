@@ -34,6 +34,7 @@ export function ProgressionCard() {
 
   const acquis = new Set(jour.bonus);
   const merites = new Set(bonusMerites(jour));
+  const ecartAcquis = xpJour - detailJour.reduce((n, l) => n + l.xp, 0);
 
   /* Ce qu'il reste à prendre aujourd'hui — uniquement des choses atteignables. */
   const restants: { texte: string; xp: number; couleur: string }[] = [];
@@ -169,6 +170,21 @@ export function ProgressionCard() {
 
         {detailJour.length > 0 ? (
           <div className="mt-[7px] flex flex-wrap gap-[5px]">
+            {/*
+              Le total peut dépasser la somme des étiquettes : archiver la todo
+              retire les tâches faites de la liste vivante, mais pas les points
+              qu'elles ont rapportés. On nomme l'écart au lieu de laisser deux
+              chiffres se contredire.
+            */}
+            {ecartAcquis > 0 && (
+              <span
+                className="rounded-full px-[7px] py-[2px] text-[10px] font-bold text-white/55"
+                style={{ background: "rgba(255,255,255,0.05)" }}
+                title="Points gagnés plus tôt dans la journée, sur des tâches désormais archivées"
+              >
+                ⏳ acquis plus tôt <span className="font-mono text-white/35">+{ecartAcquis}</span>
+              </span>
+            )}
             {detailJour.map((l) => (
               <span
                 key={l.label}
