@@ -91,7 +91,19 @@ export function Shell() {
       <div className="relative min-h-screen overflow-x-clip">
         <Glow />
         <TopRail />
-        <main className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4">
+        <main
+          className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4"
+          style={{
+            /*
+             * En mode application, la barre de gestes d'iOS mange le bas de
+             * l'écran et l'encoche les côtés en paysage. Hors de ce mode, les
+             * `safe-area-inset-*` valent 0 : la mise en page ne change pas.
+             */
+            paddingBottom: "calc(30px + env(safe-area-inset-bottom, 0px))",
+            paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
+            paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
+          }}
+        >
           <ActiveView />
         </main>
       </div>

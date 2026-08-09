@@ -319,9 +319,22 @@ export function TopRail() {
       style={{
         background: "linear-gradient(180deg, rgba(7,18,29,0.92), rgba(7,18,29,0.6))",
         borderColor: "rgba(255,255,255,0.06)",
+        /*
+         * En mode application (icône sur l'écran d'accueil), il n'y a plus de
+         * barre Safari : la page démarre sous l'heure et la batterie. Ce
+         * rembourrage descend le rail juste ce qu'il faut. Sur le web normal,
+         * `safe-area-inset-top` vaut 0 et rien ne bouge.
+         */
+        paddingTop: "env(safe-area-inset-top, 0px)",
       }}
     >
-      <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-6 py-3">
+      <div
+        className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-6 py-3"
+        style={{
+          paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
+          paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
+        }}
+      >
         <Logo />
 
         <nav
