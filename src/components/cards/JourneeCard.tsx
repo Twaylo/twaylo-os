@@ -11,6 +11,7 @@ import { ChampHeure } from "@/components/ChampHeure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
+  blocsTries,
   idBlocLibre,
   type BlocJournee,
   type CategorieBloc,
@@ -155,7 +156,10 @@ export function JourneeCard() {
             </EmptyState>
           ) : (
             <div className="flex flex-col gap-[4px]">
-              {active.blocs.map((b) =>
+              {/* Triés à l'affichage : l'éditeur ajoute en fin de tableau, et
+                  un bloc créé à 06 h se serait rangé après celui de 20 h
+                  jusqu'au rechargement suivant. */}
+              {blocsTries(active.blocs).map((b) =>
                 edition ? (
                   <LigneEdition
                     key={b.id}

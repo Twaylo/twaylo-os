@@ -11,6 +11,7 @@ import { ChampHeure } from "@/components/ChampHeure";
 import {
   CATEGORIES_BLOC,
   blocEnCours,
+  blocsTries,
   idBlocLibre,
   type BlocJournee,
   type CategorieBloc,
@@ -334,7 +335,9 @@ function TimelineJournee({
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-[6px]">
-          {journee.blocs.map((b) => {
+          {/* Même tri qu'ailleurs : un bloc ajouté à une heure antérieure
+              doit se ranger tout de suite au bon endroit. */}
+          {blocsTries(journee.blocs).map((b) => {
             const cat = CATEGORIES_BLOC[b.categorie];
             const enCours = b.id === courant;
             return (

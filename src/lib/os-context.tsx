@@ -1305,8 +1305,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (!res.ok && res.status !== 207) throw new Error(`HTTP ${res.status}`);
 
       const { classification, routedTo, routedId } = await res.json();
+
+      /*
+       * Une capture rangée quelque part quitte la boîte de réception.
+       *
+       * Les pastilles disent « en attente de tri ». Y laisser une capture
+       * devenue tâche ou idée vidéo, c'est prétendre que personne ne s'en est
+       * occupé alors qu'elle est déjà à sa place. Restent visibles les seules
+       * qui n'ont pas de table dédiée : notes et dépenses.
+       */
       setCaptures((prev) =>
-        prev.map((c) => (c === optimiste ? { text, type: classification.type } : c)),
+        routedTo
+          ? prev.filter((c) => c !== optimiste)
+          : prev.map((c) => (c === optimiste ? { text, type: classification.type } : c)),
       );
 
       /*

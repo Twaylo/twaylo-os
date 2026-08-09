@@ -162,15 +162,31 @@ export function idBlocLibre(config: JourneesConfig): string {
 }
 
 /**
+ * Les blocs rangés par heure de début.
+ *
+ * `bornerJournees` trie ce qui vient de la base, mais pas ce qui vient d'être
+ * tapé : l'éditeur ajoute en fin de tableau, et un bloc créé à 06 h se
+ * retrouvait donc APRÈS celui de 20 h jusqu'au rechargement suivant — affiché
+ * au mauvais endroit, et invisible pour le repère « maintenant ». On trie
+ * donc aussi à l'affichage.
+ */
+export function blocsTries(blocs: BlocJournee[]): BlocJournee[] {
+  return [...blocs].sort((a, z) => a.debut.localeCompare(z.debut));
+}
+
+/**
  * Le bloc en cours à l'heure donnée (HH:MM) : le dernier commencé, s'il n'est
  * pas déjà fini. Un bloc sans fin court jusqu'au début du suivant.
  */
 export function blocEnCours(blocs: BlocJournee[], heure: string): string | null {
+  // Le parcours s'arrête au premier bloc qui commence plus tard : il exige
+  // donc un tableau trié, ce que l'éditeur ne garantit pas.
+  const ordonnes = blocsTries(blocs);
   let courant: string | null = null;
-  for (let i = 0; i < blocs.length; i++) {
-    const b = blocs[i];
+  for (let i = 0; i < ordonnes.length; i++) {
+    const b = ordonnes[i];
     if (b.debut > heure) break;
-    const fin = b.fin || blocs[i + 1]?.debut || "24:00";
+    const fin = b.fin || ordonnes[i + 1]?.debut || "24:00";
     courant = heure < fin ? b.id : null;
   }
   return courant;

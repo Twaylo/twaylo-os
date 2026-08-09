@@ -768,12 +768,21 @@ export async function supprimerContact(id: string): Promise<void> {
 
 export type CaptureDB = { id: string; texte: string; type: string };
 
-/** Les dernières captures non traitées — la boîte de réception. */
+/**
+ * Les dernières captures NON TRAITÉES — la boîte de réception.
+ *
+ * Le filtre manquait, et tant que rien ne routait les captures c'était sans
+ * conséquence : `traite` restait faux pour tout le monde. Maintenant que dire
+ * « appeler le fixeur » crée vraiment la tâche, une capture routée n'a plus
+ * rien à faire sous « en attente de tri » — elle y restait affichée comme si
+ * personne ne s'en était occupé.
+ */
 export async function lireCaptures(limite = 4): Promise<CaptureDB[]> {
   const { data, error } = await supabaseAdmin()
     .from("captures")
     .select("id, texte, type")
     .eq("user_id", USER_ID)
+    .eq("traite", false)
     .order("created_at", { ascending: false })
     .limit(limite);
 

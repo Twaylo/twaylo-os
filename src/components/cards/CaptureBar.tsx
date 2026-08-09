@@ -6,8 +6,14 @@ import { MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
 /**
- * La barre de capture. C'est l'entrée du pipeline de la spec Partie 5 :
- * le tri est local pour l'instant, il partira vers /api/capture en étape 3.
+ * La barre de capture — l'entrée du pipeline (spec Partie 5).
+ *
+ * Ce qu'on tape part à `/api/capture` : classé, puis ROUTÉ vers sa table
+ * métier. « Appeler le fixeur » devient une tâche en tête de pile, « idée
+ * vidéo sur… » entre dans le pipeline contenu. Ce qui n'a pas de table
+ * dédiée (note, dépense) reste dans la boîte de réception, et ce sont ces
+ * captures-là — elles seules — que montrent les pastilles ci-dessous.
+ *
  * Seule carte à porter le dégradé signature en accent.
  */
 export function CaptureBar() {
