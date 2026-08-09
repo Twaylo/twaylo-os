@@ -793,6 +793,30 @@ export function OsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * Les coches d'un bloc supprimé s'en vont avec lui.
+   *
+   * Les coches du jour ne sont qu'une liste d'identifiants, sans lien avec
+   * les modèles. Un bloc retiré laissait donc sa coche derrière lui : elle
+   * comptait encore dans l'XP et dans le « 4/7 » de la carte, pour un bloc
+   * que plus rien n'affiche. Le ménage se fait ici, à la racine — il couvre
+   * toutes les façons de supprimer un bloc, y compris depuis le Brain.
+   */
+  useEffect(() => {
+    if (!hydrate || demoMode || !journees) return;
+    const vivants = new Set(journees.liste.flatMap((j) => j.blocs.map((b) => b.id)));
+    setBlocsFaits((prev) => {
+      const restants = prev.filter((id) => vivants.has(id));
+      if (restants.length === prev.length) return prev;
+      modifie.current.journee = true;
+      return restants;
+    });
+    // `blocsFaits` participe : les coches peuvent arriver du serveur APRÈS les
+    // modèles. Sans lui, un identifiant mort survivrait jusqu'à la prochaine
+    // modification de la journée type. L'updater rend la main sans rien
+    // changer quand il n'y a rien à retirer — aucune boucle possible.
+  }, [journees, blocsFaits, hydrate, demoMode]);
+
   /** Écrit les modèles : écran tout de suite, base derrière (débouncée). */
   const majJournees = useCallback((config: JourneesConfig) => {
     setJournees(config);

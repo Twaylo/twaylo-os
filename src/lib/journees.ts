@@ -155,10 +155,24 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
  * compteur balaie donc l'ensemble.
  */
 export function idBlocLibre(config: JourneesConfig): string {
-  const pris = new Set(config.liste.flatMap((j) => j.blocs.map((b) => b.id)));
-  let n = 0;
-  while (pris.has(`b${n}`)) n++;
-  return `b${n}`;
+  /*
+   * Le numéro suivant le plus grand, jamais le premier trou.
+   *
+   * « Premier libre » recyclait les identifiants des blocs supprimés — et les
+   * coches du jour ne sont qu'une liste d'identifiants. Supprimer un bloc
+   * coché puis en créer un autre lui rendait donc le même nom : le nouveau
+   * naissait déjà coché, et héritait au passage de la flamme de l'ancien.
+   * Twaylo remanie sa journée type à chaque déplacement ; ce n'était pas un
+   * cas de figure théorique.
+   */
+  let max = -1;
+  for (const j of config.liste) {
+    for (const b of j.blocs) {
+      const n = /^b(\d+)$/.exec(b.id);
+      if (n) max = Math.max(max, Number(n[1]));
+    }
+  }
+  return `b${max + 1}`;
 }
 
 /**
