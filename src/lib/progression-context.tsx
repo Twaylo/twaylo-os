@@ -466,7 +466,14 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       xpTotal,
       palier,
       serie,
-      meilleureSerie: distant?.meilleureSerie ?? 0,
+      /*
+       * Un record ne peut pas être inférieur à la série en cours.
+       *
+       * Le serveur calcule la meilleure série sur ce qu'il a lu AVANT le
+       * premier geste du jour : le bilan affichait « série 1 j » juste à côté
+       * de « meilleure série 0 j » le jour où la série démarre.
+       */
+      meilleureSerie: Math.max(distant?.meilleureSerie ?? 0, serie),
       prochainPalierSerie: prochainPalierSerie(serie),
       cumuls,
       exploits,
