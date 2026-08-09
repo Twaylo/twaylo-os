@@ -143,7 +143,8 @@ type OsState = {
 
   /** Les objectifs, venus de la base. Nuls tant que la lecture n'a pas répondu. */
   objectifs: ObjectifVue[] | null;
-  ajouterObjectif: (libelle: string, portee: string) => Promise<void>;
+  /** Renvoie faux si l'enregistrement a échoué — la saisie reste alors à l'écran. */
+  ajouterObjectif: (libelle: string, portee: string) => Promise<boolean>;
   /** Fait avancer un objectif : progression, chiffre affiché, étapes. */
   majObjectif: (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => void;
   supprimerObjectif: (id: string) => void;
@@ -227,7 +228,12 @@ type OsState = {
    */
   reprendreOublie: (id: string, niveau?: Niveau) => Promise<boolean>;
 
-  ajouterContact: (nom: string, type?: string) => Promise<void>;
+  ajouterContact: (
+    nom: string,
+    type?: string,
+    /** La chaleur de départ — la colonne dans laquelle Twaylo a tapé. */
+    relation?: string,
+  ) => Promise<boolean>;
   supprimerContact: (id: string) => void;
   /** Change la chaleur d'un contact — c'est ce que fait le glisser-déposer. */
   deplacerContact: (id: string, relation: string) => void;
@@ -1585,9 +1591,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
   );
 
   /** Ajout optimiste, même raison que pour les tâches : l'écran n'attend pas. */
-  const ajouterObjectif = useCallback(async (libelle: string, portee: string) => {
+  const ajouterObjectif = useCallback(
+    async (libelle: string, portee: string): Promise<boolean> => {
     const propre = libelle.trim();
-    if (!propre || demoModeRef.current) return;
+    if (!propre || demoModeRef.current) return false;
 
     const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
     setObjectifs((prev) => [
@@ -1617,11 +1624,15 @@ export function OsProvider({ children }: { children: ReactNode }) {
       setObjectifs((prev) =>
         (prev ?? []).map((o) => (o.id === cleTemp ? objectif : o)),
       );
+      return true;
     } catch (err) {
       console.error("[objectifs] ajout impossible :", err);
       setObjectifs((prev) => (prev ?? []).filter((o) => o.id !== cleTemp));
+      return false;
     }
-  }, []);
+    },
+    [],
+  );
 
   /**
    * Mise à jour optimiste : la barre bouge sous le doigt, la base suit.
@@ -1647,7 +1658,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       const apres = { ...avant, ...patch };
       setObjectifs((prev) => (prev ? prev.map((o) => (o.id === id ? apres : o)) : prev));
 
-      if (demoModeRef.current) return;
+      // Objectif pas encore confirmé : l'écran garde la modification, mais on
+      // n'envoie pas un identifiant provisoire que la base rejetterait.
+      if (demoModeRef.current || estProvisoire(id)) return;
       const cible = { pct: apres.pct, valeur: apres.valeur, etapes: apres.etapes };
       /*
        * On réapplique ce que le serveur dit avoir écrit.
@@ -1676,7 +1689,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const supprimerObjectifLocal = useCallback((id: string) => {
     setObjectifs((prev) => (prev ? prev.filter((o) => o.id !== id) : prev));
-    if (demoModeRef.current) return;
+    if (demoModeRef.current || estProvisoire(id)) return;
     void fetch(`/api/objectifs?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
       (err) => console.error("[objectifs] suppression impossible :", err),
     );
@@ -2049,22 +2062,29 @@ export function OsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const ajouterContact = useCallback(async (nom: string, type = "collab") => {
-    const propre = nom.trim();
-    if (!propre || demoModeRef.current) return;
-    try {
-      const res = await fetch("/api/contacts", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ nom: propre, type }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { contact } = await res.json();
-      setContacts((prev) => [...(prev ?? []), contact]);
-    } catch (err) {
-      console.error("[contacts] ajout impossible :", err);
-    }
-  }, []);
+  const ajouterContact = useCallback(
+    async (nom: string, type = "collab", relation = "froid"): Promise<boolean> => {
+      const propre = nom.trim();
+      if (!propre || demoModeRef.current) return false;
+      try {
+        const res = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ nom: propre, type, relation }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { contact } = await res.json();
+        setContacts((prev) => [...(prev ?? []), contact]);
+        return true;
+      } catch (err) {
+        // L'échec remonte : la saisie reste à l'écran plutôt que d'être
+        // effacée sans un mot.
+        console.error("[contacts] ajout impossible :", err);
+        return false;
+      }
+    },
+    [],
+  );
 
   const supprimerContactLocal = useCallback((id: string) => {
     setContacts((prev) => (prev ?? []).filter((c) => c.id !== id));
@@ -2132,7 +2152,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const deplacerDeal = useCallback((id: string, etape: string) => {
     setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, etape } : d)));
-    if (demoModeRef.current) return;
+    // Deal pas encore confirmé : son identifiant provisoire n'existe pas en
+    // base, la requête ne ferait qu'une erreur — et la carte reviendrait à sa
+    // place quand la création répondra.
+    if (demoModeRef.current || estProvisoire(id)) return;
     void fetch("/api/deals", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -2142,7 +2165,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const supprimerDealLocal = useCallback((id: string) => {
     setDeals((prev) => (prev ?? []).filter((d) => d.id !== id));
-    if (demoModeRef.current) return;
+    if (demoModeRef.current || estProvisoire(id)) return;
     void fetch(`/api/deals?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
       (err) => console.error("[deals] suppression impossible :", err),
     );
@@ -2150,7 +2173,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
   const majMontantDeal = useCallback((id: string, montant: number | null) => {
     setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, montant } : d)));
-    if (demoModeRef.current) return;
+    if (demoModeRef.current || estProvisoire(id)) return;
     void fetch("/api/deals", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -2163,7 +2186,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // La valeur d'avant, pour pouvoir la remettre si le serveur refuse.
     const avant = (dealsRef.current ?? []).find((d) => d.id === id)?.echeance ?? null;
     setDeals((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, echeance } : d)));
-    if (demoModeRef.current) return;
+    if (demoModeRef.current || estProvisoire(id)) return;
     void fetch("/api/deals", {
       method: "PATCH",
       headers: { "content-type": "application/json" },

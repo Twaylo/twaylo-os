@@ -67,10 +67,12 @@ export function NutritionCard() {
     const texte = saisie.trim();
     if (!texte) return;
 
-    setSaisie("");
+    // La saisie n'est PAS vidée d'avance : l'estimation peut échouer, et le
+    // repas tapé disparaissait alors sans un mot.
     setEnCours(true);
     try {
       const est = await estimerRepas(texte);
+      setSaisie("");
       setRepas((prev) => [
         ...prev,
         {
@@ -243,7 +245,19 @@ export function NutritionCard() {
                     <input
                       type="number"
                       value={valeur}
-                      onChange={(e) => set(Number(e.target.value))}
+                      /*
+                       * Un champ vidé pour être retapé ne vaut pas zéro.
+                       *
+                       * `Number("")` rend 0, et la redistribution des macros
+                       * recalculait alors tout à partir de ce zéro : effacer
+                       * un chiffre le temps d'en saisir un autre détruisait
+                       * définitivement la répartition du repas.
+                       */
+                      onChange={(e) => {
+                        if (e.target.value === "") return;
+                        const n = Number(e.target.value);
+                        if (Number.isFinite(n)) set(n);
+                      }}
                       className="w-[68px] rounded-[8px] px-2 py-[5px] font-mono text-[12px] font-bold text-white outline-none"
                       style={{
                         background: "rgba(255,255,255,0.05)",

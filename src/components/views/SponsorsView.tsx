@@ -76,12 +76,22 @@ function MontantEditable({ deal }: { deal: DealVue }) {
       // qu'on pouvait cliquer, et les totaux du haut restaient donc vides
       // pendant que les prix s'écrivaient dans le nom du deal. « + prix » dit
       // ce qu'il faut faire, comme « + date » juste à côté.
+      /*
+       * Zéro est un montant, pas une absence de montant.
+       *
+       * Le test de vérité confondait les deux : un deal négocié à 0 € — une
+       * collaboration en échange de visibilité, un produit offert — s'affichait
+       * « + prix », comme si rien n'avait été saisi. La base, elle, distingue
+       * bien le zéro du vide.
+       */
       className={`flex-none cursor-pointer rounded-[6px] px-[5px] font-extrabold transition-all hover:brightness-125 ${
-        deal.montant ? "font-mono text-[12px]" : "text-[11px]"
+        deal.montant !== null ? "font-mono text-[12px]" : "text-[11px]"
       }`}
-      style={{ color: deal.montant ? "var(--color-ver-soft)" : "rgba(255,255,255,0.3)" }}
+      style={{
+        color: deal.montant !== null ? "var(--color-ver-soft)" : "rgba(255,255,255,0.3)",
+      }}
     >
-      {deal.montant ? `${deal.montant.toLocaleString("fr-FR")} €` : "+ prix"}
+      {deal.montant !== null ? `${deal.montant.toLocaleString("fr-FR")} €` : "+ prix"}
     </button>
   );
 }
@@ -148,13 +158,26 @@ function EcheanceEditable({ deal }: { deal: DealVue }) {
         draggable={false}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        onChange={(e) => {
+        /*
+         * La date se valide en sortant du champ, pas à chaque frappe.
+         *
+         * `onChange` part à chaque chiffre tapé : au clavier, « 12/08/2026 »
+         * passait par des dates incomplètes — enregistrées puis refermant le
+         * champ au premier coup — et effacer pour ressaisir vidait l'échéance
+         * existante. Le calendrier, lui, referme sur son propre changement.
+         */
+        onBlur={(e) => {
           majEcheanceDeal(deal.id, e.target.value || null);
           setEdite(false);
         }}
-        onBlur={() => setEdite(false)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") setEdite(false);
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            // Échap abandonne : on remet la valeur d'origine avant que le
+            // `blur` ne la lise.
+            (e.target as HTMLInputElement).value = deal.echeance ?? "";
+            (e.target as HTMLInputElement).blur();
+          }
         }}
         aria-label={`Échéance de ${deal.nom}`}
         className="w-[128px] rounded-[6px] px-[6px] py-[2px] font-mono text-[11px] font-extrabold text-white outline-none"

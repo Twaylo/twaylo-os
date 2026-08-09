@@ -26,7 +26,17 @@ export function ContactsView() {
     demoMode,
   } = useOs();
 
-  const contacts = ((!demoMode && distants) || data.contacts) as ContactVue[];
+  /*
+   * Hors démo, on n'affiche QUE ce qui vient de la base — quitte à ne rien
+   * afficher le temps qu'elle réponde.
+   *
+   * Le repli sur le jeu d'amorçage semblait aimable, mais ces contacts-là
+   * n'ont pas d'identifiant : ils s'affichaient impossibles à déplacer et
+   * impossibles à supprimer, et le restaient définitivement si la base n'était
+   * pas joignable. Une liste vide qui se remplit vaut mieux qu'une liste
+   * fantôme sur laquelle rien ne marche.
+   */
+  const contacts = (demoMode ? data.contacts : (distants ?? [])) as ContactVue[];
 
   const colonnes: ColonneKanban<ContactVue>[] = RELATION_ORDER.map((relation) => ({
     id: relation,
@@ -47,16 +57,10 @@ export function ContactsView() {
         cleDe={(c) => c.id}
         onDeplacer={deplacerContact}
         onSupprimer={supprimerContact}
-        onAjouter={(colonneId, texte) => {
-          void ajouterContact(texte).then(() => {
-            // Créé en « froid » par défaut ; si Twaylo l'ajoute dans une autre
-            // colonne, c'est là qu'il le veut.
-            if (colonneId !== "froid") {
-              // Le contact vient d'être créé ; on le retrouvera au prochain
-              // rendu. Le déplacement suit dans la foulée côté serveur.
-            }
-          });
-        }}
+        // Le contact est créé DANS la colonne où Twaylo a tapé. L'ancienne
+        // version le mettait toujours en « froid » et prétendait le déplacer
+        // ensuite — le corps de la promesse ne contenait qu'un commentaire.
+        onAjouter={(colonneId, texte) => ajouterContact(texte, "collab", colonneId)}
         placeholderAjout="Nom…"
         hauteurMin={280}
         rendre={(c) => (

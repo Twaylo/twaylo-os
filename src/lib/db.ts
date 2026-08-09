@@ -697,10 +697,26 @@ export async function majContact(
   if (error) throw error;
 }
 
-export async function creerContact(nom: string, type = "collab"): Promise<ContactDB> {
+const RELATIONS = ["chaud", "actif", "tiede", "froid"] as const;
+
+export async function creerContact(
+  nom: string,
+  type = "collab",
+  // La chaleur de départ : la colonne dans laquelle Twaylo a tapé. Elle était
+  // figée à « froid », donc un contact ajouté dans « Chaud » atterrissait
+  // ailleurs et devait être reglissé à la main.
+  relation = "froid",
+): Promise<ContactDB> {
   const { data, error } = await supabaseAdmin()
     .from("contacts")
-    .insert({ user_id: USER_ID, nom, type, relation: "froid" })
+    .insert({
+      user_id: USER_ID,
+      nom,
+      type,
+      relation: RELATIONS.includes(relation as (typeof RELATIONS)[number])
+        ? relation
+        : "froid",
+    })
     .select(COLONNES_CONTACT)
     .single();
 
@@ -1231,11 +1247,20 @@ export function lireCible(brut: string | null): ContenuCible {
 }
 
 export async function lireObjectifs(): Promise<ObjectifDB[]> {
+  /*
+   * Les objectifs abandonnés sont renvoyés comme les autres.
+   *
+   * Ils étaient écartés ici, alors que la vue les attend : elle range en
+   * archive tout ce qui n'est plus « en cours », avec un badge et un bouton
+   * pour les remettre en route. Filtrés à la lecture, marquer un objectif
+   * abandonné le faisait disparaître pour de bon — bouton de restauration
+   * inatteignable, et le Brain incapable de le retrouver pour le relancer.
+   * C'est à l'affichage de trier, pas à la lecture d'amputer.
+   */
   const { data, error } = await supabaseAdmin()
     .from("goals")
     .select("id, objectif, portee, statut, categorie, cible, echeance")
     .eq("user_id", USER_ID)
-    .neq("statut", "abandonne")
     .order("created_at", { ascending: true });
 
   if (error) throw error;

@@ -34,7 +34,13 @@ export async function POST(req: Request) {
 
   // On nettoie chaque entrée plutôt que d'écrire des données extérieures brutes :
   // niveau borné à 0-100, textes coupés, historique réduit au nécessaire.
-  const propre: Skill[] = corps.skills.slice(0, 60).map((brut) => {
+  const propre: Skill[] = corps.skills
+    .slice(0, 60)
+    // Une entrée nulle faisait échouer le nettoyage AVANT le try, donc une
+    // erreur 500 brute — d'une route dont le rôle est justement d'assainir ce
+    // qui vient de l'extérieur.
+    .filter((brut): brut is Partial<Skill> => Boolean(brut) && typeof brut === "object")
+    .map((brut) => {
     const s = brut as Partial<Skill>;
     return {
       id: String(s.id ?? "").slice(0, 80) || `skill-${Math.abs(hash(String(s.nom ?? "")))}`,
@@ -44,7 +50,12 @@ export async function POST(req: Request) {
       historique: Array.isArray(s.historique)
         ? s.historique
             .slice(0, 60)
-            .filter((h) => /^\d{4}-\d{2}$/.test(String((h as { mois?: unknown }).mois)))
+            .filter(
+              (h) =>
+                Boolean(h) &&
+                typeof h === "object" &&
+                /^\d{4}-\d{2}$/.test(String((h as { mois?: unknown }).mois)),
+            )
             .map((h) => ({
               mois: String((h as { mois: string }).mois),
               niveau: borner(Number((h as { niveau: number }).niveau)),

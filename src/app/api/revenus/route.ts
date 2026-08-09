@@ -39,7 +39,10 @@ export async function POST(req: Request) {
   // La date est ramenée au premier du mois : un relevé mensuel n'a pas de jour,
   // et sans ça deux saisies du même mois créeraient deux lignes.
   const brut = typeof corps.date === "string" ? corps.date : "";
-  if (!/^\d{4}-\d{2}/.test(brut)) {
+  // Le mois est vérifié, pas seulement sa forme : « 2026-99 » passait le
+  // filtre et partait tel quel à Postgres, qui répondait par une erreur 500
+  // au lieu du refus clair prévu ici.
+  if (!/^\d{4}-(0[1-9]|1[0-2])/.test(brut)) {
     return NextResponse.json({ error: "Date invalide (AAAA-MM)." }, { status: 400 });
   }
   const date = `${brut.slice(0, 7)}-01`;

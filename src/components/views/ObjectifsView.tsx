@@ -115,8 +115,11 @@ export function ObjectifsView() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void ajouterObjectif(nouveau[portee] ?? "", portee);
-                  setNouveau((p) => ({ ...p, [portee]: "" }));
+                  // Le champ n'est vidé qu'une fois l'ajout confirmé : sinon
+                  // un échec effaçait l'objectif tapé sans un mot.
+                  void ajouterObjectif(nouveau[portee] ?? "", portee).then((ok) => {
+                    if (ok) setNouveau((p) => ({ ...p, [portee]: "" }));
+                  });
                 }}
                 className="mt-[9px]"
               >

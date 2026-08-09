@@ -10,8 +10,9 @@ export async function POST(req: Request) {
 
   let nom: unknown;
   let type: unknown;
+  let relation: unknown;
   try {
-    ({ nom, type } = await req.json());
+    ({ nom, type, relation } = await req.json());
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
   }
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     const ligne = await creerContact(
       nom.trim(),
       typeof type === "string" && TYPES.includes(type) ? type : "collab",
+      typeof relation === "string" ? relation : "froid",
     );
     return NextResponse.json({ persiste: true, contact: versContacts([ligne])[0] });
   } catch (err) {
