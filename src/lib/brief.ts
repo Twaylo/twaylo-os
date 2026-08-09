@@ -1,11 +1,13 @@
-import { calculerSerie, lireHabitudesDef, lireJour, lireTaches } from "./db";
+import { calculerSerie, ecrireJour, lireHabitudesDef, lireJour, lireTaches } from "./db";
 import { lireBlocsFaits, lireJournees } from "./journees-db";
 import { lireOubliees } from "./oublies-db";
+import { localDateKey } from "./local-date";
 import { lireProgression } from "./progression-db";
 import { relanceDuJour } from "./relance";
 import { niveauDepuisUrgence } from "./types";
 import {
   BONUS,
+  bonusMerites,
   detailXp,
   palierDe,
   prochainPalierSerie,
@@ -67,8 +69,23 @@ async function chiffrerJournee(jour: string): Promise<{
   }));
 
   const faitesJour = journee.etat.faites ?? {};
+  /*
+   * Le tableau du jour : ce qui est encore ouvert, plus ce qui a été coché
+   * aujourd'hui.
+   *
+   * Une tâche faite reste dans la table tant que la todo n'est pas clôturée à
+   * la main. Sans ce filtre, le récap du soir recomptait chaque soir les
+   * tâches des jours précédents et annonçait une XP qui n'avait pas été
+   * gagnée ce jour-là. Le filtre porte sur les deux côtés de la fraction :
+   * n'en filtrer qu'un rendrait « focus bouclé » impossible à atteindre.
+   */
+  const duJour = taches.filter(
+    (t) =>
+      t.statut !== "faite" ||
+      (t.completed_at !== null && localDateKey(new Date(t.completed_at)) === jour),
+  );
   const parNiveau = (n: string) =>
-    taches.filter((t) => t.statut === "faite" && niveauDepuisUrgence(t.urgence) === n).length;
+    duJour.filter((t) => t.statut === "faite" && niveauDepuisUrgence(t.urgence) === n).length;
 
   return {
     chiffre: {
@@ -77,7 +94,7 @@ async function chiffrerJournee(jour: string): Promise<{
       habitudesFaites: habitudes.filter((h) => (faitesJour[h.id] ?? []).length > 0).length,
       habitudesTotal: habitudes.length,
       principalesFaites: parNiveau("principal"),
-      principalesTotal: taches.filter(
+      principalesTotal: duJour.filter(
         (t) => niveauDepuisUrgence(t.urgence) === "principal",
       ).length,
       secondairesFaites: parNiveau("secondaire"),
@@ -182,7 +199,32 @@ export async function construireRecapSoir(jour: string): Promise<string> {
     lireProgression(jour).catch(() => null),
   ]);
 
-  const { chiffre, blocs, blocsFaits, nomJournee } = etatJour;
+  const { blocs, blocsFaits, nomJournee } = etatJour;
+
+  /*
+   * Les bonus de la journée sont ARRÊTÉS ici, au moment du récap.
+   *
+   * Ils étaient jusque-là posés uniquement par le navigateur, quand Twaylo
+   * ouvre l'OS. Une journée pliée entièrement depuis Telegram — ce qui arrive
+   * en déplacement — n'en gagnait donc aucun : le récap du soir annonçait
+   * « journée type 7/7 » sans le bonus, et l'XP de ce jour restait
+   * définitivement amputée dans l'historique. Le soir, la journée est jouée :
+   * c'est le bon moment pour figer ce qui a été mérité.
+   */
+  const chiffre = { ...etatJour.chiffre };
+  const merites = bonusMerites(chiffre);
+  const nouveaux = merites.filter((b) => !chiffre.bonus.includes(b));
+  if (nouveaux.length > 0) {
+    chiffre.bonus = [...chiffre.bonus, ...nouveaux];
+    try {
+      // `ecrireJour` fusionne cette clé : rien de ce que le navigateur a déjà
+      // posé n'est écrasé.
+      await ecrireJour(jour, { etat: { bonus: chiffre.bonus } });
+    } catch (err) {
+      console.error("[recap] bonus non enregistrés :", err);
+    }
+  }
+
   const xp = xpDuJour(chiffre);
 
   /*

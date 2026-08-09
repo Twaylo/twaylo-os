@@ -45,7 +45,17 @@ function MontantEditable({ deal }: { deal: DealVue }) {
         // Le clic dans le champ ne doit pas ouvrir le menu de la carte.
         onClick={(e) => e.stopPropagation()}
         onBlur={() => {
-          majMontantDeal(deal.id, brouillon === "" ? null : Number(brouillon));
+          /*
+           * Un nombre, ou rien.
+           *
+           * Le champ est en `type="number"`, mais son contenu peut rester
+           * intermédiaire — un « - » ou un « 1e » seuls, que le navigateur
+           * accepte le temps de la frappe. `Number` en fait NaN, la carte
+           * affichait « NaN € » et la base recevait un `null` : deux chiffres
+           * différents pour la même saisie, jusqu'au rechargement.
+           */
+          const n = Number(brouillon);
+          majMontantDeal(deal.id, brouillon.trim() === "" || !Number.isFinite(n) ? null : n);
           setEdite(false);
         }}
         onKeyDown={(e) => {

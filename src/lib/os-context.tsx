@@ -1189,16 +1189,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // Journée clôturée à la main : l'archive du jour est déjà figée. Réécrire
     // maintenant enverrait la liste vidée par-dessus et effacerait l'historique.
     // Le lendemain (nouvelle clé de jour), la garde tombe et le suivi reprend.
-    if (todoCloturee === localDateKey()) return;
-    const principales = tasks.filter((t) => (t.niveau ?? "secondaire") === "principal");
+    const jour = localDateKey();
+    if (todoCloturee === jour) return;
+    /*
+     * « Faite » ne veut pas dire « faite aujourd'hui ».
+     *
+     * Une tâche cochée reste dans la liste tant que la todo n'est pas
+     * clôturée à la main. L'instantané la recomptait donc chaque jour comme
+     * un accomplissement du jour : le calendrier du bilan marquait « bouclé »
+     * des journées où rien n'avait été fait, et l'XP repartait gonflée tous
+     * les matins. Seul ce qui a été coché CE jour-là entre dans l'archive.
+     */
+    const duJour = tasks.filter((t) => !t.done || t.faiteLe === jour);
+    const principales = duJour.filter((t) => (t.niveau ?? "secondaire") === "principal");
     synchroniserJour({
-      jour: localDateKey(),
+      jour,
       taches: {
-        total: tasks.length,
-        faites: tasks.filter((t) => t.done).length,
+        total: duJour.length,
+        faites: duJour.filter((t) => t.done).length,
         principalTotal: principales.length,
         principalFaites: principales.filter((t) => t.done).length,
-        liste: tasks.map((t) => ({
+        liste: duJour.map((t) => ({
           titre: t.text,
           niveau: t.niveau ?? "secondaire",
           fait: t.done,
@@ -1319,7 +1330,16 @@ export function OsProvider({ children }: { children: ReactNode }) {
     if (!cible) return;
     const done = !cible.done;
 
-    setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, done } : t)));
+    /*
+     * La date de la coche suit la coche.
+     *
+     * La base l'écrit de son côté (`completed_at`), mais l'écran ne la
+     * relira qu'au prochain chargement : sans cette pose immédiate, la tâche
+     * qu'on vient de cocher ne comptait pas dans l'XP du jour avant un
+     * rechargement.
+     */
+    const faiteLe = done ? localDateKey() : undefined;
+    setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, done, faiteLe } : t)));
 
     // L'écran a déjà changé ; la base suit. Un échec réseau laisse la case
     // cochée à l'écran et remonte dans l'indicateur de synchro plutôt que
@@ -2023,7 +2043,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
 
     // 1. Figer l'archive du jour, seulement s'il y avait quelque chose à garder.
     if (actuelles.length > 0) {
-      const principales = actuelles.filter((t) => (t.niveau ?? "secondaire") === "principal");
+      // Même règle que l'instantané continu : le tableau du jour, c'est ce qui
+      // est encore ouvert plus ce qui a été coché aujourd'hui.
+      const duJour = actuelles.filter((t) => !t.done || t.faiteLe === jour);
+      const principales = duJour.filter((t) => (t.niveau ?? "secondaire") === "principal");
       try {
         await fetch("/api/daily", {
           method: "POST",
@@ -2031,11 +2054,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             jour,
             taches: {
-              total: actuelles.length,
-              faites: actuelles.filter((t) => t.done).length,
+              total: duJour.length,
+              faites: duJour.filter((t) => t.done).length,
               principalTotal: principales.length,
               principalFaites: principales.filter((t) => t.done).length,
-              liste: actuelles.map((t) => ({
+              liste: duJour.map((t) => ({
                 titre: t.text,
                 niveau: t.niveau ?? "secondaire",
                 fait: t.done,

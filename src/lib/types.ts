@@ -81,6 +81,16 @@ export type Task = {
   done: boolean;
   categorie?: string;
   niveau?: Niveau;
+  /**
+   * Le jour local où elle a été cochée (`AAAA-MM-JJ`), ou absent.
+   *
+   * Sans cette date, « cochée » et « cochée aujourd'hui » se confondaient. Or
+   * une tâche finie reste dans la liste tant que la todo n'est pas clôturée à
+   * la main : le lendemain, elle était recomptée comme un accomplissement du
+   * jour — XP du jour gonflée, et calendrier du bilan qui marquait « bouclé »
+   * des journées où rien n'avait été fait.
+   */
+  faiteLe?: string;
 };
 
 /**

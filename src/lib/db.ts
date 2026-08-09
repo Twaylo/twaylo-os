@@ -3,6 +3,7 @@ import { USER_ID, supabaseAdmin } from "./supabase";
 import { archiverTachesOubliees } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
+import { localDateKey } from "./local-date";
 import { chiffrerJourStocke, jourALaisseUneTrace } from "./xp";
 import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
 
@@ -790,6 +791,12 @@ export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
     done: l.statut === "faite",
     categorie: l.categorie ?? undefined,
     niveau: niveauDepuisUrgence(l.urgence),
+    // L'horodatage de la base ramené au jour LOCAL de Twaylo : une tâche
+    // cochée à 00 h 30 appartient à sa nuit, pas à la veille UTC.
+    faiteLe:
+      l.statut === "faite" && l.completed_at
+        ? localDateKey(new Date(l.completed_at))
+        : undefined,
   }));
 }
 

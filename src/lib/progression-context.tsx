@@ -143,9 +143,23 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, []);
 
-  const [distantBrut, setDistantBrut] = useState<ProgressionDistante | null>(null);
+  /**
+   * La lecture serveur, ÉTIQUETÉE du jour qu'elle décrit.
+   *
+   * L'étiquette n'est pas décorative : au passage de minuit sur un OS resté
+   * ouvert, la lecture de la veille restait en place le temps du nouvel
+   * appel. L'XP d'hier passait alors pour celle du jour, le plancher la
+   * gravait dans le marbre pour les vingt-quatre heures suivantes, et une
+   * fausse montée de niveau pouvait se déclencher dans la foulée. Une
+   * lecture qui ne correspond pas au jour affiché ne vaut rien : on la
+   * traite comme absente.
+   */
+  const [lecture, setLecture] = useState<{
+    jour: string;
+    data: ProgressionDistante;
+  } | null>(null);
   /** En démo, on ne montre AUCUN chiffre réel — et on ne va même pas les chercher. */
-  const distant = demoMode ? null : distantBrut;
+  const distant = demoMode || lecture?.jour !== jourVoulu ? null : lecture.data;
 
   useEffect(() => {
     if (demoMode) return;
@@ -154,11 +168,14 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       .then((r) => r.json())
       .then((d: Partial<ProgressionDistante> & { connecte?: boolean }) => {
         if (annule) return;
-        setDistantBrut({ ...DISTANTE_VIDE, ...d, connecte: Boolean(d.connecte) });
+        setLecture({
+          jour: jourVoulu,
+          data: { ...DISTANTE_VIDE, ...d, connecte: Boolean(d.connecte) },
+        });
       })
       .catch((err) => {
         console.error("[progression] lecture impossible :", err);
-        if (!annule) setDistantBrut(DISTANTE_VIDE);
+        if (!annule) setLecture({ jour: jourVoulu, data: DISTANTE_VIDE });
       });
     return () => {
       annule = true;
@@ -177,7 +194,20 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       journees?.liste.find((j) => j.id === journees.active) ?? journees?.liste[0] ?? null;
     const blocs = modele?.blocs ?? [];
     const niveauDe = (t: { niveau?: string }) => t.niveau ?? "secondaire";
-    const faites = (n: string) => tasks.filter((t) => t.done && niveauDe(t) === n).length;
+    /*
+     * Le tableau du jour : ce qui est encore ouvert, plus ce qui a été coché
+     * aujourd'hui.
+     *
+     * Une tâche cochée reste dans la liste tant que la todo n'est pas
+     * clôturée à la main. Comptée telle quelle, elle rapportait ses points à
+     * nouveau chaque matin — l'XP démarrait gonflée et le niveau montait tout
+     * seul. Mais l'exclure du seul numérateur rendrait le bonus « focus
+     * bouclé » inatteignable : deux focus finis hier resteraient
+     * éternellement au dénominateur. Ce qui est fini appartient à son jour et
+     * sort du tableau, des deux côtés de la fraction.
+     */
+    const duJour = tasks.filter((t) => !t.done || t.faiteLe === jourVoulu);
+    const faites = (n: string) => duJour.filter((t) => t.done && niveauDe(t) === n).length;
 
     return {
       blocsFaits: blocs.filter((b) => blocsFaits.includes(b.id)).length,
@@ -185,7 +215,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       habitudesFaites: habits.filter((h) => (faitesDuJour[h.id] ?? []).length > 0).length,
       habitudesTotal: habits.length,
       principalesFaites: faites("principal"),
-      principalesTotal: tasks.filter((t) => niveauDe(t) === "principal").length,
+      principalesTotal: duJour.filter((t) => niveauDe(t) === "principal").length,
       secondairesFaites: faites("secondaire"),
       annexesFaites: faites("annexe"),
       journalEcrit: journalText.trim().length > 0,
@@ -203,6 +233,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     journalText,
     uneChose.fait,
     repas.length,
+    jourVoulu,
   ]);
 
   /*
