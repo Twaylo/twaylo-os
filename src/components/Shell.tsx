@@ -3,6 +3,7 @@
 import { OsProvider, useOs } from "@/lib/os-context";
 import { ProgressionProvider } from "@/lib/progression-context";
 import { Recompense } from "@/components/Recompense";
+import { Filet } from "@/components/Filet";
 import { TopRail } from "@/components/TopRail";
 import { AccueilView } from "@/components/views/AccueilView";
 import { ContactsView } from "@/components/views/ContactsView";
@@ -38,15 +39,27 @@ function ActiveView() {
   const { activeTab } = useOs();
   const View = VIEWS[activeTab];
   /*
-   * Pas de `key` ici, volontairement.
+   * Le filet porte l'onglet en clé : changer d'onglet le remet à neuf.
    *
-   * J'avais mis `key={activeTab}` pour rejouer l'animation d'entrée à chaque
-   * onglet. Résultat mesuré : chaque clic détruisait et reconstruisait toute
-   * la vue, puis imposait 320 ms d'animation avant que le contenu se pose —
-   * ce qui donnait la sensation de saccade et d'attente. La navigation doit
-   * être instantanée ; l'animation ne joue qu'au premier affichage.
+   * Sans cette clé, un onglet tombé laisserait son message d'erreur en place
+   * pour tous les suivants — le filet deviendrait lui-même l'impasse qu'il
+   * doit éviter.
    */
-  return <View />;
+  /*
+   * La `key` est sur le FILET, pas sur la vue.
+   *
+   * Sur la vue, elle rejouait l'animation d'entrée à chaque clic : 320 ms
+   * d'attente avant que le contenu se pose, une sensation de saccade. Sur le
+   * filet, elle ne sert qu'à remettre le garde-fou à neuf quand on change
+   * d'onglet — sans quoi un onglet tombé laisserait son message d'erreur en
+   * place pour tous les suivants, et le filet deviendrait lui-même l'impasse
+   * qu'il doit éviter. La navigation reste instantanée.
+   */
+  return (
+    <Filet key={activeTab} nom={activeTab}>
+      <View />
+    </Filet>
+  );
 }
 
 /**

@@ -1894,7 +1894,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ titre: propre, format, statut }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Même garde que pour les contacts : une réponse 200 sans `video`
+        // aurait fait lire `video.statut` sur `undefined`, et le pipeline
+        // aurait emporté l'écran avec lui.
         const { video } = await res.json();
+        if (!video?.id) throw new Error("réponse sans vidéo");
         setPipeline((prev) =>
           prev
             ? prev.map((col) =>
@@ -2159,7 +2163,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ nom: propre, type, relation }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        /*
+         * La forme de la réponse est vérifiée, pas seulement son code.
+         *
+         * Une réponse 200 sans `contact` — base non configurée, réponse
+         * inattendue — poussait `undefined` dans la liste, et l'onglet
+         * Contacts lisait aussitôt `undefined.relation` : plantage de rendu,
+         * ÉCRAN ENTIÈREMENT BLANC, plus un seul onglet accessible. Les autres
+         * créations (tâche, objectif, deal) vérifiaient déjà ; celle-ci non.
+         */
         const { contact } = await res.json();
+        if (!contact?.id) throw new Error("réponse sans contact");
         setContacts((prev) => [...(prev ?? []), contact]);
         return true;
       } catch (err) {
