@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { USER_ID, supabaseAdmin } from "./supabase";
-import { archiverTachesOubliees } from "./oublies-db";
+import { archiverTachesOubliees, estOubliee, seuilOubli } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
 import { localDateKey } from "./local-date";
@@ -95,6 +95,11 @@ export type TacheDB = {
   cle: boolean;
   categorie: string | null;
   completed_at: string | null;
+  /**
+   * Sert au jugement « oubliée » et au tri. Reste côté serveur : `versTaches`
+   * ne la recopie pas dans ce qui part au navigateur.
+   */
+  created_at?: string | null;
 };
 
 /**
@@ -156,24 +161,36 @@ async function tachesDejaSemees(): Promise<boolean> {
  */
 export async function lireTaches(): Promise<TacheDB[]> {
   const db = supabaseAdmin();
-  const COLONNES = "id, titre, statut, urgence, cle, categorie, completed_at";
+  const COLONNES = "id, titre, statut, urgence, cle, categorie, completed_at, created_at";
 
   /*
-   * Le balayage des Oubliés passe AVANT la lecture : une tâche secondaire ou
-   * annexe qui traîne depuis quatre jours glisse à l'archive (statut
-   * `abandonnee`, onglet Oubliés) et la todo affichée est déjà propre.
+   * Le ménage des Oubliés part EN MÊME TEMPS que la lecture, plus avant.
+   *
+   * Il était attendu : deux allers-retours en file indienne dans une fonction
+   * de lecture, sur le chemin critique de l'accueil, du Brain et de l'onglet
+   * Oubliés. Pire, son échec faisait échouer la lecture — un hoquet d'écriture
+   * chez Supabase, et tout l'écran restait sur les données de la veille.
+   *
+   * Lancés ensemble, la lecture peut renvoyer une tâche que l'écriture est en
+   * train d'archiver. On applique donc le MÊME jugement en mémoire, avec le
+   * même seuil, calculé une seule fois : le prédicat est partagé
+   * (`estOubliee`) pour que les deux ne puissent pas diverger.
    */
-  await archiverTachesOubliees();
+  const seuil = seuilOubli();
+  const [, lecture] = await Promise.all([
+    archiverTachesOubliees(),
+    db
+      .from("tasks")
+      .select(COLONNES)
+      .eq("user_id", USER_ID)
+      .neq("statut", "abandonnee")
+      .order("created_at", { ascending: true }),
+  ]);
 
-  const { data, error } = await db
-    .from("tasks")
-    .select(COLONNES)
-    .eq("user_id", USER_ID)
-    .neq("statut", "abandonnee")
-    .order("created_at", { ascending: true });
-
+  const { data, error } = lecture;
   if (error) throw error;
-  if (data.length > 0) return data as TacheDB[];
+  const vivantes = (data as TacheDB[]).filter((t) => !estOubliee(t, seuil));
+  if (vivantes.length > 0) return vivantes;
 
   // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
   if (await tachesDejaSemees()) return [];
@@ -532,6 +549,27 @@ export async function ecrireJour(
    */
   const bonusVoulus = Array.isArray(patch.etat?.bonus) ? patch.etat.bonus : null;
 
+  /*
+   * La relecture de vérification n'est payée que quand elle sert.
+   *
+   * Trois allers-retours par écriture (lire, écrire, relire) sur la route la
+   * plus appelée de l'OS — tout passe par `synchroniserJour`. Or la
+   * vérification n'existe que pour un cas précis : deux écrivains dont les
+   * lectures se croisent. Ces écrivains sont connus et rares — la revue du
+   * lundi, le journal du soir, les bonus fusionnés par union — et ce sont eux
+   * dont la perte se voit (une revue effacée, une XP qui redescend).
+   *
+   * Les coches, elles, arrivent par dizaines depuis un seul onglet, par une
+   * file qui n'envoie qu'UNE écriture à la fois : deux lectures qui se
+   * croisent y sont improbables, et le pire cas est une coche à refaire, pas
+   * une donnée perdue. On garde donc la boucle pour les clés à enjeu, et on
+   * s'arrête après l'écriture pour les autres. Un tiers de latence en moins
+   * sur le geste le plus fréquent.
+   */
+  const CLES_A_ENJEU = new Set(["bonus", "revue"]);
+  const verifier =
+    patch.journal !== undefined || cles.some((c) => CLES_A_ENJEU.has(c));
+
   for (let essai = 0; essai < 3; essai++) {
     const actuel = await lireJour(jour);
 
@@ -548,6 +586,7 @@ export async function ecrireJour(
       .upsert(ligne, { onConflict: "user_id,jour" });
 
     if (error) throw error;
+    if (!verifier) return;
 
     const relu = await lireJour(jour);
     const etatRelu = relu.etat as unknown as Record<string, unknown>;

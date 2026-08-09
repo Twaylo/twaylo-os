@@ -72,17 +72,52 @@ export async function classerOubliee(id: string, quadrant: Quadrant): Promise<vo
  * et appelé à chaque lecture des tâches : une todo qui s'affiche est une todo
  * déjà nettoyée.
  */
+export function seuilOubli(): string {
+  return new Date(Date.now() - JOURS_AVANT_OUBLI * 86_400_000).toISOString();
+}
+
+/**
+ * Le MÊME jugement que l'écriture ci-dessous, mais appliqué en mémoire.
+ *
+ * Les deux doivent rester rigoureusement d'accord : la lecture des tâches
+ * n'attend plus l'archivage, elle le double d'un filtre local pour ne pas
+ * réafficher une ligne que l'écriture est en train de retirer. Si les
+ * conditions divergeaient, on masquerait à l'écran une tâche que la base
+ * garde — une tâche cochée le jour même, par exemple, que le SELECT laisse
+ * passer (il n'exclut que `abandonnee`) et que ce prédicat doit conserver.
+ * D'où la fonction unique, lue par les deux chemins.
+ */
+export function estOubliee(
+  t: { statut: string; urgence: string; created_at?: string | null },
+  seuil: string,
+): boolean {
+  return (
+    (t.statut === "ouverte" || t.statut === "en_cours") &&
+    t.urgence !== "aujourdhui" &&
+    typeof t.created_at === "string" &&
+    t.created_at < seuil
+  );
+}
+
 export async function archiverTachesOubliees(): Promise<void> {
-  const seuil = new Date(Date.now() - JOURS_AVANT_OUBLI * 86_400_000).toISOString();
   const { error } = await supabaseAdmin()
     .from("tasks")
     .update({ statut: "abandonnee" })
     .eq("user_id", USER_ID)
     .in("statut", ["ouverte", "en_cours"])
     .neq("urgence", "aujourdhui")
-    .lt("created_at", seuil);
+    .lt("created_at", seuilOubli());
 
-  if (error) throw error;
+  /*
+   * Journalisé, jamais propagé.
+   *
+   * Cette écriture de ménage est lancée en parallèle de la lecture des tâches.
+   * En faisant remonter son échec, un hoquet d'écriture chez Supabase faisait
+   * échouer /api/state tout entier : l'écran gardait les données de la veille
+   * et affichait une erreur, pour un ménage dont personne n'attend le
+   * résultat. Il repassera à la lecture suivante.
+   */
+  if (error) console.error("[oublies] archivage impossible :", error);
 }
 
 export async function lireOubliees(): Promise<TacheOubliee[]> {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { CAPTURE_META } from "@/lib/labels";
 import { useOs } from "@/lib/os-context";
 import { MicButton } from "@/components/ui";
@@ -17,16 +19,17 @@ import { Panel } from "@/components/Panel";
  * Seule carte à porter le dégradé signature en accent.
  */
 export function CaptureBar() {
-  const {
-    captureText,
-    setCaptureText,
-    addCapture,
-    capturing,
-    captures,
-    data,
-    uneChose,
-    setUneChose,
-  } = useOs();
+  const { addCapture, capturing, captures, data, uneChose, setUneChose } = useOs();
+  /*
+   * Le texte en cours de frappe vit ICI, pas dans l'état central.
+   *
+   * Il y était, et chaque caractère recréait la valeur du contexte : les
+   * treize cartes de l'accueil étaient réconciliées à chaque lettre, pour une
+   * valeur qu'aucune d'elles ne lit. Mesuré sur processeur bridé, l'arbre
+   * complet coûte une vingtaine de millisecondes par frappe — invisible sur
+   * un ordinateur, sensible sur un téléphone qui chauffe.
+   */
+  const [captureText, setCaptureText] = useState("");
 
   return (
     <Panel
@@ -96,7 +99,11 @@ export function CaptureBar() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          addCapture();
+          // Vidé tout de suite : la capture doit rendre la main en un
+          // battement de cil, la classification arrive derrière.
+          const texte = captureText;
+          setCaptureText("");
+          addCapture(texte);
         }}
         className="flex min-w-[280px] flex-[1_1_380px] items-center gap-[9px] rounded-[14px] py-[6px] pl-[15px] pr-[6px] transition-colors focus-within:border-white/25"
         style={{

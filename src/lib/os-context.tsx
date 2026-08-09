@@ -116,10 +116,14 @@ type OsState = {
   revealed: boolean;
   toggleRevealed: () => void;
 
-  captureText: string;
-  setCaptureText: Dispatch<SetStateAction<string>>;
   captures: Capture[];
-  addCapture: () => void;
+  /**
+   * Trie et range une capture. Le texte est PASSÉ en argument : il vit dans la
+   * barre de capture, pas ici. Le garder dans l'état central faisait
+   * réconcilier les treize cartes de l'accueil à chaque caractère tapé, pour
+   * une valeur qu'aucune autre carte ne lit.
+   */
+  addCapture: (texte: string) => void;
   /** Vrai pendant l'aller-retour de tri — sert à désactiver le bouton. */
   capturing: boolean;
 
@@ -328,7 +332,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const blocsFaitsRef = useRef<string[]>([]);
   blocsFaitsRef.current = blocsFaits;
   const [revealed, setRevealed] = useState(false);
-  const [captureText, setCaptureText] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [journalText, setJournalText] = useState("");
   const [uneChose, setUneChose] = useState<UneChose>({ texte: "", fait: false });
@@ -1284,13 +1287,19 @@ export function OsProvider({ children }: { children: ReactNode }) {
     });
   }, [hydrateFromStorage]);
 
-  const addCapture = useCallback(async () => {
-    const text = captureText.trim();
+  /**
+   * Trie et range une capture. Le texte est passé en argument, il ne vit plus
+   * ici.
+   *
+   * Il était dans l'état central : chaque caractère tapé dans la barre de
+   * capture recréait la valeur du contexte, et donc réconciliait tout l'arbre
+   * de l'accueil — treize cartes — pour un champ que personne d'autre ne lit.
+   * Il est maintenant local à la barre, et ce rappel ne dépend plus de rien.
+   */
+  const addCapture = useCallback(async (saisie: string) => {
+    const text = saisie.trim();
     if (!text) return;
 
-    // Vidé tout de suite : la capture doit rendre la main en un battement de
-    // cil, la classification arrive derrière.
-    setCaptureText("");
     setCapturing(true);
 
     /*
@@ -1377,7 +1386,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     } finally {
       setCapturing(false);
     }
-  }, [captureText]);
+  }, []);
 
   const toggleTask = useCallback((i: number) => {
     /*
@@ -2326,8 +2335,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       data,
       revealed,
       toggleRevealed: () => setRevealed((v) => !v),
-      captureText,
-      setCaptureText,
       captures,
       addCapture,
       capturing,
@@ -2397,7 +2404,6 @@ export function OsProvider({ children }: { children: ReactNode }) {
       basculerBlocFait,
       data,
       revealed,
-      captureText,
       captures,
       addCapture,
       capturing,
