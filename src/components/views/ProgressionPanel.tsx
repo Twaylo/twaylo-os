@@ -70,6 +70,15 @@ export function ProgressionPanel() {
   }
 
   const maxi = Math.max(60, ...fenetre.map((f) => f.xp));
+
+  /*
+   * Le record du serveur ne connaît pas la journée en cours telle qu'elle est
+   * VRAIMENT (l'instantané des tâches n'est écrit qu'à la clôture). Si
+   * aujourd'hui dépasse, c'est aujourd'hui le record — et l'annoncer le jour
+   * même vaut mieux que le lendemain.
+   */
+  const meilleur =
+    record && record.xp >= xpJour ? record : xpJour > 0 ? { jour: aujourdhui, xp: xpJour } : null;
   const sept = fenetre.slice(-7).reduce((n, f) => n + f.xp, 0);
   const septAvant = fenetre.slice(-14, -7).reduce((n, f) => n + f.xp, 0);
   const tendance = septAvant > 0 ? Math.round(((sept - septAvant) / septAvant) * 100) : null;
@@ -134,8 +143,14 @@ export function ProgressionPanel() {
             <Stat label="MEILLEURE SÉRIE" valeur={`${meilleureSerie} j`} />
             <Stat
               label="RECORD SUR UN JOUR"
-              valeur={record ? `${record.xp} XP` : "—"}
-              sous={record ? dateCourte(record.jour) : undefined}
+              valeur={meilleur ? `${meilleur.xp} XP` : "—"}
+              sous={
+                meilleur
+                  ? meilleur.jour === aujourdhui
+                    ? "aujourd'hui"
+                    : dateCourte(meilleur.jour)
+                  : undefined
+              }
             />
             <Stat label="MOYENNE 30 J" valeur={`${moyenne} XP`} />
             <Stat

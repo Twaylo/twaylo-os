@@ -5,6 +5,7 @@ import { useMasonry } from "@/lib/use-masonry";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { CaptureBar } from "@/components/cards/CaptureBar";
+import { RelanceBanner } from "@/components/cards/RelanceBanner";
 import { OperateurCard } from "@/components/cards/OperateurCard";
 import { ProgressionCard } from "@/components/cards/ProgressionCard";
 import { TachesCard } from "@/components/cards/TachesCard";
@@ -40,6 +41,9 @@ export function AccueilView() {
    */
   return (
     <div className="flex flex-col gap-[14px]">
+      {/* La relance passe AVANT tout : si elle a quelque chose à dire, c'est
+          la première chose à lire. Elle disparaît à la première coche. */}
+      <RelanceBanner />
       <CaptureBar />
 
       <div
