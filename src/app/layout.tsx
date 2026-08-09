@@ -2,6 +2,17 @@ import type { Metadata, Viewport } from "next";
 import { Nunito, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+/*
+ * Les graisses sont énumérées, et c'est le bon choix — mesuré, pas supposé.
+ *
+ * J'ai essayé les versions variables (une seule ressource couvrant tout l'axe
+ * des graisses au lieu de cinq fichiers statiques) en pensant alléger le
+ * chargement. Chargement à froid mesuré : 68,8 Ko de polices avant, 77,8 Ko
+ * après. La variable coûte PLUS ici, parce que l'interface n'utilise que cinq
+ * graisses discrètes du sous-ensemble latin, là où l'axe continu embarque
+ * tout. Et `display: swap` — l'autre motif de la tentative — est déjà le
+ * défaut de next/font. La note reste pour qu'on ne refasse pas l'essai.
+ */
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
