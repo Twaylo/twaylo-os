@@ -16,6 +16,8 @@ export type RouteResult = {
   captureId: string | null;
   /** La table métier atteinte, ou null si la capture reste en boîte de réception. */
   routedTo: string | null;
+  /** L'identifiant de la ligne créée — le navigateur l'affiche sans recharger. */
+  routedId: string | null;
   persiste: boolean;
 };
 
@@ -26,7 +28,7 @@ export async function routeCapture(
   audioUrl?: string,
 ): Promise<RouteResult> {
   if (!isSupabaseConfigured()) {
-    return { captureId: null, routedTo: null, persiste: false };
+    return { captureId: null, routedTo: null, routedId: null, persiste: false };
   }
 
   const db = supabaseAdmin();
@@ -180,7 +182,11 @@ export async function routeCapture(
       await db
         .from("captures")
         .update({ traite: true, routed_to: { table: routedTo, id: routedId } })
-        .eq("id", captureId);
+        .eq("id", captureId)
+        // Filtré sur l'utilisateur comme toutes les autres écritures : la clé
+        // service role contourne RLS, c'est donc dans le code que la frontière
+        // se tient. La seule requête du fichier qui l'avait oubliée.
+        .eq("user_id", USER_ID);
     }
   } catch (err) {
     // La capture est déjà sauvée ; on remonte l'échec du routage sans le
@@ -203,5 +209,5 @@ export async function routeCapture(
 
   // TODO étape 6 : embedding OpenAI → memory_chunks (spec Partie 6).
 
-  return { captureId, routedTo, persiste: true };
+  return { captureId, routedTo, routedId, persiste: true };
 }

@@ -65,6 +65,7 @@ import type {
   Task,
   UneChose,
 } from "./types";
+import { niveauDepuisUrgence } from "./types";
 
 export const TABS = [
   "Accueil",
@@ -1303,10 +1304,37 @@ export function OsProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok && res.status !== 207) throw new Error(`HTTP ${res.status}`);
 
-      const { classification } = await res.json();
+      const { classification, routedTo, routedId } = await res.json();
       setCaptures((prev) =>
         prev.map((c) => (c === optimiste ? { text, type: classification.type } : c)),
       );
+
+      /*
+       * Une capture qui devient une tâche apparaît DANS la liste, tout de
+       * suite.
+       *
+       * Le serveur crée bien la tâche et la place en tête, mais l'écran ne
+       * l'apprenait qu'au rechargement suivant : Twaylo dictait « appeler le
+       * fixeur », ne voyait rien arriver dans ses tâches, et la retapait à la
+       * main — d'où un doublon. On l'insère ici, au même endroit que le
+       * serveur l'a rangée.
+       */
+      if (routedTo === "tasks" && typeof routedId === "string") {
+        touchePendantChargement.current.taches = true;
+        setTasks((prev) =>
+          prev.some((t) => (t as { id?: string }).id === routedId)
+            ? prev
+            : [
+                {
+                  id: routedId,
+                  text: classification.resume || text,
+                  done: false,
+                  niveau: niveauDepuisUrgence(classification.urgence),
+                } as Task,
+                ...prev,
+              ],
+        );
+      }
     } catch (err) {
       // Jamais de catch vide (spec Partie 10, bug 3). La capture reste à
       // l'écran en « note » — le texte n'est jamais perdu.

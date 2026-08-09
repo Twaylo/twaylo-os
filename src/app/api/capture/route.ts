@@ -59,6 +59,9 @@ export async function POST(req: Request) {
       persiste: resultat.persiste,
       id: resultat.captureId,
       routedTo: resultat.routedTo,
+      // De quoi afficher tout de suite ce qui vient d'être créé, sans
+      // recharger : sinon Twaylo dicte une tâche, ne la voit pas, et la retape.
+      routedId: resultat.routedId,
     });
   } catch (err) {
     // Jamais de catch silencieux (spec Partie 10, bug 3) : la classification
