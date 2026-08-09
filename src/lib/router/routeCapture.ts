@@ -1,6 +1,7 @@
 import type { Classification } from "./classifyCapture";
 import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
 import { localDateKey } from "@/lib/local-date";
+import { placerEnTeteOrdre } from "@/lib/db";
 
 /**
  * Écrit la capture brute puis la route vers sa table métier (spec Partie 5,
@@ -74,6 +75,15 @@ export async function routeCapture(
         if (error) throw error;
         routedTo = "tasks";
         routedId = data.id;
+        /*
+         * En TÊTE de pile, comme toute tâche créée à la main.
+         *
+         * Sans ça, une tâche dictée atterrissait tout en bas — au milieu des
+         * vieilles annexes — alors que c'est justement ce qu'on vient d'avoir
+         * en tête. L'ordre d'affichage est une liste d'identifiants ; y entrer
+         * par le haut est le geste attendu.
+         */
+        await placerEnTeteOrdre(routedId as string);
         break;
       }
 

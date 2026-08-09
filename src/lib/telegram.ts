@@ -112,6 +112,37 @@ export function todoKeyboard(taches: TacheBouton[]) {
   };
 }
 
+/** La limite dure de Telegram. Au-delà, l'API refuse le message entier. */
+const MAX_TELEGRAM = 4096;
+
+/**
+ * Rogne un message trop long sans casser son balisage.
+ *
+ * Telegram rejette tout message dépassant 4096 caractères — et ce n'est pas
+ * théorique : une journée type de trente blocs, ou une réponse un peu longue
+ * du Brain, y arrivent. Le message ne partait alors PAS DU TOUT, et le seul
+ * signe était une ligne d'erreur dans les journaux.
+ *
+ * On coupe à la ligne, jamais au milieu : notre balisage se limite à des
+ * <b>…</b> refermés sur la même ligne, donc une coupe entre deux lignes
+ * laisse toujours un HTML valide. Dans le cas extrême d'une seule ligne trop
+ * longue, on retire les balises avant de trancher — un message brut arrive,
+ * un message mal balisé n'arrive jamais.
+ */
+export function tronquerPourTelegram(texte: string): string {
+  if (texte.length <= MAX_TELEGRAM) return texte;
+
+  const suffixe = "\n…";
+  const lignes = texte.split("\n");
+  while (lignes.length > 1) {
+    lignes.pop();
+    const essai = lignes.join("\n");
+    if (essai.length + suffixe.length <= MAX_TELEGRAM) return essai + suffixe;
+  }
+
+  return `${texte.replace(/<[^>]*>/g, "").slice(0, MAX_TELEGRAM - suffixe.length)}${suffixe}`;
+}
+
 export async function sendMessage(
   chatId: number,
   text: string,
@@ -119,7 +150,7 @@ export async function sendMessage(
 ): Promise<{ message_id: number }> {
   return call("sendMessage", {
     chat_id: chatId,
-    text,
+    text: tronquerPourTelegram(text),
     parse_mode: "HTML",
     reply_markup: replyMarkup,
   });
@@ -147,7 +178,8 @@ export async function editMessageText(
   await call("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
-    text,
+    // Même limite que sendMessage : une correction trop longue ne partait pas.
+    text: tronquerPourTelegram(text),
     parse_mode: "HTML",
     // Absent, Telegram retire le clavier : c'est ce qu'on veut après une
     // correction d'urgence. Présent, il remplace les boutons — pour recocher

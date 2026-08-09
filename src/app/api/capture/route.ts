@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { classifyCapture } from "@/lib/router/classifyCapture";
-import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
-import { localDateKey } from "@/lib/local-date";
+import { routeCapture } from "@/lib/router/routeCapture";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 /**
  * L'entrée du pipeline côté web (spec Partie 5, étape 4).
@@ -38,26 +38,28 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin()
-      .from("captures")
-      .insert({
-        user_id: USER_ID,
-        texte: texte.trim(),
-        type: classification.type,
-        priorite: classification.urgence,
-        source: source === "voix" || source === "texte" ? source : "web",
-        classification: {
-          ...classification,
-          jour_local: localDateKey(),
-        },
-        traite: false,
-      })
-      .select("id")
-      .single();
+    /*
+     * Le routage métier, enfin branché.
+     *
+     * Cette route écrivait sa propre ligne `captures` et s'arrêtait là :
+     * `routeCapture` existait, était complet, et n'était appelé de nulle part.
+     * Conséquence — dire « appeler le fixeur » rangeait une note dans une
+     * boîte de réception que rien n'affiche, sans créer la tâche ; `traite`
+     * restait faux et `routed_to` vide, donc le bouton « ⭐ Clé » de Telegram
+     * ne pouvait rien corriger. La capture était classée puis oubliée.
+     */
+    const resultat = await routeCapture(
+      texte.trim(),
+      classification,
+      source === "voix" || source === "texte" || source === "manuel" ? source : "web",
+    );
 
-    if (error) throw error;
-
-    return NextResponse.json({ classification, persiste: true, id: data.id });
+    return NextResponse.json({
+      classification,
+      persiste: resultat.persiste,
+      id: resultat.captureId,
+      routedTo: resultat.routedTo,
+    });
   } catch (err) {
     // Jamais de catch silencieux (spec Partie 10, bug 3) : la classification
     // est renvoyée quand même pour que l'idée ne soit pas perdue à l'écran.
