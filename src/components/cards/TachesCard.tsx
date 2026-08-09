@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
 import { CheckRow, EmptyState } from "@/components/ui";
@@ -92,6 +93,7 @@ export function TachesCard() {
     blocsFaits,
     basculerBlocFait,
   } = useOs();
+  const { seriesBlocs } = useProgression();
 
   /*
    * Les immuables de la journée type, en tête de la carte : ce sont eux qui
@@ -1016,16 +1018,21 @@ export function TachesCard() {
             </span>
           </div>
           <div className="flex flex-col gap-[6px]">
-            {blocsJour.map((b) => (
-              <CheckRow
-                key={b.id}
-                label={b.titre || "Sans titre"}
-                done={blocsFaits.includes(b.id)}
-                accent="var(--color-ble)"
-                onToggle={() => basculerBlocFait(b.id)}
-                meta={b.debut}
-              />
-            ))}
+            {blocsJour.map((b) => {
+              // La flamme n'apparaît qu'à partir de trois jours : en dessous,
+              // ce n'est pas encore une série, et le signe se banaliserait.
+              const serie = seriesBlocs[b.id] ?? 0;
+              return (
+                <CheckRow
+                  key={b.id}
+                  label={b.titre || "Sans titre"}
+                  done={blocsFaits.includes(b.id)}
+                  accent="var(--color-ble)"
+                  onToggle={() => basculerBlocFait(b.id)}
+                  meta={serie >= 3 ? `${b.debut} · 🔥${serie}` : b.debut}
+                />
+              );
+            })}
           </div>
         </div>
       )}

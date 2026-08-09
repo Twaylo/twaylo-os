@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { Panel } from "@/components/Panel";
 import { Eyebrow, EmptyState } from "@/components/ui";
 import { useHeure } from "@/lib/use-heure";
@@ -30,6 +31,7 @@ import {
  */
 export function JourneeCard() {
   const { journees, majJournees, blocsFaits, basculerBlocFait } = useOs();
+  const { seriesBlocs } = useProgression();
   const [edition, setEdition] = useState(false);
   const [ajout, setAjout] = useState({ debut: "", titre: "" });
   const heure = useHeure();
@@ -167,6 +169,7 @@ export function JourneeCard() {
                     bloc={b}
                     fait={blocsFaits.includes(b.id)}
                     enCours={b.id === courant}
+                    serie={seriesBlocs[b.id] ?? 0}
                     onToggle={() => basculerBlocFait(b.id)}
                   />
                 ),
@@ -219,11 +222,14 @@ function LigneCoche({
   bloc,
   fait,
   enCours,
+  serie,
   onToggle,
 }: {
   bloc: BlocJournee;
   fait: boolean;
   enCours: boolean;
+  /** Jours d'affilée où ce bloc précis a été tenu. */
+  serie: number;
   onToggle: () => void;
 }) {
   const cat = CATEGORIES_BLOC[bloc.categorie];
@@ -267,6 +273,20 @@ function LigneCoche({
       >
         {bloc.titre || "Sans titre"}
       </span>
+      {/*
+        La flamme du bloc : deux jours d'affilée ne sont pas une série, trois
+        commencent à en être une. En dessous, l'afficher banaliserait le signe
+        au point qu'il ne veuille plus rien dire.
+      */}
+      {serie >= 3 && (
+        <span
+          className="flex-none font-mono text-[9.5px] font-black"
+          style={{ color: "#ff7a3d" }}
+          title={`${serie} jours d'affilée sur ce bloc`}
+        >
+          🔥{serie}
+        </span>
+      )}
       {enCours && !fait && (
         <span
           className="flex flex-none items-center gap-[4px] text-[8.5px] font-black tracking-[0.06em]"

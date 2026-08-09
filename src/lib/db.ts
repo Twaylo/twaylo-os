@@ -3,6 +3,7 @@ import { USER_ID, supabaseAdmin } from "./supabase";
 import { archiverTachesOubliees } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
+import { chiffrerJourStocke, jourALaisseUneTrace } from "./xp";
 import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
 
 /**
@@ -52,6 +53,16 @@ export type EtatJour = {
    * cochées le matin, ou l'inverse.
    */
   revue?: unknown;
+  /**
+   * Les bonus de jeu gagnés ce jour-là (« journée type pliée », « journée
+   * parfaite »…).
+   *
+   * Écrits le jour où ils tombent, et plus jamais retirés. C'est ce qui rend
+   * l'XP incapable de redescendre : sans cette trace, ajouter une habitude
+   * ferait perdre rétroactivement le bonus « toutes les habitudes » de chaque
+   * journée passée, et le niveau baisserait tout seul.
+   */
+  bonus?: string[];
 };
 
 /** Ce qu'on garde d'une journée de tâches, pour le bilan dans le temps. */
@@ -403,9 +414,14 @@ export async function lireJour(
 /**
  * Le nombre de jours d'affilée où Twaylo a fait vivre son OS.
  *
- * Un jour compte s'il porte une trace réelle : du texte dans le journal, ou au
- * moins une habitude cochée. Ouvrir l'app sans rien y mettre ne compte pas —
- * une série qui s'incrémente toute seule ne veut plus rien dire.
+ * Un jour compte s'il porte une trace réelle : une coche, un repas, une tâche
+ * bouclée ou du texte dans le journal. Ouvrir l'app sans rien y mettre ne
+ * compte pas — une série qui s'incrémente toute seule ne veut plus rien dire.
+ *
+ * La trace ne se limite volontairement pas aux habitudes. En déplacement,
+ * Twaylo ne coche parfois que ses blocs de journée type : la série se cassait
+ * alors sur des journées pleinement tenues, ce qui est exactement l'inverse de
+ * ce qu'un compteur de série doit faire.
  *
  * La journée en cours n'interrompt pas la série tant qu'elle est vide : à 9 h
  * du matin on n'a encore rien fait, et remettre le compteur à zéro chaque nuit
@@ -426,11 +442,8 @@ export async function calculerSerie(aujourdhui: string): Promise<number> {
 
   const remplis = new Set<string>();
   for (const ligne of data) {
-    const etat = (ligne.habitudes ?? {}) as Partial<EtatJour>;
-    const aHabitude = Object.values(etat.faites ?? {}).some((o) => o.length > 0);
-    if (aHabitude || (ligne.journal_texte ?? "").trim().length > 0) {
-      remplis.add(ligne.jour as string);
-    }
+    const chiffre = chiffrerJourStocke(ligne.habitudes, ligne.journal_texte as string | null);
+    if (jourALaisseUneTrace(chiffre)) remplis.add(ligne.jour as string);
   }
   if (remplis.size === 0) return 0;
 
@@ -474,14 +487,24 @@ export async function ecrireJour(
    */
   const cles = Object.keys(patch.etat ?? {});
 
+  /*
+   * `bonus` est la seule clé qui s'ajoute au lieu de remplacer.
+   *
+   * Une récompense gagnée est gagnée. Écrasée comme les autres, elle
+   * disparaîtrait au premier onglet resté ouvert depuis la veille, ou dès que
+   * deux appareils écrivent la même journée — et l'XP redescendrait.
+   */
+  const bonusVoulus = Array.isArray(patch.etat?.bonus) ? patch.etat.bonus : null;
+
   for (let essai = 0; essai < 3; essai++) {
     const actuel = await lireJour(jour);
 
-    const ligne: Record<string, unknown> = {
-      user_id: USER_ID,
-      jour,
-      habitudes: { ...actuel.etat, ...(patch.etat ?? {}) },
-    };
+    const fusion: Record<string, unknown> = { ...actuel.etat, ...(patch.etat ?? {}) };
+    if (bonusVoulus) {
+      fusion.bonus = [...new Set([...(actuel.etat.bonus ?? []), ...bonusVoulus])];
+    }
+
+    const ligne: Record<string, unknown> = { user_id: USER_ID, jour, habitudes: fusion };
     if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
 
     const { error } = await db
@@ -494,8 +517,11 @@ export async function ecrireJour(
     const etatRelu = relu.etat as unknown as Record<string, unknown>;
     const attendu = (patch.etat ?? {}) as Record<string, unknown>;
     const tenu =
-      cles.every((c) => JSON.stringify(etatRelu[c]) === JSON.stringify(attendu[c])) &&
-      (patch.journal === undefined || relu.journal === patch.journal);
+      cles.every((c) =>
+        c === "bonus" && bonusVoulus
+          ? bonusVoulus.every((b) => (relu.etat.bonus ?? []).includes(b))
+          : JSON.stringify(etatRelu[c]) === JSON.stringify(attendu[c]),
+      ) && (patch.journal === undefined || relu.journal === patch.journal);
     if (tenu) return;
   }
 

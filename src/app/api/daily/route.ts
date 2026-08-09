@@ -23,6 +23,8 @@ export async function POST(req: Request) {
     taches?: unknown;
     /** Les blocs de la journée type cochés aujourd'hui. */
     journeeFaits?: unknown;
+    /** Les bonus de jeu gagnés aujourd'hui. */
+    bonus?: unknown;
   };
 
   try {
@@ -55,6 +57,14 @@ export async function POST(req: Request) {
    */
   if (Array.isArray(corps.journeeFaits)) {
     etat.journeeFaits = corps.journeeFaits.slice(0, 48).map((f) => String(f).slice(0, 40));
+  }
+  /*
+   * Les bonus s'ajoutent, ils ne remplacent pas : `ecrireJour` fusionne cette
+   * clé avec celle déjà en base. Le navigateur peut donc n'envoyer que ce
+   * qu'il vient de gagner sans risquer d'effacer le reste.
+   */
+  if (Array.isArray(corps.bonus)) {
+    etat.bonus = corps.bonus.slice(0, 12).map((b) => String(b).slice(0, 24));
   }
 
   try {

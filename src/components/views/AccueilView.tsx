@@ -6,6 +6,7 @@ import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { CaptureBar } from "@/components/cards/CaptureBar";
 import { OperateurCard } from "@/components/cards/OperateurCard";
+import { ProgressionCard } from "@/components/cards/ProgressionCard";
 import { TachesCard } from "@/components/cards/TachesCard";
 import { RevenusCard } from "@/components/cards/RevenusCard";
 import { HabitudesCard } from "@/components/cards/HabitudesCard";
@@ -50,6 +51,9 @@ export function AccueilView() {
         // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
         className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-4 xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]">
         <OperateurCard />
+        {/* Le compteur de jeu juste après l'opérateur : c'est le premier
+            regard du matin, et celui qui donne envie de cocher. */}
+        <ProgressionCard />
         <TachesCard />
         <RevenusCard />
         <HabitudesCard />

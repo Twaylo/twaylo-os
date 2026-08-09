@@ -5,6 +5,7 @@ import { Eyebrow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { useOs } from "@/lib/os-context";
 import { HabitudesView } from "@/components/views/HabitudesView";
+import { ProgressionPanel } from "@/components/views/ProgressionPanel";
 
 /**
  * BILAN — comment ça se passe dans le temps.
@@ -523,6 +524,9 @@ export function BilanView() {
 
   return (
     <div className="flex flex-col gap-[18px]">
+      {/* La progression d'abord : « est-ce que je monte » avant « est-ce que
+          je tiens ». Les deux lectures sont utiles et ne se remplacent pas. */}
+      <ProgressionPanel />
       <TachesBilan />
       <NutritionBilan />
       <HabitudesView />

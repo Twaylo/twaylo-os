@@ -1,6 +1,8 @@
 "use client";
 
 import { OsProvider, useOs } from "@/lib/os-context";
+import { ProgressionProvider } from "@/lib/progression-context";
+import { Recompense } from "@/components/Recompense";
 import { TopRail } from "@/components/TopRail";
 import { AccueilView } from "@/components/views/AccueilView";
 import { ContactsView } from "@/components/views/ContactsView";
@@ -81,32 +83,36 @@ function Glow() {
 export function Shell() {
   return (
     <OsProvider>
-      {/*
-        `overflow-x-clip` et non `-hidden` : `hidden` aurait fait de ce cadre
-        une seconde zone défilante verticale (la spécification bascule l'axe
-        laissé en `visible` vers `auto`), empilée sous celle de la fenêtre —
-        d'où le défilement qui repartait en plusieurs fois. `clip` se contente
-        de couper les halos qui dépassent, sans créer d'ascenseur.
-      */}
-      <div className="relative min-h-screen overflow-x-clip">
-        <Glow />
-        <TopRail />
-        <main
-          className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4"
-          style={{
-            /*
-             * En mode application, la barre de gestes d'iOS mange le bas de
-             * l'écran et l'encoche les côtés en paysage. Hors de ce mode, les
-             * `safe-area-inset-*` valent 0 : la mise en page ne change pas.
-             */
-            paddingBottom: "calc(30px + env(safe-area-inset-bottom, 0px))",
-            paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
-            paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
-          }}
-        >
-          <ActiveView />
-        </main>
-      </div>
+      <ProgressionProvider>
+        {/*
+          `overflow-x-clip` et non `-hidden` : `hidden` aurait fait de ce cadre
+          une seconde zone défilante verticale (la spécification bascule l'axe
+          laissé en `visible` vers `auto`), empilée sous celle de la fenêtre —
+          d'où le défilement qui repartait en plusieurs fois. `clip` se contente
+          de couper les halos qui dépassent, sans créer d'ascenseur.
+        */}
+        <div className="relative min-h-screen overflow-x-clip">
+          <Glow />
+          <TopRail />
+          <main
+            className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4"
+            style={{
+              /*
+               * En mode application, la barre de gestes d'iOS mange le bas de
+               * l'écran et l'encoche les côtés en paysage. Hors de ce mode, les
+               * `safe-area-inset-*` valent 0 : la mise en page ne change pas.
+               */
+              paddingBottom: "calc(30px + env(safe-area-inset-bottom, 0px))",
+              paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
+              paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
+            }}
+          >
+            <ActiveView />
+          </main>
+        </div>
+        {/* Les fenêtres de récompense, au-dessus de tout, montées par portail. */}
+        <Recompense />
+      </ProgressionProvider>
     </OsProvider>
   );
 }

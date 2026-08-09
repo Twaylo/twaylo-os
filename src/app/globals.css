@@ -594,6 +594,66 @@ textarea::placeholder {
   animation: journeePliee 2.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/*
+ * La fenêtre de récompense. Elle surgit, dépasse, puis se pose — le rebond est
+ * ce qui fait la différence entre « un message est apparu » et « tu as gagné
+ * quelque chose ». Elle reste ensuite immobile : c'est une fenêtre qu'on lit,
+ * pas une animation en boucle.
+ */
+@keyframes recompenseIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.82) translateY(14px);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.03) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.recompense-carte {
+  animation: recompenseIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* L'emoji arrive une fraction après la carte, et retombe. */
+@keyframes recompenseEmoji {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-18deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.22) rotate(6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.recompense-emoji {
+  animation: recompenseEmoji 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+/* La barre d'XP qui se remplit : le mouvement seul suffit à faire sentir le gain. */
+@keyframes barreXpLueur {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.45);
+  }
+}
+
+.barre-xp-vive {
+  animation: barreXpLueur 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
   .logo-mark,
@@ -610,7 +670,10 @@ textarea::placeholder {
   .journee-pliee,
   .rang-up,
   .lueur-rang,
-  .xp-flottant {
+  .xp-flottant,
+  .recompense-carte,
+  .recompense-emoji,
+  .barre-xp-vive {
     animation: none;
   }
   /* Sans animation, ces éléments purement décoratifs n'ont plus d'objet. */
