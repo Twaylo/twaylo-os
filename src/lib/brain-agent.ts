@@ -1,22 +1,36 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  archiverTache,
   basculerTache,
+  changerNiveauTache,
   creerContact,
   creerObjectif,
   creerTache,
   creerVideo,
+  deplacerVideo,
+  ecrireBlocages,
   ecrireJour,
+  ecrireSkills,
+  ETAPES,
   ETAPES_DEAL,
+  lireBlocages,
   lireDeals,
+  lireHabitudesDef,
   lireJour,
   lireObjectifs,
+  lireSkills,
   lireTaches,
+  lireVideos,
   majDeal,
+  placerEnTeteOrdre,
   majObjectif,
   type DealDB,
   type ObjectifDB,
   type TacheDB,
+  type VideoDB,
 } from "./db";
+import { lireOubliees, reprendreOubliee } from "./oublies-db";
+import { NIVEAUX } from "./types";
 import { lireStatsHabitudes } from "./habitudes-stats";
 import {
   ecrireBlocsFaits,
@@ -235,6 +249,139 @@ const OUTILS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         nom: { type: "string", description: "Le nom du modèle, même partiel." },
+      },
+      required: ["nom"],
+    },
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Ce que l'écran savait faire et pas la voix                          */
+  /*                                                                     */
+  /* L'OS et le bot doivent couvrir exactement le même terrain : ce que  */
+  /* Twaylo peut cocher du doigt, il doit pouvoir le dire — et l'inverse.*/
+  /* Tout ce qui suit existait à l'écran sans équivalent vocal.          */
+  /* ------------------------------------------------------------------ */
+
+  {
+    name: "cocher_habitude",
+    description:
+      "Coche une habitude du jour — « j'ai fait mon sport », « lecture faite ». Précise l'option quand l'habitude en a (Gym, Vélo, Écriture…).",
+    input_schema: {
+      type: "object",
+      properties: {
+        habitude: { type: "string", description: "Le nom de l'habitude, même partiel." },
+        option: {
+          type: "string",
+          description: "La variante pratiquée, si l'habitude en propose.",
+        },
+        fait: { type: "boolean", description: "false pour décocher. Par défaut true." },
+      },
+      required: ["habitude"],
+    },
+  },
+  {
+    name: "deplacer_video",
+    description:
+      "Fait avancer une vidéo dans le pipeline contenu — « le short part au monteur » (montage), « je l'ai reçu » (pret), « posté » (publie).",
+    input_schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string", description: "Le titre de la vidéo, même partiel." },
+        etape: {
+          type: "string",
+          enum: ["idee", "scenario", "tournage", "montage", "pret", "publie"],
+        },
+      },
+      required: ["titre", "etape"],
+    },
+  },
+  {
+    name: "changer_niveau_tache",
+    description:
+      "Change l'importance d'une tâche existante — « passe ça en focus principal », « c'est annexe ».",
+    input_schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string" },
+        niveau: { type: "string", enum: ["principal", "secondaire", "annexe"] },
+      },
+      required: ["titre", "niveau"],
+    },
+  },
+  {
+    name: "retirer_tache",
+    description:
+      "Sort une tâche de la todo sans l'effacer : elle rejoint les Oubliés, d'où elle se reprend en un geste. À utiliser quand Twaylo dit « enlève », « supprime » ou « laisse tomber » une tâche.",
+    input_schema: {
+      type: "object",
+      properties: { titre: { type: "string" } },
+      required: ["titre"],
+    },
+  },
+  {
+    name: "reprendre_oublie",
+    description:
+      "Remet dans la todo une tâche archivée dans les Oubliés — « remets la relance du monteur ».",
+    input_schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string" },
+        niveau: { type: "string", enum: ["principal", "secondaire", "annexe"] },
+      },
+      required: ["titre"],
+    },
+  },
+  {
+    name: "fixer_une_chose",
+    description:
+      "Pose L'UNIQUE chose du jour — « aujourd'hui je vais… ». Une seule à la fois : elle remplace la précédente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        texte: { type: "string", description: "Vide pour effacer." },
+        fait: { type: "boolean", description: "true pour la marquer faite." },
+      },
+      required: ["texte"],
+    },
+  },
+  {
+    name: "ajouter_blocage",
+    description:
+      "Note ce qui coince et qui bloque l'avancée — « j'attends les rushes du monteur », « le sponsor ne répond pas ».",
+    input_schema: {
+      type: "object",
+      properties: {
+        texte: { type: "string", description: "Ce qui bloque." },
+        proprietaire: {
+          type: "string",
+          description: "Qui doit bouger : « moi », un prénom, une boîte. Par défaut « moi ».",
+        },
+      },
+      required: ["texte"],
+    },
+  },
+  {
+    name: "lever_blocage",
+    description: "Retire un blocage résolu — « c'est débloqué », « il a répondu ».",
+    input_schema: {
+      type: "object",
+      properties: { texte: { type: "string", description: "Le blocage, même partiel." } },
+      required: ["texte"],
+    },
+  },
+  {
+    name: "regler_skill",
+    description:
+      "Règle la maîtrise d'une compétence de l'onglet Skill, de 0 à 100 — « monte mon espagnol à 45 », « +3 en montage ».",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom: { type: "string", description: "Le nom de la compétence, même partiel." },
+        niveau: { type: "number", description: "La valeur visée, 0 à 100." },
+        delta: {
+          type: "number",
+          description: "Variation à appliquer au niveau actuel, si Twaylo dit « +3 ».",
+        },
       },
       required: ["nom"],
     },
@@ -511,6 +658,165 @@ async function executer(
         statut === "atteint" ? "marqué atteint" : statut === "abandonne" ? "abandonné" : "remis en cours";
       return `Objectif « ${cible.objectif} » ${mot}.`;
     }
+    /* ---------------- Parité avec l'écran ---------------- */
+
+    case "cocher_habitude": {
+      const habitudes = await lireHabitudesDef();
+      const cible = trouverParNom(String(entree.habitude ?? ""), habitudes, (h) => h.nom);
+      if (!cible) {
+        return `Aucune habitude ne correspond à « ${entree.habitude} ». Les tiennes : ${habitudes
+          .map((h) => h.nom)
+          .join(", ")}.`;
+      }
+      const fait = entree.fait !== false;
+      /*
+       * L'option demandée doit exister, sinon on retombe sur le marqueur
+       * neutre. Une variante inventée par le modèle — « Cardio » sur une
+       * habitude qui n'a que Gym et Vélo — se serait rangée en base et
+       * apparaîtrait à l'écran comme une option que Twaylo n'a jamais créée.
+       */
+      const demandee = String(entree.option ?? "").trim();
+      const option =
+        demandee && cible.options.length > 0
+          ? (trouverParNom(demandee, cible.options, (o) => o) ?? "fait")
+          : "fait";
+
+      const { etat } = await lireJour(jour);
+      const actuelles = etat.faites[cible.id] ?? [];
+      const suivantes = fait
+        ? actuelles.includes(option)
+          ? actuelles
+          : [...actuelles, option]
+        : actuelles.filter((o) => o !== option);
+      await ecrireJour(jour, {
+        etat: { faites: { ...etat.faites, [cible.id]: suivantes } },
+      });
+      const precision = option !== "fait" ? ` (${option})` : "";
+      return `${fait ? "Coché" : "Décoché"} : « ${cible.nom} »${precision}.`;
+    }
+
+    case "deplacer_video": {
+      const etape = String(entree.etape ?? "");
+      if (!(ETAPES as readonly string[]).includes(etape)) return "Étape inconnue.";
+      const cible = trouverParNom<VideoDB>(
+        String(entree.titre ?? ""),
+        await lireVideos(),
+        (v) => v.titre,
+      );
+      if (!cible) return `Aucune vidéo ne correspond à « ${entree.titre} ».`;
+      await deplacerVideo(cible.id, etape);
+      return `« ${cible.titre} » passe en ${etape}.`;
+    }
+
+    case "changer_niveau_tache": {
+      const niveau = String(entree.niveau ?? "");
+      if (!Object.hasOwn(NIVEAUX, niveau)) return "Niveau invalide.";
+      const cible = trouverTache(String(entree.titre ?? ""), await lireTaches());
+      if (!cible) return `Aucune tâche ne correspond à « ${entree.titre} ».`;
+      await changerNiveauTache(cible.id, niveau as Niveau);
+      return `« ${cible.titre} » passe en ${NIVEAUX[niveau as Niveau].nom.toLowerCase()}.`;
+    }
+
+    case "retirer_tache": {
+      const cible = trouverTache(String(entree.titre ?? ""), await lireTaches());
+      if (!cible) return `Aucune tâche ne correspond à « ${entree.titre} ».`;
+      await archiverTache(cible.id);
+      return `« ${cible.titre} » sort de la todo — elle t'attend dans les Oubliés.`;
+    }
+
+    case "reprendre_oublie": {
+      const oubliees = await lireOubliees();
+      const cible = trouverParNom(String(entree.titre ?? ""), oubliees, (o) => o.titre);
+      if (!cible) {
+        return oubliees.length === 0
+          ? "Tes Oubliés sont vides."
+          : `Aucun oublié ne correspond à « ${entree.titre} ».`;
+      }
+      const niveau = Object.hasOwn(NIVEAUX, String(entree.niveau ?? ""))
+        ? (entree.niveau as Niveau)
+        : undefined;
+      const reprise = await reprendreOubliee(cible.id, niveau);
+      if (!reprise) return `« ${cible.titre} » n'était plus dans les Oubliés.`;
+      await placerEnTeteOrdre(reprise.id);
+      return `« ${reprise.titre} » est de retour en tête de ta todo.`;
+    }
+
+    case "fixer_une_chose": {
+      const texte = String(entree.texte ?? "").trim().slice(0, 300);
+      await ecrireJour(jour, {
+        etat: { une_chose: { texte, fait: entree.fait === true } },
+      });
+      return texte
+        ? `Aujourd'hui tu vas : « ${texte} ».`
+        : "L'unique chose du jour est effacée.";
+    }
+
+    case "ajouter_blocage": {
+      const texte = String(entree.texte ?? "").trim().slice(0, 200);
+      if (!texte) return "Rien à noter.";
+      const blocages = await lireBlocages();
+      if (blocages.some((b) => normaliser(b.texte) === normaliser(texte))) {
+        return "C'est déjà dans « Ça coince ».";
+      }
+      // Même forme d'identifiant qu'à l'écran (`b` + horodatage en base 36) :
+      // les deux surfaces écrivent dans la même liste, elles ne doivent pas
+      // produire deux conventions différentes.
+      const id = `b${Date.now().toString(36)}`;
+      await ecrireBlocages([
+        ...blocages,
+        {
+          id,
+          texte,
+          proprietaire: String(entree.proprietaire ?? "moi").slice(0, 40),
+          depuis: jour,
+        },
+      ]);
+      return `Noté dans « Ça coince » : ${texte}.`;
+    }
+
+    case "lever_blocage": {
+      const blocages = await lireBlocages();
+      const cible = trouverParNom(String(entree.texte ?? ""), blocages, (b) => b.texte);
+      if (!cible) return `Aucun blocage ne correspond à « ${entree.texte} ».`;
+      await ecrireBlocages(blocages.filter((b) => b.id !== cible.id));
+      return `Débloqué : « ${cible.texte} ».`;
+    }
+
+    case "regler_skill": {
+      const skills = await lireSkills();
+      const cible = trouverParNom(String(entree.nom ?? ""), skills, (s) => s.nom);
+      if (!cible) {
+        return skills.length === 0
+          ? "Aucune compétence n'est encore définie dans l'onglet Skill."
+          : `Aucune compétence ne correspond à « ${entree.nom} ».`;
+      }
+      const delta = Number(entree.delta);
+      const vise = Number(entree.niveau);
+      const brut = Number.isFinite(delta)
+        ? cible.niveau + delta
+        : Number.isFinite(vise)
+          ? vise
+          : NaN;
+      if (!Number.isFinite(brut)) return "Donne-moi un niveau ou une variation.";
+      const n = Math.max(0, Math.min(100, Math.round(brut)));
+      // Un instantané par mois, comme l'onglet : sans lui, la courbe de
+      // progression ignorerait tout ce qui est réglé à la voix.
+      const mois = jour.slice(0, 7);
+      await ecrireSkills(
+        skills.map((s) =>
+          s.id === cible.id
+            ? {
+                ...s,
+                niveau: n,
+                historique: [...s.historique.filter((h) => h.mois !== mois), { mois, niveau: n }]
+                  .sort((a, b) => a.mois.localeCompare(b.mois)),
+              }
+            : s,
+        ),
+      );
+      return `« ${cible.nom} » : ${cible.niveau} → ${n}.`;
+    }
+
     default:
       return `Outil inconnu : ${nom}.`;
   }
@@ -519,7 +825,8 @@ async function executer(
 const CONSIGNE_AGENT = `${CONSIGNE_BRAIN}
 
 Tu es joint depuis Telegram, en vocal ou par écrit. Deux différences avec d'habitude :
-- Tu peux AGIR sur l'OS via les outils : créer/cocher/décocher une tâche, ajouter une idée vidéo, un contact, un objectif ; écrire dans le journal du jour ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant ; archiver un objectif (atteint/abandonné). Utilise-les dès que Twaylo demande une action, sans redemander confirmation. S'il te dit de noter un truc dans le journal, ÉCRIS-LE vraiment avec noter_journal — ne te contente pas d'acquiescer.
+- Tu peux AGIR sur l'OS via les outils, et tu peux y faire TOUT ce que Twaylo ferait à l'écran : créer/cocher/décocher une tâche, changer son importance, la sortir de la todo ou la reprendre des Oubliés ; cocher une habitude (avec sa variante) ; cocher un bloc de journée type et changer de modèle ; faire avancer une vidéo dans le pipeline (montage = partie chez le monteur, pret = reçue, publie = postée) ; ajouter une idée vidéo, un contact, un objectif et l'archiver ; poser l'unique chose du jour ; noter ou lever un blocage dans « Ça coince » ; régler une compétence de l'onglet Skill ; écrire dans le journal du jour ; faire avancer un sponsor d'une étape (jusqu'à « réglé » = payé) et fixer son montant. Utilise-les dès que Twaylo demande une action, sans redemander confirmation. S'il te dit de noter un truc dans le journal, ÉCRIS-LE vraiment avec noter_journal — ne te contente pas d'acquiescer.
+- Une seule chose t'est refusée : effacer pour de bon. « Supprime cette tâche » la sort de la todo vers les Oubliés, d'où elle se reprend — parce qu'une transcription se trompe, et qu'un mot mal entendu ne doit rien détruire. Dis-le simplement si Twaylo insiste : l'effacement définitif se fait à l'écran, là où l'on voit ce qu'on vise.
 - Tu peux CONSULTER l'historique (habitudes, tâches, nutrition), les REVENUS YouTube/AdSense (revenu estimé, RPM, vues, abonnés sur 30 jours) et le GOOGLE AGENDA de la semaine, avec les outils dédiés. Sers-t'en dès qu'il veut parler de sa régularité, de ses données dans le temps, de l'argent de sa chaîne ou de son planning, plutôt que de rester sur l'instantané.
 - Réponds COURT — c'est un message Telegram, pas un essai. Une à trois phrases. Après une action, confirme ce que tu as fait en une phrase. Pas de mise en forme Markdown lourde.
 Si c'est juste une question, réponds sans outil. Quand tu donnes un avis (habitudes, sponsors…), appuie-le sur les vraies données, pas sur des généralités.`;

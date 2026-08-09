@@ -357,6 +357,25 @@ export async function renommerTache(id: string, titre: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Sort une tâche de la todo SANS l'effacer : elle rejoint les Oubliés.
+ *
+ * C'est la version que pilote la voix. Le Brain reçoit une transcription, et
+ * une transcription se trompe : « supprime la course » peut viser la mauvaise
+ * ligne. Rien ne justifie qu'un mot mal entendu détruise quelque chose, alors
+ * qu'un archivage se reprend en un geste depuis l'onglet Oubliés. L'effacement
+ * pour de bon reste possible — à l'écran, là où l'on voit ce qu'on vise.
+ */
+export async function archiverTache(id: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .update({ statut: "abandonnee" })
+    .eq("id", id)
+    .eq("user_id", USER_ID);
+
+  if (error) throw error;
+}
+
 export async function supprimerTache(id: string): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
