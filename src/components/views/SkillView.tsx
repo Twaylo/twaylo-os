@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { localDateKey } from "@/lib/local-date";
 import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
@@ -91,6 +92,9 @@ const DEMO: Skill[] = [
 
 export function SkillView() {
   const { demoMode, data } = useOs();
+  // Même compteur de série que le reste de l'OS (voir OperateurCard).
+  const { serie: serieVive, pret: progressionPrete } = useProgression();
+  const serie = !demoMode && progressionPrete ? serieVive : data.operator.streakDays;
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [nouvelle, setNouvelle] = useState<Record<string, string>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,7 +190,7 @@ export function SkillView() {
         subtitle="Ta fenêtre de statut — le Système suit ta montée, mois après mois."
       />
 
-      <FenetreStatut skills={skills} serie={data.operator.streakDays} />
+      <FenetreStatut skills={skills} serie={serie} />
       <QuetesEntrainement skills={skills} />
 
       {cats.map((cat) => {

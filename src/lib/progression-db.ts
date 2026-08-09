@@ -28,6 +28,14 @@ export type Progression = {
   /** L'XP d'aujourd'hui telle qu'elle est enregistrée — le navigateur la recalcule en direct. */
   xpAujourdhui: number;
   serie: number;
+  /**
+   * Vrai si la journée en cours est DÉJÀ comptée dans `serie`.
+   *
+   * Le navigateur en a besoin : tant qu'aujourd'hui est vierge, la série
+   * repart d'hier, et une coche faite maintenant doit faire avancer le
+   * compteur à l'écran sans attendre un rechargement.
+   */
+  aujourdhuiCompte: boolean;
   meilleureSerie: number;
   /**
    * Les compteurs de toujours, **aujourd'hui exclu**.
@@ -141,6 +149,7 @@ export async function lireProgression(aujourdhui: string): Promise<Progression> 
     xpAvant,
     xpAujourdhui,
     serie: serieJusqua(remplis, aujourdhui),
+    aujourdhuiCompte: remplis.has(aujourdhui),
     meilleureSerie: meilleureSerieDe(remplis),
     cumuls: { ...cumuls, meilleureSerie: meilleureSerieDe(remplis) },
     seriesBlocs: Object.fromEntries(

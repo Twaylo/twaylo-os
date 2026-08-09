@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { Personnaliser } from "@/components/Personnaliser";
 
 /**
@@ -162,6 +163,8 @@ function DemoToggle() {
  */
 function Compte() {
   const { data, sync, custom, demoMode } = useOs();
+  const { serie: serieVive, pret } = useProgression();
+  const serie = !demoMode && pret ? serieVive : data.operator.streakDays;
   const [ouvert, setOuvert] = useState(false);
   const [reglages, setReglages] = useState(false);
 
@@ -184,7 +187,10 @@ function Compte() {
     { label: "Rôle", valeur: role },
     {
       label: "Série en cours",
-      valeur: `${data.operator.streakDays} jour${data.operator.streakDays > 1 ? "s" : ""}`,
+      // Même source que la carte Opérateur et la carte Progression : la
+      // couche progression, qui compte la journée en cours dès la première
+      // coche. Trois compteurs de série ne doivent jamais diverger.
+      valeur: `${serie} jour${serie > 1 ? "s" : ""}`,
     },
     {
       label: "Données",

@@ -27,10 +27,14 @@ export function Recompense() {
   const recompenses = useSyncExternalStore(surRecompenses, lireFile, lireFileServeur);
   const courante = recompenses[0] ?? null;
 
-  // Fermeture automatique : la récompense se regarde, elle ne se gère pas.
+  /*
+   * Fermeture automatique : la récompense se regarde, elle ne se gère pas.
+   * Quatre secondes et demie — le temps de lire trois lignes. Plus long, et
+   * une file de deux ou trois récompenses devient un écran bloqué.
+   */
   useEffect(() => {
     if (!courante) return;
-    const t = setTimeout(fermerRecompense, 6000);
+    const t = setTimeout(fermerRecompense, 4500);
     return () => clearTimeout(t);
   }, [courante]);
 

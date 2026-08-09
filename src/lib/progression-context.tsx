@@ -57,6 +57,7 @@ type ProgressionDistante = {
   xpAvant: number;
   xpAujourdhui: number;
   serie: number;
+  aujourdhuiCompte: boolean;
   meilleureSerie: number;
   cumuls: Cumuls;
   seriesBlocs: Record<string, number>;
@@ -106,6 +107,7 @@ const DISTANTE_VIDE: ProgressionDistante = {
   xpAvant: 0,
   xpAujourdhui: 0,
   serie: 0,
+  aujourdhuiCompte: false,
   meilleureSerie: 0,
   cumuls: CUMULS_VIDES,
   seriesBlocs: {},
@@ -277,8 +279,21 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     const aEcrire = nouveaux.filter((id) => !dejaEnBase.has(id));
     if (aEcrire.length > 0) synchroniserJour({ jour: jourVoulu, bonus: acquis });
 
-    // On ne fête que ce qui vient de tomber, jamais ce qui dormait en base.
-    for (const id of aEcrire) {
+    /*
+     * On ne fête que ce qui vient de tomber, jamais ce qui dormait en base.
+     *
+     * Et la journée parfaite AVALE les trois autres : les quatre bonus
+     * tombent au même instant, ce qui enchaînait quatre fenêtres — près de
+     * trente secondes d'écran bloqué juste après la coche qui plie la
+     * journée. Une seule fenêtre, avec le total des quatre.
+     */
+    const fetes = aEcrire.includes("parfaite") ? ["parfaite"] : aEcrire;
+    const xpTotalBonus = aEcrire.reduce(
+      (n, id) => n + (BONUS.find((x) => x.id === id)?.xp ?? 0),
+      0,
+    );
+
+    for (const id of fetes) {
       const b = BONUS.find((x) => x.id === id);
       if (!b) continue;
       feter({
@@ -286,7 +301,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
         titre: b.label,
         texte: b.cri,
         couleur: id === "parfaite" ? "#ffd23d" : "#3ddc84",
-        xp: b.xp,
+        xp: id === "parfaite" ? xpTotalBonus : b.xp,
       });
     }
   }, [pret, acquis, jourVoulu, distant]);
@@ -313,11 +328,30 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
 
   /* ---------------- Paliers de série ---------------- */
 
-  const serie = distant?.serie ?? 0;
+  /*
+   * La série vue à l'écran compte la journée en cours dès la première coche.
+   *
+   * Le serveur ne peut pas le savoir : il a lu la base avant le geste. Sans
+   * cet ajout, le compteur 🔥 restait bloqué toute la journée sur la valeur
+   * de la veille, et le palier « 7 jours » ne tombait jamais le jour où il
+   * était atteint.
+   */
+  const serieBase = distant?.serie ?? 0;
+  const serie =
+    pret && !distant?.aujourdhuiCompte && xpJour > 0 ? serieBase + 1 : serieBase;
 
   useEffect(() => {
     if (!pret || serie <= 0 || !estPalierSerie(serie)) return;
-    const marque = `${jourVoulu}:${serie}`;
+    /*
+     * On ne fête que si la journée EN COURS est dans la série.
+     *
+     * Repérée en relisant : une série de 7 atteinte hier soir restait à 7 le
+     * lendemain matin (la série repart d'hier tant qu'aujourd'hui est vierge),
+     * et la marque étant datée du jour, la fenêtre « 7 jours d'affilée » se
+     * rejouait chaque matin jusqu'à la première coche.
+     */
+    if (xpJour <= 0) return;
+    const marque = `serie:${serie}:${jourVoulu}`;
     const fetes = readJSON<Fetes>(CLE_FETES, {});
     if (fetes.serie === marque) return;
     writeJSON(CLE_FETES, { ...fetes, serie: marque });
@@ -330,7 +364,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
           : "La série tient. C'est elle qui fait la différence, pas les gros jours.",
       couleur: "#ff7a3d",
     });
-  }, [pret, serie, jourVoulu]);
+  }, [pret, serie, jourVoulu, xpJour]);
 
   /* ---------------- Exploits débloqués ---------------- */
 

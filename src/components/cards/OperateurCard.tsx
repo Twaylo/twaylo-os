@@ -1,12 +1,23 @@
 "use client";
 
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
 export function OperateurCard() {
-  const { data, uneChose, setUneChose } = useOs();
+  const { data, demoMode, uneChose, setUneChose } = useOs();
+  /*
+   * La série vient de la couche progression, pas de `data.operator`.
+   *
+   * Les deux comptaient la même chose mais pas au même instant : celle de
+   * `data` est figée au chargement, celle-ci intègre la journée en cours dès
+   * la première coche. Deux compteurs de série côte à côte affichant des
+   * nombres différents, c'est un compteur auquel on ne croit plus.
+   */
+  const { serie, pret } = useProgression();
   const op = data.operator;
+  const jours = !demoMode && pret ? serie : op.streakDays;
 
   return (
     <Panel accent="var(--color-mag)" className="col-span-1">
@@ -32,7 +43,7 @@ export function OperateurCard() {
       <div className="mt-3 flex gap-2">
         <div
           className="stat-box flex-1"
-          title="Jours d'affilée avec au moins une habitude cochée ou une entrée de journal"
+          title="Jours d'affilée où l'OS porte une trace : une coche, une tâche bouclée, un repas ou une ligne de journal"
         >
           {/* « Série » tout court ne disait pas de quoi. */}
           <div className="text-[10px] leading-[1.2] text-white/45">Jours d&apos;affilée</div>
@@ -40,7 +51,7 @@ export function OperateurCard() {
             className="font-mono text-[16px] font-extrabold"
             style={{ color: "var(--color-mag-soft)" }}
           >
-            {op.streakDays}
+            {jours}
             <span className="text-[10px] text-white/45"> j</span>
           </div>
         </div>
