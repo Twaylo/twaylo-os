@@ -226,13 +226,28 @@ export async function creerTache(
   categorie?: string,
   niveau: Niveau = "secondaire",
 ): Promise<TacheDB> {
+  /*
+   * Le niveau est vérifié ici, pas seulement chez l'appelant.
+   *
+   * Le Brain passe ce qu'un modèle de langage a produit : « urgent »,
+   * « haute », « priorité 1 » — tout est plausible, rien n'est dans
+   * l'énumération. `NIVEAUX[niveau].urgence` levait alors une exception, le
+   * bot répondait « le brain a eu un souci », et la tâche que Twaylo venait
+   * de dicter était simplement perdue. Un niveau inconnu vaut « secondaire »,
+   * ce qui est toujours mieux que de perdre ce qui a été dit.
+   */
+  // `Object.hasOwn` et non `in` : ce dernier accepterait « toString », hérité
+  // du prototype, et `NIVEAUX[niveau]` serait alors indéfini — le plantage
+  // même qu'on cherche à éviter.
+  const retenu: Niveau = Object.hasOwn(NIVEAUX, niveau) ? niveau : "secondaire";
+
   const { data, error } = await supabaseAdmin()
     .from("tasks")
     .insert({
       user_id: USER_ID,
       titre,
       categorie: categorie ?? null,
-      urgence: NIVEAUX[niveau].urgence,
+      urgence: NIVEAUX[retenu].urgence,
       cle: true,
     })
     .select("id, titre, statut, urgence, cle, categorie, completed_at")

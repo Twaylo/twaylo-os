@@ -335,8 +335,15 @@ async function executer(
       // Anti-doublon : si ce texte est déjà dans le journal (ex. Twaylo l'a
       // aussi tapé dans l'OS), on ne le recolle pas à la suite.
       if (journal.includes(texte)) return `C'est déjà dans ton journal du jour.`;
-      const nouveau = journal.trim() ? `${journal}\n${texte}` : texte;
-      await ecrireJour(jour, { journal: nouveau });
+      const brut = journal.trim() ? `${journal}\n${texte}` : texte;
+      /*
+       * Borné comme partout ailleurs : la ligne du jour est relue en entier à
+       * chaque écriture, et par centaines au calcul de progression. On garde
+       * la FIN — ce qui vient d'être dit compte plus que ce du matin.
+       */
+      await ecrireJour(jour, {
+        journal: brut.length > 20_000 ? brut.slice(-20_000) : brut,
+      });
       return `Noté dans le journal du jour : « ${texte} ».`;
     }
     case "creer_tache": {
