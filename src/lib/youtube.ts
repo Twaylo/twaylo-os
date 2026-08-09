@@ -216,8 +216,14 @@ export async function lireStatsYoutube(): Promise<StatsYoutube> {
       const data = (await res.json()) as {
         items?: { statistics?: { subscriberCount?: string } }[];
       };
-      const n = data.items?.[0]?.statistics?.subscriberCount;
-      if (n) abonnesTotal = Number(n);
+      /*
+       * Le test portait sur la vérité de la chaîne, pas sur sa lisibilité :
+       * « 0 » abonné — une chaîne qui démarre — était traité comme une valeur
+       * absente et affiché « — », tandis qu'une réponse inattendue serait
+       * passée en NaN.
+       */
+      const n = Number(data.items?.[0]?.statistics?.subscriberCount);
+      if (Number.isFinite(n)) abonnesTotal = n;
     }
   } catch (err) {
     console.warn("[youtube] total abonnés indisponible :", err);
@@ -229,10 +235,17 @@ export async function lireStatsYoutube(): Promise<StatsYoutube> {
     const q = await rapport(token, "views", { dimensions: "day", sort: "day" });
     const iDate = q.colonnes.indexOf("day");
     const iVues = q.colonnes.indexOf("views");
-    parJour = q.lignes.map((l) => ({
-      date: String(l[iDate]),
-      vues: Number(l[iVues]) || 0,
-    }));
+    // Colonnes absentes : `l[-1]` aurait rempli la frise de dates
+    // « undefined » et de zéros, ce qui ressemble à des jours sans vue au
+    // lieu de dire que la lecture a échoué.
+    if (iDate >= 0 && iVues >= 0) {
+      parJour = q.lignes.map((l) => ({
+        date: String(l[iDate]),
+        vues: Number(l[iVues]) || 0,
+      }));
+    } else {
+      console.warn("[youtube] colonnes day/views absentes du rapport");
+    }
   } catch (err) {
     console.warn("[youtube] frise indisponible :", err);
   }
