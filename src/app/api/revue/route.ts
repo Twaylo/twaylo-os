@@ -21,6 +21,32 @@ function estUnJour(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
+/** Assez pour une vraie semaine de réflexion, trop peu pour faire des dégâts. */
+const MAX_CHAMP = 4000;
+
+/**
+ * Ne garde que les champs connus, chacun borné.
+ *
+ * Ce qui arrivait ici partait tel quel dans la ligne du lundi : n'importe
+ * quelle clé, n'importe quelle taille. Or cette ligne est relue en entier —
+ * et 400 d'un coup par le calcul de progression. Un copier-coller un peu
+ * gros dans un champ, et c'est chaque lecture d'historique qui traîne, sans
+ * que rien ne dise pourquoi. La forme est connue : on s'y tient.
+ */
+function bornerRevue(brut: Record<string, unknown>): Revue {
+  const texte = (v: unknown) => (typeof v === "string" ? v.slice(0, MAX_CHAMP) : "");
+  return {
+    gains: texte(brut.gains),
+    bouclesOuvertes: texte(brut.bouclesOuvertes),
+    contenuPublie: texte(brut.contenuPublie),
+    top3: texte(brut.top3),
+    ceQuiADerape: texte(brut.ceQuiADerape),
+    personnesARelancer: texte(brut.personnesARelancer),
+    patternSante: texte(brut.patternSante),
+    scelle: brut.scelle === true,
+  };
+}
+
 async function lireLigne(lundi: string) {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
@@ -73,7 +99,9 @@ export async function POST(req: Request) {
   if (!estUnJour(corps.lundi)) {
     return NextResponse.json({ error: "Paramètre `lundi` invalide." }, { status: 400 });
   }
-  if (typeof corps.revue !== "object" || corps.revue === null) {
+  // Un tableau est un objet pour `typeof` : le test seul laissait passer
+  // n'importe quelle liste à la place de la revue.
+  if (typeof corps.revue !== "object" || corps.revue === null || Array.isArray(corps.revue)) {
     return NextResponse.json({ error: "Revue manquante." }, { status: 400 });
   }
 
@@ -86,7 +114,9 @@ export async function POST(req: Request) {
      * croisent — la revue tapée pendant qu'une habitude se synchronise — ne
      * s'effacent plus l'une l'autre.
      */
-    await ecrireJour(corps.lundi, { etat: { revue: corps.revue } });
+    await ecrireJour(corps.lundi, {
+      etat: { revue: bornerRevue(corps.revue as Record<string, unknown>) },
+    });
     return NextResponse.json({ persiste: true });
   } catch (err) {
     console.error("[revue] écriture impossible :", err);

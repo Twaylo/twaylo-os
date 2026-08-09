@@ -158,9 +158,17 @@ export async function routeCapture(
           .eq("jour", jour)
           .maybeSingle();
 
-        const fusion = existant?.journal_texte
+        /*
+         * Bornée comme le champ du soir : dicter dix fois dans la journée
+         * empilait dix textes sans limite, et cette ligne est relue en entier
+         * à chaque écriture — et par centaines au calcul de progression.
+         * Au-delà, on garde la FIN : ce qui vient d'être dit compte plus que
+         * ce qui a été dit ce matin.
+         */
+        const brut = existant?.journal_texte
           ? `${existant.journal_texte}\n\n${texte}`
           : texte;
+        const fusion = brut.length > 20_000 ? brut.slice(-20_000) : brut;
 
         const { error } = await db
           .from("daily_logs")
