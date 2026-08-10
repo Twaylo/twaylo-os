@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dev:reseau": "next dev -H 0.0.0.0"
+    "dev:reseau": "next dev -H 0.0.0.0",
+    "donnees:asam": "node scripts/asam-recuperer.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
