@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito, JetBrains_Mono } from "next/font/google";
+import { EcranLancement } from "@/components/EcranLancement";
+import { FinLancement } from "@/components/FinLancement";
 import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
@@ -103,7 +105,15 @@ export default function RootLayout({
       style={{ background: "#07121d" }}
     >
       <body className="min-h-full">
+        {/*
+         * L'écran de lancement AVANT le contenu, et rendu côté serveur : il
+         * fait partie du HTML livré, donc il est peint avant qu'une seule
+         * ligne de JavaScript n'ait tourné. C'est tout son objet — couvrir
+         * précisément le moment où React n'existe pas encore.
+         */}
+        <EcranLancement />
         {children}
+        <FinLancement />
         <ServiceWorkerLoader />
       </body>
     </html>
