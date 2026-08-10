@@ -456,6 +456,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
   );
 
   const tasksRef = useRef<(Task & { id?: string })[]>([]);
+  /* Le dernier instantané de tâches réellement envoyé, et pour quel jour. */
+  const dernierInstantane = useRef<{ jour: string; texte: string }>({ jour: "", texte: "" });
   tasksRef.current = tasks;
   habitsRef.current = habits;
   blocagesRef.current = blocagesBruts;
@@ -1296,20 +1298,37 @@ export function OsProvider({ children }: { children: ReactNode }) {
      */
     const duJour = tasks.filter((t) => !t.done || t.faiteLe === jour);
     const principales = duJour.filter((t) => (t.niveau ?? "secondaire") === "principal");
-    synchroniserJour({
-      jour,
-      taches: {
-        total: duJour.length,
-        faites: duJour.filter((t) => t.done).length,
-        principalTotal: principales.length,
-        principalFaites: principales.filter((t) => t.done).length,
-        liste: duJour.map((t) => ({
-          titre: t.text,
-          niveau: t.niveau ?? "secondaire",
-          fait: t.done,
-        })),
-      },
-    });
+    const instantane = {
+      total: duJour.length,
+      faites: duJour.filter((t) => t.done).length,
+      principalTotal: principales.length,
+      principalFaites: principales.filter((t) => t.done).length,
+      liste: duJour.map((t) => ({
+        titre: t.text,
+        niveau: t.niveau ?? "secondaire",
+        fait: t.done,
+      })),
+    };
+
+    /*
+     * Deux fois le même instantané ne partent pas deux fois.
+     *
+     * Cet effet se rejoue dès que `tasks` change d'identité — un simple rendu
+     * y suffit — alors que le CONTENU, lui, est souvent le même. On comparait
+     * donc des octets identiques à chaque fois, au prix d'un aller-retour
+     * réseau et d'une lecture de la ligne du jour.
+     *
+     * Le texte est gardé PAR JOUR : franchir minuit doit toujours reposter,
+     * même si la liste n'a pas bougé, sinon la nouvelle journée n'aurait
+     * jamais son instantané.
+     */
+    const empreinte = JSON.stringify(instantane);
+    if (dernierInstantane.current.jour === jour && dernierInstantane.current.texte === empreinte) {
+      return;
+    }
+    dernierInstantane.current = { jour, texte: empreinte };
+
+    synchroniserJour({ jour, taches: instantane });
   }, [tasks, demoMode, hydrate, todoCloturee, tachesPretes]);
 
   /*

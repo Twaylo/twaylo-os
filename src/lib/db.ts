@@ -578,6 +578,25 @@ export async function ecrireJour(
       fusion.bonus = [...new Set([...(actuel.etat.bonus ?? []), ...bonusVoulus])];
     }
 
+    /*
+     * Une écriture qui ne change rien n'est pas écrite.
+     *
+     * L'instantané des tâches est reposté à CHAQUE chargement de page, avec
+     * exactement le même contenu : c'est la nature d'un instantané. Chaque
+     * ouverture de l'OS déclenchait donc une écriture inutile sur la ligne du
+     * jour — la plus sollicitée de la base, et celle que six chemins se
+     * partagent.
+     *
+     * La comparaison textuelle suffit ici : `fusion` est construite en
+     * étalant `actuel.etat` d'abord, donc l'ordre des clés existantes est
+     * conservé. Une clé nouvelle s'ajoute à la fin et fait diverger le texte,
+     * ce qui est le comportement voulu.
+     */
+    const identique =
+      JSON.stringify(fusion) === JSON.stringify(actuel.etat) &&
+      (patch.journal === undefined || patch.journal === actuel.journal);
+    if (identique) return;
+
     const ligne: Record<string, unknown> = { user_id: USER_ID, jour, habitudes: fusion };
     if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
 
