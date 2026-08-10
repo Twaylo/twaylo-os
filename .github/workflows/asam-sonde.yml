@@ -1,16 +1,13 @@
-# Sonde temporaire : retrouver le fichier officiel ASAM dans les archives.
+# Sonde temporaire : exploiter la capture archivée de la base ASAM.
 #
-# Établi : la NGA ne sert plus ASAM. Ses voisins (World Port Index, Broadcast
-# Warnings, Radio Navaids) répondent 200 sans authentification ; les onze
-# orthographes du chemin « asam » répondent toutes 404, et le catalogue des
-# publications téléchargeables n'en contient aucune trace.
+# Trouvé : une capture du 27/09/2023 à l'adresse officielle, avec
+# « filter=none » — donc la base entière — pesant 1,39 Mo compressés.
+# Le premier téléchargement l'a reçue compressée sans la décompresser.
 #
-# Piste restante : les archives du Web ont pu capturer la réponse officielle
-# de la NGA avant son retrait. Ce serait la vraie base — celle publiée par la
-# NGA, à son adresse — simplement figée à une date de capture. Ce qui compte
-# alors, c'est de savoir laquelle, et de l'afficher.
+# Ce passage : décompresse, mesure, et cherche mieux — une capture au format
+# JSON plutôt que HTML, et un autre serveur NGA repéré dans les recherches.
 #
-# Ce fichier est jetable : il disparaît dès la source atteinte.
+# Ce fichier est jetable : il disparaît dès la source exploitée.
 name: Sonde ASAM
 
 on:
@@ -28,106 +25,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chercher les captures
+      - name: Inventaire complet des captures
         run: |
           mkdir -p sonde
           R=sonde/asam-sonde.txt
           : > "$R"
           section() { printf '\n═══ %s\n' "$1" >> "$R"; }
 
-          # L'index CDX liste toutes les captures d'une adresse : date, code
-          # de réponse et poids. Le poids est le signal décisif — la base
-          # entière pèse des mégaoctets, une page d'erreur quelques centaines
-          # d'octets.
-          section "captures de l'API ASAM"
+          section "toutes les captures ASAM réussies"
           curl -s -m 120 --get 'https://web.archive.org/cdx/search/cdx' \
-            --data-urlencode 'url=msi.nga.mil/api/publications/asam*' \
+            --data-urlencode 'url=msi.nga.mil/api/publications/asam' \
+            --data-urlencode 'matchType=prefix' \
             --data-urlencode 'output=json' \
             --data-urlencode 'fl=timestamp,original,statuscode,length' \
-            --data-urlencode 'collapse=digest' \
-            --data-urlencode 'limit=200' \
+            --data-urlencode 'filter=statuscode:200' \
+            --data-urlencode 'limit=500' \
             -o /tmp/cdx.json
-          echo "réponse CDX : $(wc -c < /tmp/cdx.json) octets" >> "$R"
-          head -c 12000 /tmp/cdx.json >> "$R"; echo >> "$R"
+          head -c 20000 /tmp/cdx.json >> "$R"; echo >> "$R"
 
-          section "captures de la page Piraterie"
-          curl -s -m 120 --get 'https://web.archive.org/cdx/search/cdx' \
-            --data-urlencode 'url=msi.nga.mil/Piracy' \
-            --data-urlencode 'output=json' \
-            --data-urlencode 'fl=timestamp,statuscode,length' \
-            --data-urlencode 'limit=20' \
-            --data-urlencode 'from=2024' \
-            -o /tmp/cdx2.json
-          head -c 3000 /tmp/cdx2.json >> "$R"; echo >> "$R"
+          section "autres serveurs NGA"
+          essayer() {
+            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 45 "$1" || echo 000)
+            printf '\n─── %s  %so  %s\n' "$code" "$(wc -c < /tmp/r)" "$1" >> "$R"
+            head -c 200 /tmp/r >> "$R"; echo >> "$R"
+          }
+          essayer "https://msi.pub.kubic.nga.mil/api/publications/asam?output=json"
+          essayer "https://msi.pub.kubic.nga.mil/api/application/config"
 
-          # Le catalogue fédéral référence peut-être une copie officielle.
-          section "data.gov"
-          curl -s -m 60 --get 'https://catalog.data.gov/api/3/action/package_search' \
-            --data-urlencode 'q=anti-shipping activity messages' \
-            --data-urlencode 'rows=5' -o /tmp/dg.json
-          grep -o -E '"(title|name|url|format)":"[^"]{0,140}"' /tmp/dg.json \
-            | head -40 >> "$R"
-
-          echo "relevé : $(wc -c < "$R") octets"
-
-      - name: Récupérer la meilleure capture et compter
+      - name: Décompresser et mesurer la capture
         run: |
           R=sonde/asam-sonde.txt
-          printf '\n═══ meilleure capture\n' >> "$R"
+          section() { printf '\n═══ %s\n' "$1" >> "$R"; }
 
-          # On retient la capture réussie la plus lourde : c'est celle qui a
-          # le plus de chances de contenir la base entière plutôt qu'une
-          # réponse partielle ou une page d'erreur.
-          meilleure=$(node -e '
-            const fs = require("fs");
-            let lignes;
-            try { lignes = JSON.parse(fs.readFileSync("/tmp/cdx.json", "utf8")); }
-            catch { process.exit(0); }
-            if (!Array.isArray(lignes) || lignes.length < 2) process.exit(0);
-            const [entete, ...reste] = lignes;
-            const iT = entete.indexOf("timestamp");
-            const iO = entete.indexOf("original");
-            const iS = entete.indexOf("statuscode");
-            const iL = entete.indexOf("length");
-            const ok = reste
-              .filter((l) => l[iS] === "200")
-              .sort((a, b) => Number(b[iL]) - Number(a[iL]));
-            if (!ok.length) process.exit(0);
-            console.log(ok[0][iT] + " " + ok[0][iO]);
-          ')
+          # « --compressed » demande à curl d'annoncer qu'il sait décompresser
+          # et de le faire : sans ça, l'archive rend l'octet brut tel qu'il a
+          # été stocké, gzip compris.
+          U='https://web.archive.org/web/20230927174507id_/https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=html'
+          curl -sL --compressed -m 300 "$U" -o /tmp/asam.html
 
-          if [ -z "$meilleure" ]; then
-            echo "Aucune capture réussie." >> "$R"
-            exit 0
-          fi
+          section "capture du 27/09/2023, décompressée"
+          echo "poids décompressé : $(wc -c < /tmp/asam.html) octets" >> "$R"
+          echo "type : $(file -b /tmp/asam.html)" >> "$R"
+          echo "lignes de tableau : $(grep -c -o '<tr' /tmp/asam.html || true)" >> "$R"
+          echo >> "$R"
+          echo "--- 1500 premiers caractères ---" >> "$R"
+          head -c 1500 /tmp/asam.html >> "$R"; echo >> "$R"
+          echo "--- 800 derniers caractères ---" >> "$R"
+          tail -c 800 /tmp/asam.html >> "$R"; echo >> "$R"
 
-          horodatage=${meilleure%% *}
-          adresse=${meilleure#* }
-          echo "capture : $horodatage" >> "$R"
-          echo "adresse : $adresse" >> "$R"
-
-          # Le suffixe « id_ » demande la réponse d'origine, sans le bandeau
-          # ni les réécritures que l'archive ajoute pour l'affichage.
-          curl -sL -m 300 "https://web.archive.org/web/${horodatage}id_/${adresse}" \
-            -o /tmp/asam.json
-          echo "poids : $(wc -c < /tmp/asam.json) octets" >> "$R"
-          head -c 300 /tmp/asam.json >> "$R"; echo >> "$R"
-
-          node -e '
-            const fs = require("fs");
-            let charge;
-            try { charge = JSON.parse(fs.readFileSync("/tmp/asam.json", "utf8")); }
-            catch (e) { console.log("illisible : " + e.message); process.exit(0); }
-            const tableau = Array.isArray(charge)
-              ? charge
-              : Object.values(charge).find((v) => Array.isArray(v));
-            if (!tableau) { console.log("aucun tableau"); process.exit(0); }
-            const dates = tableau.map((r) => r.date || r.dateOfOccurrence || "").filter(Boolean).sort();
-            console.log("incidents  : " + tableau.length);
-            console.log("plus ancien: " + dates[0]);
-            console.log("plus récent: " + dates[dates.length - 1]);
-            console.log("champs     : " + Object.keys(tableau[0] || {}).join(", "));
-          ' >> "$R"
+          # La même capture existe peut-être en JSON : on tente la variante
+          # directement, l'archive répondra si elle l'a.
+          section "variante JSON de la même capture"
+          for variante in \
+            'https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=json' \
+            'https://msi.nga.mil/api/publications/asam?filter=none&output=json'
+          do
+            curl -sL --compressed -m 300 \
+              "https://web.archive.org/web/20230927174507id_/$variante" -o /tmp/v.json
+            printf '\n─── %so  %s\n' "$(wc -c < /tmp/v.json)" "$variante" >> "$R"
+            head -c 300 /tmp/v.json >> "$R"; echo >> "$R"
+          done
 
       - name: Déposer le résultat sur la branche
         if: always()
