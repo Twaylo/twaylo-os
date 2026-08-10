@@ -76,8 +76,10 @@ function estUnFichierFige(url) {
  */
 async function page(requete) {
   const cle = new URL(requete.url).pathname;
-  try {
-    const reponse = await fetch(requete);
+  const cache = await caches.open(CACHE_PAGES);
+  const copie = (await cache.match(cle)) ?? (await cache.match("/"));
+
+  const reseau = fetch(requete).then(async (reponse) => {
     /*
      * On ne garde PAS une redirection.
      *
@@ -85,20 +87,43 @@ async function page(requete) {
      * en cache sous la clé « / » ferait afficher « connecte-toi » à chaque
      * ouverture hors réseau, sans aucun moyen de le faire.
      */
-    if (reponse.ok && !reponse.redirected) {
-      const cache = await caches.open(CACHE_PAGES);
-      await cache.put(cle, reponse.clone());
-    }
+    if (reponse.ok && !reponse.redirected) await cache.put(cle, reponse.clone());
     return reponse;
-  } catch {
-    const cache = await caches.open(CACHE_PAGES);
-    return (
-      (await cache.match(cle)) ??
-      (await cache.match("/")) ??
-      new Response(SECOURS, {
+  });
+
+  /*
+   * Sans copie de secours, le réseau a tout son temps.
+   *
+   * C'est le premier lancement : le limiter afficherait « pas de réseau » à
+   * quelqu'un qui en a, simplement lent. Mieux vaut attendre que mentir.
+   */
+  if (!copie) {
+    try {
+      return await reseau;
+    } catch {
+      return new Response(SECOURS, {
         headers: { "content-type": "text/html; charset=utf-8" },
-      })
-    );
+      });
+    }
+  }
+
+  /*
+   * Avec une copie, le réseau a deux secondes et demie.
+   *
+   * « Réseau d'abord » sans limite de temps veut dire : sur une 4G qui
+   * accroche à peine — le cas réel, en déplacement — l'application reste sur
+   * un écran vide tant que la requête n'a pas abouti, alors qu'une copie
+   * parfaitement utilisable dort dans le cache. Passé le délai on sert la
+   * copie ; la requête continue en arrière-plan et remplit le cache pour le
+   * lancement suivant.
+   */
+  try {
+    return await Promise.race([
+      reseau,
+      new Promise((_, rejeter) => setTimeout(() => rejeter(new Error("délai")), 2500)),
+    ]);
+  } catch {
+    return copie;
   }
 }
 

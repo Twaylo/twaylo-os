@@ -212,6 +212,32 @@ body {
 }
 
 /*
+ * Sur un écran tactile, il n'y a PAS de survol.
+ *
+ * Sept séries de boutons n'apparaissaient qu'au survol de la souris :
+ * supprimer une tâche, la renommer, la déplacer d'un niveau, retirer un bloc
+ * de journée type, supprimer une compétence, les outils des objectifs, ceux du
+ * kanban. Sur iPhone, ils restaient à opacité zéro — techniquement cliquables,
+ * mais invisibles, donc introuvables. La moitié des actions de l'OS était hors
+ * d'atteinte au doigt.
+ *
+ * Le sélecteur vise la classe Tailwind telle qu'elle est écrite dans le HTML,
+ * plutôt qu'une classe maison à poser à sept endroits : tout bouton conçu
+ * demain sur le même modèle sera couvert sans qu'on ait à y penser. Et il est
+ * HORS COUCHE, donc prioritaire sur l'`opacity-0` de Tailwind.
+ *
+ * `hover: none` et non une largeur d'écran : c'est bien l'absence de souris
+ * qui pose problème, pas la taille de l'écran — une tablette large au doigt a
+ * exactement le même besoin.
+ */
+@media (hover: none) {
+  [class*="group-hover:opacity-100"],
+  [class*="group-hover:flex"] {
+    opacity: 1;
+  }
+}
+
+/*
  * Le rail d'onglets défile à l'horizontale sans montrer d'ascenseur : sur
  * téléphone il n'y en a pas, et sur un portable à trackpad une barre grise en
  * travers de la barre de navigation ferait sale. Le défilement reste au doigt
