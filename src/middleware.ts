@@ -50,6 +50,14 @@ const CHEMINS_PUBLICS = new Set([
    * script refuse d'ailleurs de toucher aux routes `/api/`.
    */
   "/sw.js",
+  /*
+   * L'image de lancement d'iOS : réclamée sans cookie, comme le manifeste.
+   * Derrière la porte, elle recevait la page de connexion en HTML, et iOS
+   * repeignait alors son fond blanc au démarrage.
+   *
+   * Ce qu'on ouvre : un logo sur fond sombre, aux dimensions bornées.
+   */
+  "/splash",
   // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
   // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
   // elle-même et refuse tout si la variable manque.

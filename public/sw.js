@@ -63,6 +63,7 @@ function estUnFichierFige(url) {
     url.pathname.startsWith("/_next/static/") ||
     url.pathname === "/icon" ||
     url.pathname === "/apple-icon" ||
+    url.pathname === "/splash" ||
     url.pathname === "/manifest.webmanifest" ||
     /\.(?:js|css|woff2?|png|jpg|jpeg|svg|webp|ico)$/.test(url.pathname)
   );

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Nunito, JetBrains_Mono } from "next/font/google";
 import { EcranLancement } from "@/components/EcranLancement";
 import { FinLancement } from "@/components/FinLancement";
+import { ImagesLancementIOS } from "@/components/ImagesLancementIOS";
 import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
@@ -105,6 +106,13 @@ export default function RootLayout({
       style={{ background: "#07121d" }}
     >
       <body className="min-h-full">
+        {/*
+         * Les balises d'image de lancement d'iOS. React 19 les remonte
+         * lui-même dans l'en-tête du document ; les métadonnées de Next ne
+         * savent produire que des `meta`, pas des `link` à requête média.
+         */}
+        <ImagesLancementIOS />
+
         {/*
          * L'écran de lancement AVANT le contenu, et rendu côté serveur : il
          * fait partie du HTML livré, donc il est peint avant qu'une seule
