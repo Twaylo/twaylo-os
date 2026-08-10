@@ -1,0 +1,64 @@
+# Sonde temporaire : retrouver l'adresse actuelle de l'API ASAM.
+#
+# Les adresses connues répondent 404 — l'API de la NGA a bougé. Plutôt que de
+# deviner, on interroge le site depuis un exécuteur GitHub (qui, lui, atteint
+# msi.nga.mil) et on lit ce que la page de la NGA appelle elle-même.
+#
+# Ce fichier est jetable : il disparaît dès l'adresse trouvée.
+name: Sonde ASAM
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/asam-sonde.yml"
+
+jobs:
+  sonder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Adresses candidates
+        run: |
+          essayer() {
+            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 60 "$1" || echo 000)
+            taille=$(wc -c < /tmp/r)
+            echo "─── $code  ${taille}o  $1"
+            head -c 200 /tmp/r; echo; echo
+          }
+
+          essayer "https://msi.nga.mil/api/publications/asam?output=json"
+          essayer "https://msi.nga.mil/api/publications/asam"
+          essayer "https://msi.nga.mil/api/publications/asam/search"
+          essayer "https://msi.nga.mil/api/publications/asam?output=csv"
+          essayer "https://msi.nga.mil/api/publications"
+          essayer "https://msi.nga.mil/v3/api-docs"
+          essayer "https://msi.nga.mil/api/openapi.json"
+          essayer "https://msi.nga.mil/swagger-ui/index.html"
+
+      - name: Ce que la page Piraterie appelle elle-même
+        run: |
+          # La page est une application JavaScript : l'adresse de l'API est
+          # dans ses paquets, pas dans le HTML. On récupère la page, on suit
+          # ses scripts, et on cherche dedans.
+          curl -s -m 60 https://msi.nga.mil/Piracy -o /tmp/piracy.html
+          echo "─── page : $(wc -c < /tmp/piracy.html) octets"
+          grep -o 'src="[^"]*\.js"' /tmp/piracy.html | sort -u | tee /tmp/scripts.txt
+
+          echo
+          echo "─── recherche de 'asam' dans les paquets JavaScript"
+          while read -r ligne; do
+            chemin=$(echo "$ligne" | sed 's/src="//; s/"$//')
+            case "$chemin" in
+              http*) url="$chemin" ;;
+              /*)    url="https://msi.nga.mil$chemin" ;;
+              *)     url="https://msi.nga.mil/$chemin" ;;
+            esac
+            curl -s -m 90 "$url" -o /tmp/bundle.js || continue
+            echo "· $url ($(wc -c < /tmp/bundle.js) octets)"
+            grep -o -i -E '[a-z0-9/_.-]*asam[a-z0-9/_?=&.-]*' /tmp/bundle.js \
+              | sort -u | head -40
+          done < /tmp/scripts.txt
+
+          echo
+          echo "─── toute mention d'API dans le HTML"
+          grep -o -i -E 'https?://[a-z0-9./_-]*api[a-z0-9./_-]*' /tmp/piracy.html | sort -u | head -20
