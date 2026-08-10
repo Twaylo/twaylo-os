@@ -1,11 +1,11 @@
 # Sonde temporaire : exploiter la capture archivée de la base ASAM.
 #
-# Trouvé : une capture du 27/09/2023 à l'adresse officielle, avec
-# « filter=none » — donc la base entière — pesant 1,39 Mo compressés.
-# Le premier téléchargement l'a reçue compressée sans la décompresser.
+# Inventaire fait : une seule capture substantielle existe, celle du
+# 27/09/2023 à l'adresse officielle avec « filter=none » — la base entière,
+# 1,39 Mo compressés. Les autres captures sont de petites réponses annexes.
 #
-# Ce passage : décompresse, mesure, et cherche mieux — une capture au format
-# JSON plutôt que HTML, et un autre serveur NGA repéré dans les recherches.
+# Ce passage la décompresse et en lit la structure, pour savoir ce qu'on
+# peut en tirer exactement.
 #
 # Ce fichier est jetable : il disparaît dès la source exploitée.
 name: Sonde ASAM
@@ -25,66 +25,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Inventaire complet des captures
+      - name: Décompresser et lire la capture
+        # Une sonde explore : un essai qui échoue est un résultat, pas une
+        # raison d'interrompre les suivants.
+        continue-on-error: true
         run: |
+          set +e
           mkdir -p sonde
           R=sonde/asam-sonde.txt
           : > "$R"
-          section() { printf '\n═══ %s\n' "$1" >> "$R"; }
 
-          section "toutes les captures ASAM réussies"
-          curl -s -m 120 --get 'https://web.archive.org/cdx/search/cdx' \
-            --data-urlencode 'url=msi.nga.mil/api/publications/asam' \
-            --data-urlencode 'matchType=prefix' \
-            --data-urlencode 'output=json' \
-            --data-urlencode 'fl=timestamp,original,statuscode,length' \
-            --data-urlencode 'filter=statuscode:200' \
-            --data-urlencode 'limit=500' \
-            -o /tmp/cdx.json
-          head -c 20000 /tmp/cdx.json >> "$R"; echo >> "$R"
-
-          section "autres serveurs NGA"
-          essayer() {
-            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 45 "$1" || echo 000)
-            printf '\n─── %s  %so  %s\n' "$code" "$(wc -c < /tmp/r)" "$1" >> "$R"
-            head -c 200 /tmp/r >> "$R"; echo >> "$R"
-          }
-          essayer "https://msi.pub.kubic.nga.mil/api/publications/asam?output=json"
-          essayer "https://msi.pub.kubic.nga.mil/api/application/config"
-
-      - name: Décompresser et mesurer la capture
-        run: |
-          R=sonde/asam-sonde.txt
-          section() { printf '\n═══ %s\n' "$1" >> "$R"; }
-
-          # « --compressed » demande à curl d'annoncer qu'il sait décompresser
-          # et de le faire : sans ça, l'archive rend l'octet brut tel qu'il a
-          # été stocké, gzip compris.
+          # « --compressed » : sans lui, l'archive rend l'octet brut tel qu'il
+          # a été stocké — gzip compris — et le fichier paraît illisible.
           U='https://web.archive.org/web/20230927174507id_/https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=html'
           curl -sL --compressed -m 300 "$U" -o /tmp/asam.html
 
-          section "capture du 27/09/2023, décompressée"
-          echo "poids décompressé : $(wc -c < /tmp/asam.html) octets" >> "$R"
-          echo "type : $(file -b /tmp/asam.html)" >> "$R"
-          echo "lignes de tableau : $(grep -c -o '<tr' /tmp/asam.html || true)" >> "$R"
-          echo >> "$R"
-          echo "--- 1500 premiers caractères ---" >> "$R"
-          head -c 1500 /tmp/asam.html >> "$R"; echo >> "$R"
-          echo "--- 800 derniers caractères ---" >> "$R"
-          tail -c 800 /tmp/asam.html >> "$R"; echo >> "$R"
+          {
+            echo "═══ capture du 27/09/2023"
+            echo "poids : $(wc -c < /tmp/asam.html) octets"
+            echo "type  : $(file -b /tmp/asam.html)"
+            echo "<tr>  : $(grep -c -o '<tr' /tmp/asam.html)"
+            echo "<td>  : $(grep -c -o '<td' /tmp/asam.html)"
+            echo
+            echo "─── 2000 premiers caractères"
+            head -c 2000 /tmp/asam.html
+            echo
+            echo "─── 600 derniers caractères"
+            tail -c 600 /tmp/asam.html
+            echo
+          } >> "$R"
 
-          # La même capture existe peut-être en JSON : on tente la variante
-          # directement, l'archive répondra si elle l'a.
-          section "variante JSON de la même capture"
-          for variante in \
-            'https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=json' \
-            'https://msi.nga.mil/api/publications/asam?filter=none&output=json'
-          do
-            curl -sL --compressed -m 300 \
-              "https://web.archive.org/web/20230927174507id_/$variante" -o /tmp/v.json
-            printf '\n─── %so  %s\n' "$(wc -c < /tmp/v.json)" "$variante" >> "$R"
-            head -c 300 /tmp/v.json >> "$R"; echo >> "$R"
-          done
+          # Certaines réponses « output=html » de la NGA sont en fait du JSON
+          # servi tel quel : on vérifie plutôt que de le supposer.
+          echo "═══ est-ce du JSON malgré tout ?" >> "$R"
+          node -e '
+            const fs = require("fs");
+            const t = fs.readFileSync("/tmp/asam.html", "utf8");
+            try {
+              const c = JSON.parse(t);
+              const tab = Array.isArray(c) ? c : Object.values(c).find(Array.isArray);
+              console.log("JSON valide, " + (tab ? tab.length + " entrées" : "sans tableau"));
+              if (tab) console.log("champs : " + Object.keys(tab[0]).join(", "));
+            } catch (e) {
+              console.log("non : " + e.message.slice(0, 120));
+            }
+          ' >> "$R" 2>&1
 
       - name: Déposer le résultat sur la branche
         if: always()
