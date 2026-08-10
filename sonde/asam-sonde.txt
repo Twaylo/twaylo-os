@@ -1,0 +1,75 @@
+paquet : /static/js/main.aed59dd5.js (1049493 octets)
+
+═══ définition de fetchData
+)}return""!==t?(window.alert(t),1):0}async function f(e){return await h(e)}const N=async e=>await s.fetchData(e).then(e=>e.availCorr)},21580(e,t,n){"use strict";var r=n(67060),a=n(9874)(2);r(r.P+r.F*!n(65417)([].filter,!0),"Array",{filter:function(e){return a(this,e,arguments[1])}})},22246(e,t,n){var r=n(67060),a=n(30853),i=Object.isExtensible;r(r.S,"Reflect",{isExtensible:function(e){return a(e),!i||i(e)}})},22324(e,t,n){var r=n(67060);r(r.S,"Math",{scale:n(36791)})},22342(e,t,n){var r=n(79500),a=n(58116);e.exports=function(e){if(void 0===e)return 0;var t=r(e),n=a(t);if(t!==n)throw RangeError("Wrong length!");return n}},22351(e,t,n){"use strict";var r=n(76101),a=n(73358),i=n(47755),s=n(77548),o=n(12730),l=n(66254),c=n(83881),u=n(45797),d=n(79500),A=n(58116),p=n(22342),h=n(45658).f,f=n(12718).f,N=n(
+=>e.ok?e.json():{message:e.statusText}).catch(e=>window.alert(e))}n.r(t),n.d(t,{deleteRawData:()=>s,fetchData:()=>r,postFormData:()=>a,postRawData:()=>i})},50966(e,t,n){"use strict";var r=n(47755),a=n(67060),i=n(88972),s=n(12730),o=n(91271),l=n(48265),c=n(35973),u=n(26928),d=n(63759)("iterator"),A=!([].keys&&"next"in[].keys()),p="keys",h="values",f=function(){return this};e.exports=function(e,t,n,N,m,S,E){l(n,t,N);var g,O,v,T=function(e){if(!A&&e in y)return y[e];switch(e){case p:case h:return function(){return new n(this,e)}}return function(){return new n(this,e)}},R=t+" Iterator",I=m==h,b=!1,y=e.prototype,U=y[d]||y["@@iterator"]||m&&y[m],B=U||T(m),P=m?I?T("entries"):B:void 0,C="Array"==t&&y.entries||U;if(C&&(v=u(C.call(new e)))!==Object.prototype&&v.next&&(c(v,R,!0),r||"function"==typeof v[d]||s(v
+e[n].broadcastNature)):t.unshift(e[n]);return t.unshift(e[0]),t}async function E(e){const t=await s.fetchData("publications/radio-navaids/dfrs/areas");if(e["radio-navaids"].length>0){var n=a()(e["radio-navaids"],"areaName"),r=t.areas;for(var i in n){for(var o=[],l=0;l<r.length;l++)r[l][0]===i&&null!==r[l][2]&&(o[0]=r[l][2]+"<br/>",r[l][4]&&o.push(r[l][4]+"<br/>"));if(o.length>0)document.getElementById(i).childNodes[1].childNodes[0].innerHTML=o.join("")}}}},52587(e){e.exports=function(e,t){for(var n=-1,r=null==e?0:e.length;++n<r;)if(t(e[n],n,e))return!0;return!1}},52588(e,t,n){"use strict";var r=n(67060),a=n(93252);r(r.P+r.F*!n(65417)([].reduce,!0),"Array",{reduce:function(e){return a(this,e,arguments.length,arguments[1],!1)}})},52866(e,t,n){var r=n(52969);e.exports=function(e){return function(t){ret
+ons.dfrs},this.clearFilters=this.clearFilters.bind(this)}async componentDidMount(){const e=await kn.fetchData("publications/radio-navaids/areas");this.setState({areas:e})}updateChapter(){var e=document.getElementById("sel4").value;this.setState({chapter:e,stations:Mn.RNAStations[e]})}getRadioNavAids(){var e=null,t=document.getElementById("sel4").value,n=document.getElementById("sel5").value,r=document.getElementById("sel7").value;e="stationName"===n?document.getElementsByClassName("auto-comp")[0].value:document.getElementById("sel6").value;var a="publications/radio-navaids/";a="null"!==n?a+t+"?"+n+"="+e+"&output="+r:a+t+"?output="+r,window.open("/queryResults?"+a,"_blank")}getGeographicAreas(){var e=[],t=this.state.areas[this.state.chapter];return t&&(e=t.map(e=>(0,De.jsx)(Fn,{data:e},e))),e}updateF
+
+═══ contexte de /api/auth/token
+ar r=n(67060),a=n(3040);r(r.G+r.F*(parseFloat!=a),{parseFloat:a})},88247(e,t,n){var r=n(67060);r(r.G+r.W+r.F*!n(77548).ABV,{DataView:n(22351).DataView})},88259(e,t,n){var r=n(15797);e.exports=function(e){var t=r(e,function(e){return 500===n.size&&n.clear(),e}),n=t.cache;return t}},88610(e,t,n){"use strict";n.r(t),n.d(t,{getToken:()=>s,getUserInfo:()=>l,removeToken:()=>o});var r=n(87254);const a="/api/auth/token",i="/oauth2/userinfo";function s(){return sessionStorage.getItem("access_token")}function o(){return sessionStorage.removeItem("access_token")}async function l(){const e=await async function(){return new r.A}(),t=await c(),n=i,a={headers:{Authorization:"Bearer "+t}},s=await fetch(n,a).then(e=>!!e.ok&&e.json()).then(t=>{var n=t.user_attributes;return n&&"unclassified"===e.network?(JSON.stringify(n)===JSON.stringify({})||"CIV"===n.personaTypeCode[0]||"CTR"===n.personaTypeCode[0]||"MIL"===n.personaTypeCode[0])&&t:t}).catch(e=>(o(),!1));if(s){console.log(s);!function(e){let t=!1,n="",r=0;for(e=e.split(",");!t&&r<e.length;)"CN="===e[r].substring(0,3)?(t=!0,n=e[r].substring(3)):r++;sessionStorage
+
+═══ contexte de queryResults
+ocument.getElementsByClassName("auto-comp")[0].value:document.getElementById("sel6").value;var a="publications/radio-navaids/";a="null"!==n?a+t+"?"+n+"="+e+"&output="+r:a+t+"?output="+r,window.open("/queryResults?"+a,"_blank")}getGeographicAreas(){var e=[],t=this.state.areas[this.state.chapter];return t&&(e=t.map(e=>(0,De.jsx)(Fn,{data:e},e))),e}updateFinalFilter(){var e=document.getElementById("sel5").value,t=document.getElementById("label6"),n=document.getElementsByClassName("auto-comp")[0],r=document.getElementById("sel6"),a="form-control no-display",i="form-control auto-comp";switch(e){case"stationName":default:t.innerHTML="Enter Station Name",n.className=i,r.className=a,r.value="null";break;case"areaId":t.innerHTML="Country",n.className="form-control no-display auto-comp",r.className="form-contro
+"+i+"&msgYearEnd="+o):"allByYear"===r?this.url=this.url+"&status=all&msgYear="+s:"cancelledByYear"===r&&(this.url=this.url+"&status=cancelled&msgYear="+s);this.url=this.url+"&output="+u,window.open("/queryResults?"+this.url,"_blank")}openQueryDirections(){window.open("/queryDirections?queryType=navWarn","_blank","toolbar=no,status=no,location=no,menubar=no,scrollbars=yes,resizable=yes,width=900,height=600")}render(){return(0,De.jsxs)("div",{className:"row left-align container pb32",children:[(0,De.jsxs)("div",{className:"col-sm-2",id:"selector-col1",children:[(0,De.jsx)("label",{htmlFor:"sel1",className:"query-label",children:"Area Type"}),(0,De.jsxs)("select",{className:"form-control",id:"sel1",defaultValue:"navArea",onChange:this.updateAreas,children:[(0,De.jsx)("option",{value:"all",children:"All A
+M"===r?"&harborSize=M&harborSize=L":"&harborSize=L");var s="publications/world-port-index";s="null"!==t?"null"!==r?s+"?"+t+"="+e+i+"&output="+a:s+"?"+t+"="+e+"&output="+a:s+"?output="+a,window.open("/queryResults?"+s,"_blank")}getCountryNames(){var e=[],t=this.state.countries.sort();return t&&(e=t.map(e=>(0,De.jsx)(qn,{data:e},e))),e}updateFinalFilter(){var e=document.getElementById("sel4").value,t=document.getElementById("label5"),n=document.getElementById("sel5"),r=document.getElementById("label6"),a=document.getElementById("sel6"),i=document.getElementsByClassName("auto-comp")[0],s=document.getElementsByClassName("auto-comp")[1],o="form-control",l="form-control no-display",c="form-control auto-comp",u="form-control no-display auto-comp";switch(e){case"portName":default:t.innerHTML="Enter Port Name"
+ateFields();""!==e?window.alert(e):this.getNGALOL()}else this.getNGALOL()}getNGALOL(){let e="publications/ngalol/";e+=document.getElementById("ngalolReturn").value+"?",e=Qn.getNGALOL(e),window.open("/queryResults?"+e,"_blank")}updateFinalFilter(){const e=document.getElementById("sel5").value,t=document.getElementById("ngalolReturn").value,n=document.getElementById("label6"),r=document.getElementById("startRangeInput6"),a=document.getElementById("endRangeInput6"),i=document.getElementById("geoHDR"),s=document.getElementById("labelSHDR"),o=document.getElementById("geoSHDR"),l=document.getElementById("latLong"),c="form-control",u="form-control no-display",d="form-control half-width",A="no-display p0";switch(e){case"featureNumber":n.innerHTML="Enter Aid Number",r.placeholder="",r.className=d,a.className=u
+
+═══ en-têtes posés par l'application
+n){"use strict";async function r(e){const t=sessionStorage.getItem("access_token");await fetch(e,{method:"GET",headers:{Authorization:"Bearer "+t}}).then(e=>{if(e.ok)return e.blob()}).then(e=>function(e){var t=new Blob([e],{type:"application/pdf"});if(window.navigator&&window.navigator.msSaveOrOpenBlob)return void window.navigator.msSaveOrOpenBlob(t);const n=window.URL.createObjectURL(t);var r=document.createElement("a");r.setAtt
+oveItem("access_token")}async function l(){const e=await async function(){return new r.A}(),t=await c(),n=i,a={headers:{Authorization:"Bearer "+t}},s=await fetch(n,a).then(e=>!!e.ok&&e.json()).then(t=>{var n=t.user_attributes;return n&&"unclassified"===e.network?(JSON.stringify(n)===JSON.stringify({})||"CIV"===n.personaTypeCode[0]||"CTR"===n.personaTypeCode[0]||"MIL"===n.personaTypeCode[0])&&t:t}).catch(e=>(o(),!1));if(s){console
+un));class An extends e.Component{render(){return(0,De.jsx)(dn,{divid:"report-overview"})}}const pn=An,hn={elementID:"g-recaptcha",className:"g-recaptcha",onloadCallback:void 0,onloadCallbackName:"onloadCallback",verifyCallback:void 0,verifyCallbackName:"verifyCallback",expiredCallback:void 0,expiredCallbackName:"expiredCallback",render:"onload",theme:"light",type:"image",size:"normal",tabindex:"0",hl:"en",badge:"bottomright"
+&&"function"===typeof window.grecaptcha.render;let Nn;class mn extends e.Component{constructor(e){super(e),this._renderGrecaptcha=this._renderGrecaptcha.bind(this),this.reset=this.reset.bind(this),this.state={ready:fn(),widget:null},this.sitekey="6LfFXaEUAAAAAL1F-1eMQptlgNLlLVhDQMX20vWW",this.state.ready||"undefined"===typeof window||(Nn=setInterval(this._updateReadyState.bind(this),1e3))}componentDidMount(){this.state.ready&
+tDidUpdate(e,t){const{render:n,onloadCallback:r}=this.props;"explicit"===n&&r&&this.state.ready&&!t.ready&&this._renderGrecaptcha()}componentWillUnmount(){clearInterval(Nn)}reset(){const{ready:e,widget:t}=this.state;e&&null!==t&&window.grecaptcha.reset(t)}execute(){const{ready:e,widget:t}=this.state;e&&null!==t&&window.grecaptcha.execute(t)}_updateReadyState(){fn()&&(this.setState({ready:!0}),clearInterval(Nn))}_renderGrecapt
+Sn=mn,En=n(50401),gn=n(95347).convertDate;class On extends e.Component{constructor(e){super(e),this.state={showModal:!1,captchaDone:!1,renderCaptcha:!0,captchaToken:""},this.showModal=this.showModal.bind(this),this.hideModal=this.hideModal.bind(this),this.selectFileHandler=this.selectFileHandler.bind(this),this.file=null}async componentDidMount(){var e=new be.A;await e.setAppConfig(),"unclassified"!==e.network&&this.setStat
+eModal(){this.setState({showModal:!1})}selectFileHandler(e){this.file=e.target.files[0]}verifyCaptcha(e){this.setState({captchaDone:!0,captchaToken:e})}expiredCaptcha(){this.setState({captchaDone:!1,captchaToken:""})}validateFields(){let e="";const t=document.getElementById("name").value,n=document.getElementById("org").value,r=document.getElementById("date").value,a=document.getElementById("contactyes"),i=document.getEleme
+tElementById("lblPhone").className="form-alert",document.getElementById("lblEmail").className="form-alert")),this.state.captchaDone||(e+="Please complete the Captcha Verification."),""!==e?window.alert(e):(this.sendTransaction(),this.showModal(),this.clearForm())}async sendTransaction(){let e=new FormData,t={poc:document.getElementById("name").value,org:document.getElementById("org").value,email:document.getElementById("ema
+
+═══ réponses du serveur
+
+─── areas nu
+    404  116o
+{"timestamp":"2026-08-10T19:17:20.866+00:00","status":404,"error":"Not Found","path":"/api/publications/asam/areas"}
+
+─── areas + entêtes navigateur
+    404  116o
+{"timestamp":"2026-08-10T19:17:21.032+00:00","status":404,"error":"Not Found","path":"/api/publications/asam/areas"}
+
+─── jeton (GET)
+    404  103o
+{"timestamp":"2026-08-10T19:17:21.458+00:00","status":404,"error":"Not Found","path":"/api/auth/token"}
+
+─── jeton (POST)
+    411  326o
+<HTML><HEAD>
+<TITLE>Bad Request</TITLE>
+</HEAD><BODY>
+<H1>Bad Request</H1>
+Your browser sent a request that this server could not understand.<P>
+Reference&#32;&#35;7&#46;cf0e2017&#46;1786389441&#46;c5ea864f
+<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;7&#46;cf0e2017&#46;1786389441&#46;c5ea864f</P>
+</BODY>
+</HTML>
+
+
+─── config
+    200  61o
+{"webmasterEmail":"marhelp@nga.mil","network":"unclassified"}
+
+─── asam filter=none
+    404  110o
+{"timestamp":"2026-08-10T19:17:22.270+00:00","status":404,"error":"Not Found","path":"/api/publications/asam"}
+
+─── asam annee 2025
+    404  110o
+{"timestamp":"2026-08-10T19:17:22.623+00:00","status":404,"error":"Not Found","path":"/api/publications/asam"}
+
+─── queryResults
+    200  9436o
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"><meta name="theme-color" content="#000000"><link rel="manifest" href="/manifest.json"><link rel="shortcut icon" href="/favicon.ico"><script>window.classification={};const Http=new XMLHttpRequest,url="/api/application/classification";function getCDN(){let t=
+
+═══ ASAM parmi les publications téléchargeables
+
+─── liste des publications
+    200  246015o
+[{"pubTypeId":30,"pubDownloadId":14,"fullPubFlag":false,"pubDownloadOrder":4,"pubDownloadDisplayName":"Pub. 108 - Atlas of Pilot Charts North Pacific Ocean, 3rd Ed. 1994","pubsecId":68,"odsEntryId":22205,"sectionOrder":14,"sectionName":"108dec","sectionDisplayName":"Pub. 108: December","sectionLastModified":"2019-09-20T14:02:18.929+00:00","contentId":16693989,"internalPath":"","filenameBase":"108d
