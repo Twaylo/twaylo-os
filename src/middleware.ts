@@ -58,6 +58,12 @@ const CHEMINS_PUBLICS = new Set([
    * Ce qu'on ouvre : un logo sur fond sombre, aux dimensions bornées.
    */
   "/splash",
+  /*
+   * La page publique de présentation : c'est la porte d'entrée, elle ne
+   * peut évidemment pas être derrière la porte. Elle n'affiche aucune
+   * donnée — uniquement ce que le produit propose.
+   */
+  "/bienvenue",
   // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
   // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
   // elle-même et refuse tout si la variable manque.
