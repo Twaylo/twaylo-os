@@ -59,9 +59,42 @@ const ANNEE_PLANCHER = 1960;
 const ANNEE_PLAFOND = new Date().getUTCFullYear() + 1;
 
 const ADRESSES = [
-  "https://msi.nga.mil/api/publications/asam?output=json",
-  `https://msi.nga.mil/api/publications/asam?minOccurDate=${ANNEE_PLANCHER}-01-01&maxOccurDate=${ANNEE_PLAFOND}-12-31&output=json`,
-  `https://msi.nga.mil/api/publications/asam?output=json&minOccurDate=01%2F01%2F${ANNEE_PLANCHER}&maxOccurDate=12%2F31%2F${ANNEE_PLAFOND}`,
+  {
+    url: "https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=json",
+    libelle: "NGA, en direct",
+  },
+  {
+    url: "https://msi.nga.mil/api/publications/asam?output=json",
+    libelle: "NGA, en direct (forme historique)",
+  },
+  {
+    url: `https://msi.nga.mil/api/publications/asam?minOccurDate=${ANNEE_PLANCHER}-01-01&maxOccurDate=${ANNEE_PLAFOND}-12-31&output=json`,
+    libelle: "NGA, en direct (fenêtre de dates)",
+  },
+  /*
+   * Dernier recours : la réponse de la NGA telle qu'elle a été archivée.
+   *
+   * En août 2026, la NGA ne sert plus ASAM : tous les chemins « asam »
+   * répondent 404 pendant que leurs voisins (World Port Index, Broadcast
+   * Warnings) répondent 200 sans authentification. Ce n'est pas un problème
+   * d'accès de notre côté — la page Piraterie de la NGA appelle exactement
+   * l'adresse qui échoue.
+   *
+   * Cette capture est la réponse officielle de la NGA, à son adresse, telle
+   * qu'elle était le 27 septembre 2023 : « filter=none », donc la base
+   * entière. Ce n'est pas une recopie par un tiers, c'est l'original figé.
+   *
+   * Les adresses en direct restent essayées d'abord : le jour où la NGA
+   * rétablit son service, la collecte repart d'elle-même sur la source
+   * vivante, sans rien changer ici.
+   */
+  {
+    url:
+      "https://web.archive.org/web/20230927174507id_/" +
+      "https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=html",
+    libelle: "NGA, capture archivée",
+    capture: "2023-09-27",
+  },
 ];
 
 const DELAI_REQUETE_MS = 180_000; // La base entière pèse plusieurs mégaoctets.
@@ -146,14 +179,20 @@ function extraireEnregistrements(texte) {
   return null;
 }
 
-/** Essaie chaque adresse et retient la réponse contenant le plus d'incidents. */
+/**
+ * Essaie chaque adresse et retient la réponse contenant le plus d'incidents.
+ *
+ * On ne s'arrête pas à la première qui répond : une adresse peut répondre
+ * correctement en ne servant qu'une tranche de la base. Le nombre
+ * d'enregistrements tranche, pas l'ordre d'essai.
+ */
 async function recupererSource() {
   let meilleur = null;
 
-  for (const adresse of ADRESSES) {
-    console.error(`→ ${adresse}`);
+  for (const source of ADRESSES) {
+    console.error(`→ ${source.libelle}`);
     try {
-      const texte = await telecharger(adresse);
+      const texte = await telecharger(source.url);
       const enregistrements = extraireEnregistrements(texte);
 
       if (!enregistrements) {
@@ -163,7 +202,7 @@ async function recupererSource() {
 
       console.error(`   ${enregistrements.length} enregistrements`);
       if (!meilleur || enregistrements.length > meilleur.enregistrements.length) {
-        meilleur = { adresse, enregistrements, texte };
+        meilleur = { source, enregistrements };
       }
     } catch (erreur) {
       console.error(`   échec : ${erreur.message}`);
@@ -172,7 +211,7 @@ async function recupererSource() {
 
   if (!meilleur) {
     throw new Error(
-      "Aucune adresse de l'API ASAM n'a répondu. Vérifier l'accès réseau à msi.nga.mil.",
+      "Aucune adresse de l'API ASAM n'a répondu, capture archivée comprise.",
     );
   }
   return meilleur;
@@ -366,26 +405,22 @@ async function principal() {
   const horsLigne = options.has("--hors-ligne");
 
   let enregistrements;
-  let adresseSource;
+  let source;
 
   if (horsLigne && existsSync(CACHE_BRUT)) {
     console.error(`→ cache local : ${path.relative(RACINE, CACHE_BRUT)}`);
     const cache = JSON.parse(await readFile(CACHE_BRUT, "utf8"));
     enregistrements = cache.enregistrements;
-    adresseSource = cache.adresse;
+    source = cache.source;
   } else {
-    const source = await recupererSource();
-    enregistrements = source.enregistrements;
-    adresseSource = source.adresse;
+    const retenu = await recupererSource();
+    enregistrements = retenu.enregistrements;
+    source = retenu.source;
 
     // Le brut est conservé : il permet de rejouer la normalisation sans
     // retélécharger, et de comparer deux collectes dans le temps.
     await mkdir(DOSSIER_CACHE, { recursive: true });
-    await writeFile(
-      CACHE_BRUT,
-      JSON.stringify({ adresse: adresseSource, enregistrements }),
-      "utf8",
-    );
+    await writeFile(CACHE_BRUT, JSON.stringify({ source, enregistrements }), "utf8");
   }
 
   /* --- Normalisation et tri ------------------------------------------ */
@@ -427,7 +462,11 @@ async function principal() {
 
   console.error("");
   console.error("═══ BASE ASAM — NGA ══════════════════════════════════════");
-  console.error(`Source            : ${adresseSource}`);
+  console.error(`Source            : ${source.libelle}`);
+  console.error(`Adresse           : ${source.url}`);
+  if (source.capture) {
+    console.error(`Capture du        : ${source.capture}  ← la base s'arrête là`);
+  }
   console.error(`Reçus             : ${enregistrements.length}`);
   for (const [motif, nombre] of rejets) {
     console.error(`Écartés           : ${nombre} (${motif})`);
@@ -461,7 +500,11 @@ async function principal() {
   const { carte, descriptions } = construireSortie(incidents, {
     source: "NGA — Anti-Shipping Activity Messages (ASAM)",
     sourceUrl: "https://msi.nga.mil/Piracy",
-    apiUrl: adresseSource,
+    apiUrl: source.url,
+    // Renseigné quand les données viennent d'une capture archivée : la carte
+    // doit pouvoir dire jusqu'à quelle date elle fait foi, plutôt que de
+    // laisser croire qu'elle est à jour.
+    captureDu: source.capture ?? null,
     genereLe: new Date().toISOString().slice(0, 10),
     total: incidents.length,
     ecartes: [...rejets.entries()].map(([motif, nombre]) => ({ motif, nombre })),
