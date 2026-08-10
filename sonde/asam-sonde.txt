@@ -1,17 +1,13 @@
+═══ capture du 27/09/2023
+poids : 5666073 octets
+type  : JSON text data
+<tr>  : 0
+<td>  : 0
 
-═══ toutes les captures ASAM réussies
-[["timestamp","original","statuscode","length"],
-["20210505030223","https://msi.nga.mil/api/publications/asam/areas","200","1006"],
-["20220304110058","https://msi.nga.mil/api/publications/asam/areas","200","1052"],
-["20220304141340","https://msi.nga.mil/api/publications/asam/areas","200","1050"],
-["20220304141340","https://msi.nga.mil/api/publications/asam/areas","200","1050"],
-["20220915145936","https://msi.nga.mil/api/publications/asam/areas","200","1211"],
-["20230611222811","https://msi.nga.mil/api/publications/asam/areas","200","1358"],
-["20230801083533","https://msi.nga.mil/api/publications/asam/areas","200","1357"],
-["20240625102815","https://msi.nga.mil/api/publications/asam/areas","200","1117"],
-["20230927174507","https://msi.nga.mil/api/publications/asam?filter=none&sort=date&output=html","200","1388960"]]
-
-
-═══ autres serveurs NGA
-
-─── 000000  o  https://msi.pub.kubic.nga.mil/api/publications/asam?output=json
+─── 2000 premiers caractères
+{"asam":[{"reference":"2023-152","date":"2023-09-11","latitude":6.416666666994672,"longitude":3.35000000040867,"position":"6°25'00\"N \n3°21'00\"E","navArea":"II","subreg":"57","hostility":null,"victim":"Berthed container ship","description":"NIGERIA: On 11 September at 0035 local time, as many as five robbers armed with knives and steel bars boarded a berthed container ship in Lagos Port, near position 06-25N 003-21E. The robbers escaped with a high pressure machine hose. The ship reported all crew and vessel safe to the port authorities."},{"reference":"2023-154","date":"2023-09-07","latitude":-7.733333333058226,"longitude":108.98333333365082,"position":"7°44'00\"S \n108°59'00\"E","navArea":"XI","subreg":"72","hostility":null,"victim":"Berthed barge","description":"INDONESIA: On 7 September (time not specified), six robbers boarded a berthed barge at Cilacap Port on the island of Java, near position 07-44S 108-59E. Indonesian authorities apprehended one of the perpetrators and recovered two tons of coal stolen from the barge."},{"reference":"2023-150","date":"2023-09-04","latitude":-8.73333333309057,"longitude":13.299999999966076,"position":"8°44'00\"S \n13°18'00\"E","navArea":"VII","subreg":"57","hostility":null,"victim":"Denmark offshore supply vessel MAERSK LOGGER","description":"ANGOLA: On 4 September at 0312 local time, two robbers in a canoe boarded the anchored Denmark-flagged offshore supply vessel MAERSK LOGGER at Luanda Anchorage, near position 08-44S 013-18E. The duty crew on routine rounds discovered the robbers and raised the alarm, resulting in the robbers escaping with ship?s properties."},{"reference":"2023-149","date":"2023-09-02","latitude":-12.016666666665003,"longitude":-77.19999999981303,"position":"12°01'00\"S \n77°12'00\"W","navArea":"XVI","subreg":"22","hostility":null,"victim":"Denmark-flagged tanker TORM AMALIE","description":"PERU: On 2 September at 0220 local time, four robbers armed with knives boarded the anchored Denmarkflagg
+─── 600 derniers caractères
+":5.9999999996400675,"longitude":119.50000000016291,"position":"5°60'00\"N \n119°30'00\"E","navArea":"XI","subreg":"92","hostility":"UNKNOWN","victim":"UNKNOWN VESSEL","description":"SOUTH SULU SEA                                                         LLOYDS LIST OF 15 MAY REPORTS A 5000 TON SHIP OUTRAN TWO HEAVILY       ARMED BOATS DURING A NIGHT TIME ATTACK IN THE SOUTHERN SULU SEA ON     4 MAY 1978. SHIP HIT BY HAND GRENADES AND RIFLE FIRE.                                                                                         POSITION IS FOR REFERENCE ONLY NOT POSITION OF INCIDENT."}]}
+═══ est-ce du JSON malgré tout ?
+JSON valide, 8897 entrées
+champs : reference, date, latitude, longitude, position, navArea, subreg, hostility, victim, description
