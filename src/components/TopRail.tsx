@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useOs } from "@/lib/os-context";
 import { useProgression } from "@/lib/progression-context";
+import { Notifications } from "@/components/Notifications";
 import { Personnaliser } from "@/components/Personnaliser";
 
 /**
@@ -254,6 +255,8 @@ function Compte() {
                 </div>
               ))}
             </div>
+
+            <Notifications />
 
             <div className="mt-[13px] flex flex-col gap-[7px]">
               <button

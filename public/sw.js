@@ -118,6 +118,56 @@ async function fichier(requete) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Les notifications                                                    */
+/* ------------------------------------------------------------------ */
+
+self.addEventListener("push", (evt) => {
+  /*
+   * Une notification DOIT être affichée à chaque message reçu.
+   *
+   * Les navigateurs révoquent l'autorisation d'une application qui reçoit des
+   * messages sans rien montrer. D'où le repli : si la charge est illisible,
+   * on affiche quand même quelque chose plutôt que rien.
+   */
+  let contenu = { titre: "Twaylo OS", corps: "", etiquette: "twaylo" };
+  try {
+    if (evt.data) contenu = { ...contenu, ...evt.data.json() };
+  } catch {
+    contenu.corps = "Ouvre l'OS.";
+  }
+
+  evt.waitUntil(
+    self.registration.showNotification(contenu.titre, {
+      body: contenu.corps,
+      icon: "/icon",
+      badge: "/icon",
+      // Même étiquette = la nouvelle remplace l'ancienne. Trois relances non
+      // lues empilées sur l'écran de verrouillage, on les balaie sans les lire.
+      tag: contenu.etiquette || "twaylo",
+      renotify: true,
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (evt) => {
+  evt.notification.close();
+  evt.waitUntil(
+    (async () => {
+      // Rouvrir une seconde fenêtre alors que l'app est déjà ouverte serait
+      // déroutant : on remet celle qui existe au premier plan.
+      const fenetres = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const f of fenetres) {
+        if (new URL(f.url).origin === self.location.origin) return f.focus();
+      }
+      return self.clients.openWindow("/");
+    })(),
+  );
+});
+
 self.addEventListener("fetch", (evt) => {
   const requete = evt.request;
 
