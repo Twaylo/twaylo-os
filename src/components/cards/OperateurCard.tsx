@@ -1,12 +1,13 @@
 "use client";
 
-import { useOs } from "@/lib/os-context";
+import { useOs, useSaisie } from "@/lib/os-context";
 import { useProgression } from "@/lib/progression-context";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
 export function OperateurCard() {
-  const { data, demoMode, uneChose, setUneChose } = useOs();
+  const { data, demoMode } = useOs();
+  const { uneChose, setUneChose } = useSaisie();
   /*
    * La série vient de la couche progression, pas de `data.operator`.
    *

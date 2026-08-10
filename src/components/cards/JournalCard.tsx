@@ -1,6 +1,6 @@
 "use client";
 
-import { useOs } from "@/lib/os-context";
+import { useOs, useSaisie } from "@/lib/os-context";
 import { Eyebrow, MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -35,7 +35,9 @@ export function MemoryList() {
 }
 
 export function JournalCard() {
-  const { journalText, setJournalText } = useOs();
+  // Le journal change à la frappe : contexte de saisie, pour ne pas
+  // réconcilier les douze autres cartes à chaque lettre.
+  const { journalText, setJournalText } = useSaisie();
 
   return (
     <Panel

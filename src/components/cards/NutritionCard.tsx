@@ -8,7 +8,7 @@ import {
   redistribuerMacros,
   totaux,
 } from "@/lib/nutrition";
-import { useOs } from "@/lib/os-context";
+import { useSaisie } from "@/lib/os-context";
 import { Eyebrow, MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -51,7 +51,8 @@ function Macro({
 export function NutritionCard() {
   // Les repas vivent dans le contexte : ils participent au cycle
   // chargement depuis la base / synchronisation vers elle.
-  const { repas, setRepas } = useOs();
+  // Les champs de macros changent à la frappe : contexte de saisie.
+  const { repas, setRepas } = useSaisie();
   const [saisie, setSaisie] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [ouvert, setOuvert] = useState<string | null>(null);

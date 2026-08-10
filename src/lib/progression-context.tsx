@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useOs } from "./os-context";
+import { useOs, useResumeSaisie } from "./os-context";
 import { localDateKey } from "./local-date";
 import { synchroniserJour } from "./sync";
 import { readJSON, writeJSON } from "./storage";
@@ -126,10 +126,17 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     habits,
     faitesDuJour,
     tasks,
-    journalText,
-    uneChose,
-    repas,
   } = useOs();
+  /*
+   * Le RÉSUMÉ, pas la saisie.
+   *
+   * La progression ne tire de ces trois champs que trois scalaires. S'abonner
+   * au contexte de saisie l'aurait fait re-rendre à chaque lettre tapée dans
+   * le journal — et avec elle la carte Progression, le rail, la journée type,
+   * les tâches clés et la fenêtre Skill, qui lisent tous SON contexte. Le
+   * résumé ne change d'identité que lorsqu'un des trois scalaires change.
+   */
+  const { journalEcrit, uneChoseFaite, nombreRepas } = useResumeSaisie();
 
   /**
    * Le jour suivi. Calculé une fois au montage, puis avancé par un battement
@@ -218,9 +225,9 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       principalesTotal: duJour.filter((t) => niveauDe(t) === "principal").length,
       secondairesFaites: faites("secondaire"),
       annexesFaites: faites("annexe"),
-      journalEcrit: journalText.trim().length > 0,
-      uneChoseFaite: uneChose.fait,
-      repas: repas.length,
+      journalEcrit,
+      uneChoseFaite,
+      repas: nombreRepas,
       bonus: AUCUN_BONUS,
     };
   }, [
@@ -230,9 +237,9 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     habits,
     faitesDuJour,
     tasks,
-    journalText,
-    uneChose.fait,
-    repas.length,
+    journalEcrit,
+    uneChoseFaite,
+    nombreRepas,
     jourVoulu,
   ]);
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { CAPTURE_META } from "@/lib/labels";
-import { useOs } from "@/lib/os-context";
+import { useOs, useSaisie } from "@/lib/os-context";
 import { MicButton } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -19,7 +19,9 @@ import { Panel } from "@/components/Panel";
  * Seule carte à porter le dégradé signature en accent.
  */
 export function CaptureBar() {
-  const { addCapture, capturing, captures, data, uneChose, setUneChose } = useOs();
+  const { addCapture, capturing, captures, data } = useOs();
+  // « La chose du jour » change à la frappe : elle vit dans le contexte de saisie.
+  const { uneChose, setUneChose } = useSaisie();
   /*
    * Le texte en cours de frappe vit ICI, pas dans l'état central.
    *

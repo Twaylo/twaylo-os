@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useOs } from "@/lib/os-context";
+import { useOs, useSaisie } from "@/lib/os-context";
 import { EmptyState, MicButton } from "@/components/ui";
 import { localDateKey, USER_TIMEZONE } from "@/lib/local-date";
 import { Panel } from "@/components/Panel";
@@ -41,7 +41,8 @@ export function JournalView() {
    * écrit les jours précédents existait en base mais n'apparaissait nulle part.
    * C'est ce qui manquait pour que le journal serve de mémoire.
    */
-  const { journalText, setJournalText, demoMode, data } = useOs();
+  const { demoMode, data } = useOs();
+  const { journalText, setJournalText } = useSaisie();
 
   const [passees, setPassees] = useState<EntreePassee[] | null>(null);
   const [erreur, setErreur] = useState(false);
