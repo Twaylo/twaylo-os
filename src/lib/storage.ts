@@ -60,6 +60,20 @@ export const KEYS = {
    * repas d'hier n'ont rien à faire sur la journée d'aujourd'hui.
    */
   etatCache: `${PREFIX}-etat-cache`,
+  /**
+   * Les écritures qui n'ont pas encore atteint la base, rangées par jour.
+   *
+   * Elles vivaient uniquement en mémoire : cocher une habitude dans le métro
+   * puis fermer l'application perdait la coche pour de bon — l'écran la
+   * gardait (le cache local), la base ne l'a jamais reçue, et le lendemain
+   * la base écrasait l'écran. Écrites ici, elles survivent à la fermeture et
+   * repartent au retour du réseau.
+   *
+   * Rangées PAR JOUR, et c'est indispensable : les écritures étaient fusionnées
+   * en un seul paquet dont la date était écrasée par la plus récente. Gardée
+   * d'un jour sur l'autre, une note d'hier se serait écrite sur aujourd'hui.
+   */
+  fileEcritures: `${PREFIX}-ecritures-en-attente`,
 } as const;
 
 /**
@@ -93,6 +107,19 @@ export function writeJSON(key: string, value: unknown): void {
   } catch (err) {
     // Quota dépassé ou mode privé : on le dit, on ne plante pas.
     console.error(`[storage] écriture impossible de ${key} :`, err);
+  }
+}
+
+/**
+ * Efface une clé. Utile quand la clé signifie « il reste du travail » : la
+ * laisser avec un objet vide ferait rejouer une file déjà envoyée.
+ */
+export function effacerCle(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch (err) {
+    console.error(`[storage] effacement impossible de ${key} :`, err);
   }
 }
 

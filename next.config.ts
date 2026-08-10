@@ -43,6 +43,18 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        /*
+         * Le service worker ne doit jamais être servi depuis le cache HTTP :
+         * c'est lui qui décide de tout le reste, une version périmée gèlerait
+         * l'application sur un ancien déploiement.
+         */
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-Frame-Options", value: "DENY" },

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito, JetBrains_Mono } from "next/font/google";
+import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
 /*
@@ -101,7 +102,10 @@ export default function RootLayout({
        */
       style={{ background: "#07121d" }}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {children}
+        <ServiceWorkerLoader />
+      </body>
     </html>
   );
 }

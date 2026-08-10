@@ -38,6 +38,18 @@ const CHEMINS_PUBLICS = new Set([
   "/manifest.webmanifest",
   "/icon",
   "/apple-icon",
+  /*
+   * Le service worker, ouvert lui aussi, et il le FAUT.
+   *
+   * Le filtre du middleware laisse passer les images et `_next/static`, mais
+   * pas un `.js` du dossier public : derrière la porte, `/sw.js` recevait la
+   * page de connexion en HTML à la place du script. L'installation échouait,
+   * et l'OS restait un site qui a besoin du réseau.
+   *
+   * Ce qu'on ouvre : une stratégie de mise en cache. Aucune donnée, et le
+   * script refuse d'ailleurs de toucher aux routes `/api/`.
+   */
+  "/sw.js",
   // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
   // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
   // elle-même et refuse tout si la variable manque.

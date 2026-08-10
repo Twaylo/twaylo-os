@@ -1,5 +1,8 @@
 "use client";
 
+import { localDateKey } from "./local-date";
+import { KEYS, effacerCle, readJSON, writeJSON } from "./storage";
+
 /**
  * La synchronisation avec la base.
  *
@@ -97,48 +100,88 @@ export async function chargerEtat(jour: string): Promise<EtatDistant | null> {
  */
 const DELAI_MS = 1000;
 
-let enAttente: Record<string, unknown> | null = null;
+/**
+ * Les écritures qui attendent, RANGÉES PAR JOUR.
+ *
+ * Elles tenaient dans un seul objet fusionné. Tant que la file ne survivait
+ * pas à la fermeture, ça passait : tout ce qui s'y trouvait datait forcément
+ * de la même session. Maintenant qu'elle est gardée sur le téléphone pour
+ * repartir au retour du réseau, une coche d'hier peut y croiser une coche
+ * d'aujourd'hui — et la fusion écrasait la date avec la plus récente, donc
+ * écrivait la journée d'hier sur celle d'aujourd'hui. Une entrée par jour,
+ * un envoi par jour.
+ */
+type File = Record<string, Record<string, unknown>>;
+
+let enAttente: File = {};
 let minuteur: ReturnType<typeof setTimeout> | null = null;
 let envoiEnCours = false;
 /** Échecs consécutifs — espace les reprises au lieu de marteler le réseau. */
 let echecs = 0;
 
+function resteQuelqueChose(): boolean {
+  return Object.keys(enAttente).length > 0;
+}
+
+/** La file, écrite sur le téléphone : elle doit survivre à la fermeture. */
+function memoriserFile(): void {
+  if (resteQuelqueChose()) writeJSON(KEYS.fileEcritures, enAttente);
+  else effacerCle(KEYS.fileEcritures);
+}
+
 async function envoyer() {
-  if (envoiEnCours || !enAttente) return;
+  if (envoiEnCours || !resteQuelqueChose()) return;
 
   const charge = enAttente;
-  enAttente = null;
+  enAttente = {};
   envoiEnCours = true;
 
+  /*
+   * La charge est RENDUE à la file, jamais jetée.
+   *
+   * Elle était vidée avant l'envoi et perdue dès que celui-ci échouait : une
+   * habitude cochée dans le métro, une note écrite hors réseau, ne repartaient
+   * jamais — même une fois la connexion revenue. Ce qui est arrivé entre-temps
+   * reste prioritaire : c'est l'intention la plus récente qui doit gagner.
+   */
+  const rendre = (jour: string, patch: Record<string, unknown>) => {
+    enAttente[jour] = { ...patch, ...(enAttente[jour] ?? {}) };
+  };
+
+  let unEchec = false;
+  let dernierPersiste = true;
+
   try {
-    const res = await fetch("/api/daily", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(charge),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    poser(data.persiste ? "connecte" : "hors_ligne");
-    echecs = 0;
-  } catch (err) {
-    console.error("[sync] écriture impossible :", err);
-    poser("erreur");
-    /*
-     * La charge est RENDUE à la file, jamais jetée.
-     *
-     * Elle était vidée avant l'envoi et perdue dès que celui-ci échouait :
-     * une habitude cochée dans le métro, une note écrite hors réseau, ne
-     * repartaient jamais — même une fois la connexion revenue. Ce qui est
-     * arrivé entre-temps reste prioritaire : c'est l'intention la plus
-     * récente qui doit gagner.
-     */
-    enAttente = { ...charge, ...(enAttente ?? {}) };
-    echecs += 1;
+    for (const [jour, patch] of Object.entries(charge)) {
+      try {
+        const res = await fetch("/api/daily", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        dernierPersiste = Boolean(data.persiste);
+      } catch (err) {
+        console.error(`[sync] écriture du ${jour} impossible :`, err);
+        rendre(jour, patch);
+        unEchec = true;
+      }
+    }
+
+    if (unEchec) {
+      poser("erreur");
+      echecs += 1;
+    } else {
+      poser(dernierPersiste ? "connecte" : "hors_ligne");
+      echecs = 0;
+    }
   } finally {
     envoiEnCours = false;
+    memoriserFile();
     // Une modification est arrivée pendant l'envoi, ou l'envoi a échoué : on
     // repart.
-    if (enAttente) planifier();
+    if (resteQuelqueChose()) planifier();
   }
 }
 
@@ -157,7 +200,9 @@ function planifier() {
 
 /** Empile une modification de la journée ; l'envoi part une seconde plus tard. */
 export function synchroniserJour(patch: Record<string, unknown>): void {
-  enAttente = { ...(enAttente ?? {}), ...patch };
+  const jour = typeof patch.jour === "string" ? patch.jour : localDateKey();
+  enAttente[jour] = { ...(enAttente[jour] ?? {}), ...patch, jour };
+  memoriserFile();
   planifier();
 }
 
@@ -167,7 +212,7 @@ export function viderSync(): void {
     clearTimeout(minuteur);
     minuteur = null;
   }
-  if (!enAttente) return;
+  if (!resteQuelqueChose()) return;
 
   /*
    * `sendBeacon` survit à la fermeture de l'onglet, contrairement à `fetch`
@@ -179,23 +224,61 @@ export function viderSync(): void {
    * elle reste en attente — l'onglet peut ne pas se fermer (retour de
    * visibilité), et l'envoi repartira.
    */
-  const charge = enAttente;
-  try {
-    const pris = navigator.sendBeacon(
-      "/api/daily",
-      new Blob([JSON.stringify(charge)], { type: "application/json" }),
-    );
-    if (pris) enAttente = null;
-    else console.error("[sync] envoi final refusé par le navigateur (charge trop lourde ?)");
-  } catch (err) {
-    console.error("[sync] envoi final impossible :", err);
+  for (const [jour, patch] of Object.entries(enAttente)) {
+    try {
+      const pris = navigator.sendBeacon(
+        "/api/daily",
+        new Blob([JSON.stringify(patch)], { type: "application/json" }),
+      );
+      if (pris) delete enAttente[jour];
+      else
+        console.error(
+          `[sync] envoi final du ${jour} refusé par le navigateur (charge trop lourde ?)`,
+        );
+    } catch (err) {
+      console.error(`[sync] envoi final du ${jour} impossible :`, err);
+    }
   }
+
+  /*
+   * Et surtout : ce qui n'est pas parti est ÉCRIT SUR LE TÉLÉPHONE.
+   *
+   * `sendBeacon` renvoie `true` dès que le navigateur accepte la charge — pas
+   * quand le serveur l'a reçue. Sans réseau, il l'accepte puis la jette en
+   * silence. Hors ligne, on ne le croit donc pas sur parole : la file reste
+   * écrite, et le prochain démarrage la renverra.
+   */
+  if (typeof navigator !== "undefined" && navigator.onLine === false) enAttente = { ...enAttente };
+  memoriserFile();
 }
 
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", viderSync);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") viderSync();
+  });
+
+  /*
+   * Ce qui restait de la session précédente repart tout de suite.
+   *
+   * C'est ce qui fait la différence entre « l'app garde tes coches à l'écran »
+   * et « tes coches finissent en base » : une habitude cochée dans le métro,
+   * l'application refermée avant le retour du réseau, arrivait jusqu'ici sans
+   * jamais être enregistrée.
+   */
+  const restes = readJSON<File>(KEYS.fileEcritures, {});
+  if (restes && Object.keys(restes).length > 0) {
+    enAttente = { ...restes, ...enAttente };
+    planifier();
+  }
+
+  /*
+   * Le retour du réseau relance immédiatement, sans attendre la fin de
+   * l'espacement des reprises — qui peut atteindre trente secondes.
+   */
+  window.addEventListener("online", () => {
+    echecs = 0;
+    if (resteQuelqueChose()) planifier();
   });
 }
 
