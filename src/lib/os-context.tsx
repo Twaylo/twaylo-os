@@ -33,7 +33,7 @@ import {
   ordonnerOnglets,
   type CustomConfig,
 } from "./custom";
-import { JOURNEES_DEFAUT, type JourneesConfig } from "./journees";
+import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
 import {
   KEYS,
   dailyKey,
@@ -647,6 +647,27 @@ export function OsProvider({ children }: { children: ReactNode }) {
     if (d.nutrition?.repas) setRepas(d.nutrition.repas as Repas[]);
   }, []);
 
+  /**
+   * Les deux cartes que le cache d'état ne couvrait pas.
+   *
+   * Elles ont leur propre route, donc elles échappaient à `KEYS.etatCache` :
+   * la journée type affichait « Lecture de ta journée… » et les objectifs une
+   * liste vide — pendant que tout le reste du tableau de bord était déjà
+   * peint. Le temps d'attente n'était pas une seconde de réseau mais le
+   * réveil d'une fonction serverless, plusieurs secondes au premier
+   * chargement de la journée.
+   *
+   * Ni l'une ni l'autre n'est datée : ce sont des modèles et des objectifs,
+   * pas des coches. Les coches du jour, elles, restent hors cache — les
+   * ressortir un nouveau matin serait pire que de les attendre.
+   */
+  const appliquerCacheAnnexes = useCallback(() => {
+    const journees = readJSON<JourneesConfig | null>(KEYS.journeesCache, null);
+    if (journees?.liste?.length) setJournees(bornerJournees(journees));
+    const objectifs = readJSON<ObjectifVue[] | null>(KEYS.objectifsCache, null);
+    if (Array.isArray(objectifs)) setObjectifs(objectifs);
+  }, []);
+
   /*
    * Lecture initiale, une seule fois — AVANT le premier affichage.
    *
@@ -681,11 +702,12 @@ export function OsProvider({ children }: { children: ReactNode }) {
       // que `hydrateFromStorage` vient de repeindre depuis un cache plus frais
       // (il suit les modifications faites depuis la dernière lecture).
       appliquerCache();
+      appliquerCacheAnnexes();
     }
 
     hydrated.current = true;
     setHydrate(true);
-  }, [hydrateFromStorage, appliquerCache]);
+  }, [hydrateFromStorage, appliquerCache, appliquerCacheAnnexes]);
 
   useEffect(() => surChangementSync(setSync), []);
 
@@ -768,7 +790,11 @@ export function OsProvider({ children }: { children: ReactNode }) {
         if (annule) return;
         // Les modèles arrivent même sans base — ce sont ceux d'usine, et sans
         // eux l'écran resterait bloqué sur « Lecture de tes journées types… ».
-        if (d.journees) setJournees(d.journees);
+        if (d.journees) {
+          setJournees(d.journees);
+          // Pour repeindre la carte instantanément au prochain démarrage.
+          if (d.connecte !== false) writeJSON(KEYS.journeesCache, d.journees);
+        }
         /*
          * Une liste vide s'applique comme les autres — mais seulement si elle
          * vient vraiment de la base.
@@ -975,7 +1001,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
     void fetch("/api/objectifs")
       .then((r) => r.json())
       .then((d: { objectifs?: ObjectifVue[] }) => {
-        if (!annule && Array.isArray(d.objectifs)) setObjectifs(d.objectifs);
+        if (annule || !Array.isArray(d.objectifs)) return;
+        setObjectifs(d.objectifs);
+        writeJSON(KEYS.objectifsCache, d.objectifs);
       })
       .catch((err) => console.error("[objectifs] chargement impossible :", err));
     return () => {

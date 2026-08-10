@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,7 +14,7 @@ import {
 import { useOs, useResumeSaisie } from "./os-context";
 import { localDateKey } from "./local-date";
 import { synchroniserJour } from "./sync";
-import { readJSON, writeJSON } from "./storage";
+import { KEYS, readJSON, writeJSON } from "./storage";
 import { feter } from "./recompenses-store";
 import {
   BONUS,
@@ -85,7 +86,24 @@ type ProgressionState = {
   record: { jour: string; xp: number } | null;
   /** Le dernier jour rempli avant aujourd'hui — sert aux relances. */
   dernierJourRempli: string | null;
+  /**
+   * Vrai dès qu'il y a quelque chose de crédible à AFFICHER — cache compris.
+   *
+   * À ne pas confondre avec `pret`, qui reste réservé à ce qui DÉCIDE :
+   * accorder un bonus, fêter une montée de niveau, écrire en base. Le niveau
+   * peint depuis la mémoire du navigateur peut être d'une seconde en retard,
+   * ce qui est sans conséquence à l'écran et inacceptable pour une écriture.
+   */
+  affichable: boolean;
 };
+
+/**
+ * `useLayoutEffect` dans le navigateur, `useEffect` au pré-rendu serveur —
+ * même raison que dans os-context : peindre avant la première image sans
+ * faire grogner React côté serveur.
+ */
+const useEffetAvantPeinture =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const Ctx = createContext<ProgressionState | null>(null);
 
@@ -165,6 +183,36 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     jour: string;
     data: ProgressionDistante;
   } | null>(null);
+
+  /**
+   * Le repli peint avant la réponse du serveur.
+   *
+   * La carte Progression affichait « — » et « Lecture de ta progression… »
+   * pendant tout le réveil de la fonction serverless — plusieurs secondes au
+   * premier chargement de la journée — alors que le reste du tableau de bord
+   * était déjà là. On repeint donc le dernier niveau connu tout de suite.
+   *
+   * Daté, et seulement le strict nécessaire : l'XP cumulée d'avant
+   * aujourd'hui et les deux séries. Rien qui serve à décider — `pret` reste
+   * faux tant que la base n'a pas parlé, donc aucun bonus n'est accordé et
+   * aucune fenêtre ne s'ouvre sur une donnée périmée.
+   */
+  const [repli, setRepli] = useState<{
+    jour: string;
+    xpAvant: number;
+    serie: number;
+    meilleureSerie: number;
+  } | null>(null);
+
+  useEffetAvantPeinture(() => {
+    const c = readJSON<{
+      jour: string;
+      xpAvant: number;
+      serie: number;
+      meilleureSerie: number;
+    } | null>(KEYS.progressionCache, null);
+    if (c && c.jour === localDateKey()) setRepli(c);
+  }, []);
   /** En démo, on ne montre AUCUN chiffre réel — et on ne va même pas les chercher. */
   const distant = demoMode || lecture?.jour !== jourVoulu ? null : lecture.data;
 
@@ -175,10 +223,17 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       .then((r) => r.json())
       .then((d: Partial<ProgressionDistante> & { connecte?: boolean }) => {
         if (annule) return;
-        setLecture({
-          jour: jourVoulu,
-          data: { ...DISTANTE_VIDE, ...d, connecte: Boolean(d.connecte) },
-        });
+        const data = { ...DISTANTE_VIDE, ...d, connecte: Boolean(d.connecte) };
+        setLecture({ jour: jourVoulu, data });
+        // De quoi repeindre le niveau instantanément au prochain démarrage.
+        if (data.connecte) {
+          writeJSON(KEYS.progressionCache, {
+            jour: jourVoulu,
+            xpAvant: data.xpAvant,
+            serie: data.serie,
+            meilleureSerie: data.meilleureSerie,
+          });
+        }
       })
       .catch((err) => {
         console.error("[progression] lecture impossible :", err);
@@ -190,6 +245,13 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
   }, [demoMode, jourVoulu]);
 
   const pret = Boolean(distant) && !demoMode;
+  /*
+   * Le repli ne sert QU'À l'affichage, et seulement s'il parle d'aujourd'hui.
+   * `pret` reste indexé sur la réponse du serveur : rien ne se décide sur une
+   * donnée qui peut avoir une seconde de retard.
+   */
+  const socleXp = distant?.xpAvant ?? (repli?.jour === jourVoulu ? repli.xpAvant : 0);
+  const affichable = pret || (!demoMode && repli?.jour === jourVoulu);
 
   /* ---------------- Les nombres du jour, en direct ---------------- */
 
@@ -291,7 +353,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
   }
 
   const detailJour = useMemo(() => detailXp(jour), [jour]);
-  const xpTotal = (distant?.xpAvant ?? 0) + xpJour;
+  const xpTotal = socleXp + xpJour;
   const palier = useMemo(() => palierDe(xpTotal), [xpTotal]);
 
   /* ---------------- Écrire et annoncer les bonus ---------------- */
@@ -374,7 +436,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
    * de la veille, et le palier « 7 jours » ne tombait jamais le jour où il
    * était atteint.
    */
-  const serieBase = distant?.serie ?? 0;
+  const serieBase = distant?.serie ?? (repli?.jour === jourVoulu ? repli.serie : 0);
   const serie =
     pret && !distant?.aujourdhuiCompte && xpJour > 0 ? serieBase + 1 : serieBase;
 
@@ -480,7 +542,10 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
        * premier geste du jour : le bilan affichait « série 1 j » juste à côté
        * de « meilleure série 0 j » le jour où la série démarre.
        */
-      meilleureSerie: Math.max(distant?.meilleureSerie ?? 0, serie),
+      meilleureSerie: Math.max(
+        distant?.meilleureSerie ?? (repli?.jour === jourVoulu ? repli.meilleureSerie : 0),
+        serie,
+      ),
       prochainPalierSerie: prochainPalierSerie(serie),
       cumuls,
       exploits,
@@ -488,8 +553,23 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       jours: distant?.jours ?? [],
       record: distant?.record ?? null,
       dernierJourRempli: distant?.dernierJourRempli ?? null,
+      affichable,
     }),
-    [pret, jour, xpJour, detailJour, xpTotal, palier, serie, distant, cumuls, exploits],
+    [
+      pret,
+      affichable,
+      jour,
+      xpJour,
+      detailJour,
+      xpTotal,
+      palier,
+      serie,
+      distant,
+      repli,
+      jourVoulu,
+      cumuls,
+      exploits,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

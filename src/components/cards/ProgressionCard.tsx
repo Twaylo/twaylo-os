@@ -16,7 +16,15 @@ import { BAREME, BONUS, bonusMerites } from "@/lib/xp";
  */
 export function ProgressionCard() {
   const { demoMode } = useOs();
-  const { pret, palier, xpJour, detailJour, jour, serie, prochainPalierSerie } =
+  /*
+   * `affichable` pour peindre, `pret` n'aurait rien montré.
+   *
+   * La carte affichait « — » et « Lecture de ta progression… » pendant tout
+   * le réveil de la fonction serveur, alors que le dernier niveau connu est
+   * dans la mémoire du navigateur. On peint donc ce qu'on sait ; ce qui
+   * DÉCIDE (accorder un bonus, fêter une montée) continue d'attendre la base.
+   */
+  const { affichable, palier, xpJour, detailJour, jour, serie, prochainPalierSerie } =
     useProgression();
 
   if (demoMode) {
@@ -116,7 +124,7 @@ export function ProgressionCard() {
           }}
         >
           <span className="text-[8px] font-black tracking-[0.1em] opacity-60">NIV</span>
-          <span className="font-mono text-[21px] font-black">{pret ? palier.niveau : "—"}</span>
+          <span className="font-mono text-[21px] font-black">{affichable ? palier.niveau : "—"}</span>
         </div>
 
         <div className="min-w-0 flex-1">
@@ -128,7 +136,7 @@ export function ProgressionCard() {
               {palier.grade}
             </span>
             <span className="flex-none font-mono text-[10.5px] font-bold text-white/35">
-              {pret ? `${palier.dansNiveau} / ${palier.pourNiveau}` : "…"}
+              {affichable ? `${palier.dansNiveau} / ${palier.pourNiveau}` : "…"}
             </span>
           </div>
 
@@ -139,7 +147,7 @@ export function ProgressionCard() {
             <div
               className={`h-full rounded-full transition-[width] duration-500 ${xpJour > 0 ? "barre-xp-vive" : ""}`}
               style={{
-                width: `${Math.round((pret ? palier.fraction : 0) * 100)}%`,
+                width: `${Math.round((affichable ? palier.fraction : 0) * 100)}%`,
                 background: `linear-gradient(90deg, ${palier.couleur}88, ${palier.couleur})`,
                 boxShadow: `0 0 10px -1px ${palier.couleur}`,
               }}
@@ -147,7 +155,7 @@ export function ProgressionCard() {
           </div>
 
           <div className="mt-[6px] text-[10.5px] font-bold text-white/35">
-            {pret
+            {affichable
               ? `Encore ${palier.pourNiveau - palier.dansNiveau} XP avant le niveau ${palier.niveau + 1}`
               : "Lecture de ta progression…"}
           </div>

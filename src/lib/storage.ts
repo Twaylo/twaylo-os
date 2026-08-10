@@ -32,6 +32,25 @@ export const KEYS = {
    */
   tachesCache: `${PREFIX}-taches-cache`,
   /**
+   * Les modèles de journée type, tels que la base les a renvoyés.
+   *
+   * Ils ne dépendent pas du jour — ce sont des modèles, pas des coches — donc
+   * pas de date dans la clé. Sans ce cache, la carte affichait « Lecture de ta
+   * journée… » le temps que la fonction serveur sorte de veille, alors que le
+   * reste du tableau de bord était déjà peint depuis la mémoire du navigateur.
+   */
+  journeesCache: `${PREFIX}-journees-cache`,
+  /** Les objectifs, dernière version connue. Hors du temps eux aussi. */
+  objectifsCache: `${PREFIX}-objectifs-cache`,
+  /**
+   * L'XP cumulée et la série, avec le jour qu'elles décrivent.
+   *
+   * Datées, contrairement aux deux précédentes : ressortir la série d'hier un
+   * nouveau matin afficherait un compteur faux, ce qui est pire qu'un compteur
+   * qui se remplit une seconde plus tard.
+   */
+  progressionCache: `${PREFIX}-progression-cache`,
+  /**
    * Le dernier état complet renvoyé par la base, avec le jour qu'il décrit.
    *
    * Les cartes se remplissaient une par une à mesure que le serveur répondait,
