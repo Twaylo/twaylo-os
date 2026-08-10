@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOs } from "@/lib/os-context";
 import { useProgression } from "@/lib/progression-context";
 import { Personnaliser } from "@/components/Personnaliser";
@@ -136,7 +136,7 @@ function DemoToggle() {
           ? "Données factices affichées — repasser sur les vraies"
           : "Afficher des données factices pour filmer l'écran"
       }
-      className="flex flex-none cursor-pointer items-center gap-[6px] rounded-full px-[10px] py-[5px] text-[10.5px] font-extrabold tracking-[0.06em] transition-all hover:brightness-125"
+      className="flex min-h-[44px] flex-none cursor-pointer items-center gap-[6px] rounded-full px-[12px] py-[5px] text-[10.5px] font-extrabold tracking-[0.06em] transition-all hover:brightness-125 lg:min-h-0 lg:px-[10px]"
       style={{
         color: demoMode ? "var(--color-amb)" : "rgba(255,255,255,0.4)",
         background: demoMode ? "rgba(255,198,61,0.12)" : "rgba(255,255,255,0.04)",
@@ -206,7 +206,9 @@ function Compte() {
         aria-expanded={ouvert}
         aria-haspopup="dialog"
         title="Mon compte"
-        className="block h-[38px] w-[38px] cursor-pointer rounded-full p-[2px] transition-all hover:brightness-125"
+        /* 44 px au doigt, 38 à la souris : la recommandation d'Apple ne vaut
+           que là où l'on vise avec un pouce. */
+        className="block h-[44px] w-[44px] cursor-pointer rounded-full p-[2px] transition-all hover:brightness-125 lg:h-[38px] lg:w-[38px]"
         style={{ background: "var(--grad)" }}
       >
         <span className="flex h-full w-full items-center justify-center rounded-full bg-[#07121d] text-[15px] font-black">
@@ -289,6 +291,28 @@ export function TopRail() {
   const { activeTab, setActiveTab, data, demoMode, youtube, ongletsVisibles } = useOs();
 
   /*
+   * Sur téléphone, les treize onglets défilent à l'horizontale sur une seule
+   * ligne. Encore faut-il que celui qu'on vient de choisir soit visible :
+   * « Oubliés » est le treizième, donc hors cadre au départ.
+   *
+   * On déplace UNIQUEMENT le défilement du rail, jamais celui de la page.
+   * `scrollIntoView` aurait fait les deux — et un onglet qui recale la page
+   * verticalement à chaque clic, c'est le défaut qu'on vient de corriger.
+   */
+  const railRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const actif = rail.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!actif) return;
+    const marge = 14;
+    const bordGauche = actif.offsetLeft - marge;
+    const bordDroit = actif.offsetLeft + actif.offsetWidth + marge - rail.clientWidth;
+    if (rail.scrollLeft > bordGauche) rail.scrollTo({ left: bordGauche, behavior: "smooth" });
+    else if (rail.scrollLeft < bordDroit) rail.scrollTo({ left: bordDroit, behavior: "smooth" });
+  }, [activeTab, ongletsVisibles]);
+
+  /*
    * Les trois compteurs du haut. En mode réel ils viennent de YouTube — vides
    * tant que la connexion n'a pas répondu, puis abonnés / vues 30 j / RPM. En
    * démo, le jeu factice.
@@ -334,8 +358,21 @@ export function TopRail() {
         paddingTop: "env(safe-area-inset-top, 0px)",
       }}
     >
+      {/*
+        Trois blocs, deux dispositions.
+
+        Sur grand écran, rien ne change : logo à gauche, onglets au centre,
+        compte à droite, le tout sur une ligne.
+
+        Sur téléphone, les treize onglets se répartissaient sur QUATRE lignes —
+        153 px rien que pour naviguer, et un bandeau qui mangeait 34 % de
+        l'écran. Ils passent donc sur leur propre ligne, en un rail qui défile
+        à l'horizontale. C'est `order` qui fait la bascule : le bloc de droite
+        remonte à côté du logo, le rail descend en dessous et prend toute la
+        largeur.
+      */}
       <div
-        className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-6 py-3"
+        className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-[9px] px-6 py-3"
         style={{
           paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
           paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
@@ -344,7 +381,15 @@ export function TopRail() {
         <Logo />
 
         <nav
-          className="flex flex-wrap items-center gap-[3px] rounded-full p-1"
+          ref={railRef}
+          /*
+           * `overflow-y-hidden` est obligatoire à côté de `overflow-x-auto` :
+           * un axe laissé en `visible` face à un axe défilant bascule en
+           * `auto` (la spécification l'impose), et ce rail deviendrait une
+           * seconde zone défilante VERTICALE — exactement le défaut du
+           * défilement qui bloque, réintroduit par la porte de derrière.
+           */
+          className="rail-onglets order-3 flex w-full flex-nowrap items-center gap-[3px] overflow-x-auto overflow-y-hidden rounded-full p-1 lg:order-2 lg:w-auto lg:flex-wrap lg:overflow-visible"
           style={{
             background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.06)",
@@ -358,7 +403,7 @@ export function TopRail() {
                 type="button"
                 onClick={() => setActiveTab(tab)}
                 aria-current={on ? "page" : undefined}
-                className="cursor-pointer rounded-full px-[13px] py-[7px] text-[13px] font-extrabold transition-all hover:brightness-125"
+                className="flex min-h-[44px] flex-none cursor-pointer items-center rounded-full px-[13px] py-[7px] text-[13px] font-extrabold transition-all hover:brightness-125 lg:min-h-0"
                 style={
                   on
                     ? {
@@ -378,7 +423,7 @@ export function TopRail() {
           })}
         </nav>
 
-        <div className="flex items-center gap-[10px]">
+        <div className="order-2 flex items-center gap-[10px] lg:order-3">
           {/*
             Les tickers de Miles étaient BTC / NDX / XAU — les chiffres qui
             comptent pour un investisseur. Ceux de Twaylo sont ses abonnés,
@@ -407,7 +452,13 @@ export function TopRail() {
 
           <SyncIndicator />
           <DemoToggle />
-          <div className="text-right leading-[1.2]">
+          {/*
+            La date et l'heure disparaissent sur téléphone, et ce n'est pas
+            une amputation : en mode application, la barre d'état d'iOS affiche
+            l'heure juste au-dessus. Deux horloges à trois centimètres l'une de
+            l'autre, c'est 110 px de largeur dépensés à répéter le système.
+          */}
+          <div className="hidden text-right leading-[1.2] sm:block">
             {/* Espace réservé pendant le premier rendu pour éviter un saut. */}
             <div className="text-[12.5px] font-extrabold capitalize">{dateStr || " "}</div>
             <div className="font-mono text-[11px] text-white/40">{timeStr || " "}</div>

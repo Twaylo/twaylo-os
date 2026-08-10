@@ -237,7 +237,9 @@ function ActionJournee({
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer rounded-[8px] px-[10px] py-[5px] text-[11px] font-extrabold transition-all hover:brightness-125"
+      /* 44 px de haut au doigt : ces trois boutons sont côte à côte, et à
+         29 px on en visait un pour en toucher un autre. */
+      className="min-h-[44px] cursor-pointer rounded-[8px] px-[12px] py-[5px] text-[11px] font-extrabold transition-all hover:brightness-125 lg:min-h-0 lg:px-[10px]"
       style={
         danger
           ? {

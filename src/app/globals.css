@@ -95,6 +95,146 @@ body {
   background: rgba(63, 184, 207, 0.35);
 }
 
+/* ------------------------------------------------------------------ */
+/* Ce qui sépare une page web d'une application, au doigt              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Quatre détails que personne ne remarque quand ils sont là, et qui trahissent
+ * une page web dès qu'ils manquent.
+ *
+ * `touch-callout` : un appui maintenu sur un bouton fait surgir le menu iOS
+ *   « Copier / Partager ». Sur une case à cocher, c'est absurde — et c'est ce
+ *   qui arrive quand le doigt s'attarde un peu.
+ * `user-select` : sans ça, le même appui surligne le libellé en bleu. Une
+ *   application native ne surligne pas ses boutons.
+ * `touch-action: manipulation` : supprime le double-appui pour zoomer sur les
+ *   contrôles, et avec lui l'attente que Safari s'impose avant de valider un
+ *   appui simple.
+ *
+ * Le texte des cartes, lui, reste sélectionnable : on peut vouloir copier une
+ * ligne de journal ou un titre de vidéo.
+ */
+/*
+ * DANS `@layer base`, et ce n'est pas un détail de rangement.
+ *
+ * Tailwind 4 range ses classes utilitaires dans une couche `utilities`. Une
+ * règle écrite HORS de toute couche l'emporte sur n'importe quelle couche,
+ * quelle que soit sa spécificité : posée ici sans couche, `touch-action:
+ * manipulation` écrasait le `touch-none` de la poignée de glissement des
+ * tâches — et glisser une tâche se serait mis à faire défiler la page.
+ * Dans `base`, ce sont de vraies valeurs par défaut : une classe posée sur un
+ * élément précis les contredit, comme il se doit.
+ */
+@layer base {
+  button,
+  [role="button"],
+  label,
+  summary {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Les champs de saisie DANS un label doivent rester sélectionnables. */
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /*
+   * Le rebond de fin de page reste (il fait partie du toucher iOS), mais il ne
+   * déclenche plus de rechargement : en mode application, tirer vers le bas
+   * depuis le haut de l'accueil rechargeait l'OS pour rien.
+   */
+  html {
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Le pouce et l'œil, sur un écran de téléphone                        */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1023px) {
+  /*
+   * Plancher de lisibilité.
+   *
+   * L'interface est dessinée pour un grand écran : 62 des 145 morceaux de
+   * texte de l'accueil descendaient sous 10 px, jusqu'à 8 px pour les
+   * étiquettes en capitales. À bout de bras sur un téléphone, ce n'est plus
+   * de la petite taille, c'est illisible. On remonte tout à 10 px — assez
+   * pour changer quelque chose, assez peu pour que rien ne se réorganise.
+   */
+  .text-\[8px\],
+  .text-\[8\.5px\],
+  .text-\[9px\],
+  .text-\[9\.5px\] {
+    font-size: 10px;
+  }
+
+  /*
+   * Les lignes qu'on coche sont les cibles les plus sollicitées de l'OS —
+   * habitudes, tâches, blocs de journée type. Apple recommande 44 px ; elles
+   * en faisaient une trentaine. Le geste rate, on recommence, et cocher
+   * devient pénible au lieu d'être satisfaisant.
+   */
+  .check-row,
+  .list-row {
+    min-height: 44px;
+  }
+
+}
+
+/*
+ * Les champs de saisie descendaient à 17 px de haut — une ligne de texte sans
+ * un pixel autour. Viser ça au pouce, c'est ouvrir le clavier une fois sur
+ * deux. 36 px et non 44 : un champ n'est pas un bouton, il est presque
+ * toujours posé dans une ligne déjà haute, et l'allonger davantage écarterait
+ * les cartes pour rien. Les cases à cocher gardent leur taille : elles ont
+ * leur propre zone d'appui.
+ *
+ * Dans `base` là encore : sans ça, ce plancher écrasait le `min-h-[104px]` du
+ * grand champ de la Revue, qui se retrouvait rabougri À 64 px AVEC un
+ * ascenseur interne — soit une zone défilante imbriquée, exactement le défaut
+ * qu'on vient de faire disparaître. Une classe doit pouvoir demander plus.
+ */
+@layer base {
+  @media (max-width: 1023px) {
+    main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    main select,
+    main textarea {
+      min-height: 36px;
+    }
+  }
+}
+
+/*
+ * Le rail d'onglets défile à l'horizontale sans montrer d'ascenseur : sur
+ * téléphone il n'y en a pas, et sur un portable à trackpad une barre grise en
+ * travers de la barre de navigation ferait sale. Le défilement reste au doigt
+ * et au trackpad, et l'onglet actif est ramené dans le cadre par le code.
+ */
+.rail-onglets {
+  scrollbar-width: none;
+  /* Le rail s'arrête pile sur un onglet plutôt qu'à moitié dessus. */
+  scroll-snap-type: x proximity;
+}
+.rail-onglets::-webkit-scrollbar {
+  display: none;
+}
+.rail-onglets > button {
+  scroll-snap-align: center;
+}
+@media (min-width: 1024px) {
+  /* Sur grand écran le rail ne défile plus : l'accrochage n'a plus d'objet. */
+  .rail-onglets {
+    scroll-snap-type: none;
+  }
+}
+
 a {
   color: #3fb8cf;
   text-decoration: none;

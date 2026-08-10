@@ -69,13 +69,24 @@ export function CaptureBar() {
           onClick={() => setUneChose((p) => ({ ...p, fait: !p.fait }))}
           aria-pressed={uneChose.fait}
           title="Marquer comme fait"
-          className="flex h-[22px] w-[22px] flex-none cursor-pointer items-center justify-center rounded-[7px] text-[12px] font-black text-[#07121d] transition-all hover:brightness-125"
-          style={{
-            background: uneChose.fait ? "var(--color-amb)" : "transparent",
-            border: `2px solid ${uneChose.fait ? "var(--color-amb)" : "rgba(255,198,61,0.4)"}`,
-          }}
+          /*
+            La case garde ses 22 px à l'écran, mais la zone qui reçoit l'appui
+            en fait 44 sur téléphone. Les marges négatives absorbent
+            l'agrandissement : rien ne bouge autour, seul le doigt y gagne.
+            C'est la coche la plus importante de la journée — elle ne doit
+            jamais se rater.
+          */
+          className="-my-[11px] -ml-[11px] flex h-[44px] w-[44px] flex-none cursor-pointer items-center justify-center transition-all hover:brightness-125 lg:m-0 lg:h-[22px] lg:w-[22px]"
         >
-          {uneChose.fait ? "✓" : ""}
+          <span
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-[7px] text-[12px] font-black text-[#07121d]"
+            style={{
+              background: uneChose.fait ? "var(--color-amb)" : "transparent",
+              border: `2px solid ${uneChose.fait ? "var(--color-amb)" : "rgba(255,198,61,0.4)"}`,
+            }}
+          >
+            {uneChose.fait ? "✓" : ""}
+          </span>
         </button>
         <div className="min-w-0 flex-1">
           <div
