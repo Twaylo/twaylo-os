@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# Copie brute de la base ASAM, gardée pour rejouer la normalisation sans
+# retélécharger. Plusieurs mégaoctets, régénérables : hors du dépôt.
+/.cache
+
 # debug
 npm-debug.log*
 yarn-debug.log*

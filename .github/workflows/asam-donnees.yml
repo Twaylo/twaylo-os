@@ -1,0 +1,76 @@
+# Récupération de la base ASAM sur les serveurs de GitHub.
+#
+# Pourquoi ici et pas en local : les sessions Claude Code dans le nuage sortent
+# par un proxy qui refuse msi.nga.mil. Les exécuteurs GitHub, eux, ont un accès
+# réseau ouvert. Le téléchargement tourne donc ici, et le résultat revient dans
+# le dépôt par un commit.
+#
+# Ce n'est pas qu'un contournement : la base ASAM est mise à jour en continu par
+# la NGA. Ce workflow est le moyen de rafraîchir les données du site plus tard,
+# sans rien réinstaller ni relancer à la main.
+name: Données ASAM
+
+on:
+  # Déclenchement manuel, depuis l'onglet Actions du dépôt.
+  workflow_dispatch:
+  # Et automatiquement quand la collecte elle-même change : pousser une
+  # correction du script doit suffire à régénérer les données.
+  push:
+    paths:
+      - "scripts/asam-recuperer.mjs"
+      - ".github/workflows/asam-donnees.yml"
+
+# Le commit de données ne doit pas se retrouver en concurrence avec lui-même
+# si deux poussées se suivent de près.
+concurrency:
+  group: asam-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recuperer:
+    runs-on: ubuntu-latest
+    permissions:
+      # Nécessaire pour reverser les fichiers produits dans la branche.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Télécharger et normaliser la base ASAM
+        run: |
+          set -o pipefail
+          # Le script écrit son diagnostic sur la sortie d'erreur : on la
+          # capture pour la republier dans le résumé du job, lisible sans
+          # dérouler les journaux.
+          node scripts/asam-recuperer.mjs 2>&1 | tee /tmp/asam-journal.txt
+
+      - name: Publier les chiffres dans le résumé
+        if: always()
+        run: |
+          {
+            echo '## Base ASAM — NGA'
+            echo ''
+            echo '```'
+            cat /tmp/asam-journal.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reverser les données dans la branche
+        run: |
+          if git diff --quiet -- public/donnees; then
+            echo "Données inchangées, aucun commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/donnees
+          git commit -m "Régénère les données ASAM depuis la source NGA
+
+          Fichiers produits par scripts/asam-recuperer.mjs à partir de la base
+          officielle msi.nga.mil. Aucun contenu écrit à la main."
+          git push
