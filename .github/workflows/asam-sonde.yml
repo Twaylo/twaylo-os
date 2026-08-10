@@ -1,8 +1,9 @@
 # Sonde temporaire : retrouver l'adresse actuelle de l'API ASAM.
 #
-# Les adresses connues répondent 404 — l'API de la NGA a bougé. Plutôt que de
-# deviner, on interroge le site depuis un exécuteur GitHub (qui, lui, atteint
-# msi.nga.mil) et on lit ce que la page de la NGA appelle elle-même.
+# Premier passage : le code du site appelle bien « publications/asam? », mais
+# le préfixe « /api/ » répond 404. Ce passage-ci extrait le contexte autour de
+# l'appel dans le paquet JavaScript, pour lire l'adresse complète telle que la
+# page la construit — préfixe et paramètres compris.
 #
 # Ce fichier est jetable : il disparaît dès l'adresse trouvée.
 name: Sonde ASAM
@@ -17,48 +18,47 @@ jobs:
   sonder:
     runs-on: ubuntu-latest
     steps:
-      - name: Adresses candidates
+      - name: Extraire l'appel réel depuis le paquet JavaScript
+        run: |
+          curl -s -m 60 https://msi.nga.mil/Piracy -o /tmp/piracy.html
+          paquet=$(grep -o '/static/js/main[^"]*\.js' /tmp/piracy.html | head -1)
+          echo "paquet : $paquet"
+          curl -s -m 120 "https://msi.nga.mil$paquet" -o /tmp/b.js
+          echo "taille : $(wc -c < /tmp/b.js) octets"
+          echo
+
+          echo "═══ contexte autour de « publications/asam »"
+          grep -o -E '.{260}publications/asam.{400}' /tmp/b.js | head -5
+          echo
+
+          echo "═══ contexte autour de « getASAM »"
+          grep -o -E 'getASAM.{500}' /tmp/b.js | head -3
+          echo
+
+          echo "═══ bases d'API déclarées dans le paquet"
+          grep -o -E '"[^"]*api[^"]*"' /tmp/b.js | sort -u | head -40
+          echo
+
+          echo "═══ toutes les URL absolues vers nga.mil"
+          grep -o -E 'https?://[a-z0-9.-]*nga[a-z0-9.-]*(/[a-z0-9/_.-]*)?' /tmp/b.js | sort -u | head -40
+
+      - name: Essayer les préfixes plausibles
         run: |
           essayer() {
             code=$(curl -s -o /tmp/r -w '%{http_code}' -m 60 "$1" || echo 000)
-            taille=$(wc -c < /tmp/r)
-            echo "─── $code  ${taille}o  $1"
-            head -c 200 /tmp/r; echo; echo
+            echo "─── $code  $(wc -c < /tmp/r)o  $1"
+            head -c 300 /tmp/r; echo; echo
           }
 
-          essayer "https://msi.nga.mil/api/publications/asam?output=json"
-          essayer "https://msi.nga.mil/api/publications/asam"
-          essayer "https://msi.nga.mil/api/publications/asam/search"
-          essayer "https://msi.nga.mil/api/publications/asam?output=csv"
-          essayer "https://msi.nga.mil/api/publications"
-          essayer "https://msi.nga.mil/v3/api-docs"
-          essayer "https://msi.nga.mil/api/openapi.json"
-          essayer "https://msi.nga.mil/swagger-ui/index.html"
-
-      - name: Ce que la page Piraterie appelle elle-même
-        run: |
-          # La page est une application JavaScript : l'adresse de l'API est
-          # dans ses paquets, pas dans le HTML. On récupère la page, on suit
-          # ses scripts, et on cherche dedans.
-          curl -s -m 60 https://msi.nga.mil/Piracy -o /tmp/piracy.html
-          echo "─── page : $(wc -c < /tmp/piracy.html) octets"
-          grep -o 'src="[^"]*\.js"' /tmp/piracy.html | sort -u | tee /tmp/scripts.txt
-
-          echo
-          echo "─── recherche de 'asam' dans les paquets JavaScript"
-          while read -r ligne; do
-            chemin=$(echo "$ligne" | sed 's/src="//; s/"$//')
-            case "$chemin" in
-              http*) url="$chemin" ;;
-              /*)    url="https://msi.nga.mil$chemin" ;;
-              *)     url="https://msi.nga.mil/$chemin" ;;
-            esac
-            curl -s -m 90 "$url" -o /tmp/bundle.js || continue
-            echo "· $url ($(wc -c < /tmp/bundle.js) octets)"
-            grep -o -i -E '[a-z0-9/_.-]*asam[a-z0-9/_?=&.-]*' /tmp/bundle.js \
-              | sort -u | head -40
-          done < /tmp/scripts.txt
-
-          echo
-          echo "─── toute mention d'API dans le HTML"
-          grep -o -i -E 'https?://[a-z0-9./_-]*api[a-z0-9./_-]*' /tmp/piracy.html | sort -u | head -20
+          # Le service de publications est peut-être servi sous un autre nom
+          # que « api » — on teste les préfixes courants de la plateforme MSI.
+          for prefixe in \
+            "https://msi.nga.mil/api/publications/asam" \
+            "https://msi.nga.mil/publications/asam" \
+            "https://msi.nga.mil/api/msi/publications/asam" \
+            "https://msi.nga.mil/msi/publications/asam" \
+            "https://msi.nga.mil/api/v1/publications/asam" \
+            "https://msi.nga.mil/api/publications/asam/areas"
+          do
+            essayer "$prefixe?output=json"
+          done
