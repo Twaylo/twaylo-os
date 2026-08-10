@@ -196,6 +196,17 @@ function Compte() {
       label: "Données",
       valeur: sync === "connecte" ? "Base Supabase" : "Ce navigateur seulement",
     },
+    /*
+     * La version affichée, et ce n'est pas de la coquetterie de développeur.
+     *
+     * Un téléphone garde parfois l'ancienne version en mémoire : on cherche
+     * alors ensemble un défaut déjà corrigé. Cette ligne répond d'un coup
+     * d'œil à « est-ce que tu as bien la dernière version ? ».
+     */
+    {
+      label: "Version",
+      valeur: `${process.env.NEXT_PUBLIC_VERSION_DATE ?? "—"} · ${process.env.NEXT_PUBLIC_VERSION ?? "—"}`,
+    },
   ];
 
   return (

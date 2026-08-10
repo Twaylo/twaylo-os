@@ -12,6 +12,28 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["node-ical"],
 
   /*
+   * La version, gravée dans la page au moment de la construction.
+   *
+   * Sans elle, impossible de trancher la question qui bloque tout dépannage :
+   * « est-ce que tu as bien la dernière version ? » Un téléphone garde parfois
+   * l'ancienne en mémoire, et on cherche alors un défaut déjà corrigé. Elle
+   * s'affiche dans le panneau du compte : une ligne à lire, et on sait.
+   *
+   * `VERCEL_GIT_COMMIT_SHA` n'existe qu'à la construction sur Vercel ; en
+   * local, la mention « local » évite de faire croire à une vraie version.
+   */
+  env: {
+    NEXT_PUBLIC_VERSION: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
+    NEXT_PUBLIC_VERSION_DATE: new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Europe/Paris",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date()),
+  },
+
+  /*
    * En-têtes de sécurité. Rien ici ne corrige une faille présente — je n'ai
    * trouvé aucune injection HTML dans le projet — c'est du durcissement : un
    * filet si une dépendance était un jour compromise, et de quoi empêcher
