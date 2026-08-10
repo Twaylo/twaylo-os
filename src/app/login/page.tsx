@@ -5,7 +5,9 @@ export const metadata = { title: "Twaylo OS — Connexion" };
 
 export default function LoginPage() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+    // `cadre-appli` et non `min-h-screen` : `100vh` dépasse la hauteur visible
+    // sur iPhone, et cet écran-ci n'a rien à faire défiler.
+    <div className="cadre-appli relative flex items-center justify-center overflow-hidden px-6">
       <div
         className="pointer-events-none absolute -top-40 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full blur-[90px]"
         style={{

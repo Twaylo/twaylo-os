@@ -43,19 +43,21 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   /*
-   * Les deux balises « application », écrites à la main.
+   * La balise « application » que Safari attend, écrite à la main.
    *
    * Vérifié sur le HTML réellement produit : `appleWebApp.capable` n'émet QUE
    * `mobile-web-app-capable`, la balise de Chrome, et ravale au passage toute
    * balise Apple qu'on ajouterait à côté. Or Safari lit
    * `apple-mobile-web-app-capable` : sans elle, l'icône posée sur l'écran
    * d'accueil peut rouvrir un onglet Safari ordinaire, barre d'adresse
-   * comprise — exactement ce qu'on cherche à supprimer. On écrit donc les
-   * deux nous-mêmes, et on retire `capable` pour que Next ne s'en mêle plus.
+   * comprise — exactement ce qu'on cherche à supprimer. On l'écrit donc
+   * nous-mêmes, `capable` retiré pour que Next ne s'en mêle plus.
+   *
+   * Celle de Chrome n'est PAS à écrire ici : Next l'émet de son côté dès que
+   * le manifeste est déclaré. L'ajouter la produisait en double.
    */
   other: {
     "apple-mobile-web-app-capable": "yes",
-    "mobile-web-app-capable": "yes",
   },
   formatDetection: { telephone: false },
 };

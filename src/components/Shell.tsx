@@ -67,29 +67,44 @@ function ActiveView() {
  * Leurs couleurs viennent des variables `--halo-N`, posées sur la racine par
  * l'ambiance choisie dans « Personnaliser » — les valeurs par défaut vivent
  * dans globals.css.
+ *
+ * Ils sont enfermés dans un cadre qui les coupe, et c'est tout l'enjeu.
+ *
+ * Les trois halos sont posés en débordement volontaire : 100 px à droite,
+ * 80 px à gauche, 140 px au-dessus, 160 px SOUS la page. Sans ce cadre, ces
+ * débordements agrandissent la zone défilable du document — 160 px de
+ * défilement fantôme en bas de CHAQUE onglet, du vide qu'un premier geste
+ * consomme avant que la page ne bouge vraiment. C'était aussi la seule
+ * raison pour laquelle le `<body>` portait un `overflow-x`, lequel peut, sur
+ * WebKit, transformer le corps de page en zone défilante imbriquée.
+ *
+ * Le cadre est `absolute inset-0` : il épouse exactement la page, ne
+ * s'ajoute donc jamais à sa hauteur, et `overflow-hidden` rogne ce qui
+ * dépasse. Ce qui est rogné n'était de toute façon pas visible — le rendu à
+ * l'écran est identique au pixel près.
  */
 function Glow() {
   return (
-    <>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
       <div
-        className="pointer-events-none absolute -right-[100px] -top-[140px] h-[460px] w-[460px] rounded-full blur-[90px]"
+        className="absolute -right-[100px] -top-[140px] h-[460px] w-[460px] rounded-full blur-[90px]"
         style={{
           background: "radial-gradient(circle, var(--halo-1), transparent 70%)",
         }}
       />
       <div
-        className="pointer-events-none absolute -bottom-[160px] -left-20 h-[440px] w-[440px] rounded-full blur-[90px]"
+        className="absolute -bottom-[160px] -left-20 h-[440px] w-[440px] rounded-full blur-[90px]"
         style={{
           background: "radial-gradient(circle, var(--halo-2), transparent 70%)",
         }}
       />
       <div
-        className="pointer-events-none absolute left-1/2 top-[38%] h-[380px] w-[380px] -translate-x-1/2 rounded-full blur-[90px]"
+        className="absolute left-1/2 top-[38%] h-[380px] w-[380px] -translate-x-1/2 rounded-full blur-[90px]"
         style={{
           background: "radial-gradient(circle, var(--halo-3), transparent 70%)",
         }}
       />
-    </>
+    </div>
   );
 }
 
@@ -98,13 +113,19 @@ export function Shell() {
     <OsProvider>
       <ProgressionProvider>
         {/*
-          `overflow-x-clip` et non `-hidden` : `hidden` aurait fait de ce cadre
-          une seconde zone défilante verticale (la spécification bascule l'axe
-          laissé en `visible` vers `auto`), empilée sous celle de la fenêtre —
-          d'où le défilement qui repartait en plusieurs fois. `clip` se contente
-          de couper les halos qui dépassent, sans créer d'ascenseur.
+          Aucun `overflow` ici, et c'est délibéré.
+
+          Ce cadre en portait un pour rogner les halos du fond. Ce sont
+          désormais les halos qui se rognent eux-mêmes (voir `Glow`), si bien
+          qu'il ne reste plus une seule déclaration d'`overflow` entre la
+          fenêtre et le contenu : la fenêtre est l'unique zone défilante, dans
+          tous les navigateurs, sans dépendre de la façon dont chacun
+          interprète `clip` ou propage la valeur du corps de page.
+
+          `cadre-appli` remplace `min-h-screen` : voir globals.css — `100vh`
+          ment sur iPhone.
         */}
-        <div className="relative min-h-screen overflow-x-clip">
+        <div className="cadre-appli relative">
           <Glow />
           <TopRail />
           <main

@@ -27,7 +27,7 @@ export default function Erreur({
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-6"
+      className="cadre-appli flex items-center justify-center px-6"
       style={{ background: "#07121d", color: "#eef3f8" }}
     >
       <div className="w-full max-w-[420px] text-center">

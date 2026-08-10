@@ -52,17 +52,43 @@ body {
   color: var(--color-fg);
   font-family: var(--font-sans);
   /*
-   * `clip`, surtout pas `hidden`.
+   * PAS d'`overflow` ici. Ni `hidden`, ni `clip`.
    *
-   * Masquer le débordement horizontal avec `hidden` a un effet de bord que la
-   * spécification impose : l'axe vertical, laissé en `visible`, passe alors en
-   * `auto`. Le corps de page devenait donc une ZONE DÉFILANTE à part entière,
-   * imbriquée dans celle de la fenêtre — deux ascenseurs pour une seule page,
-   * et un défilement qui repart « en plusieurs fois » selon celui que la
-   * molette attrape. `clip` coupe ce qui dépasse sans rien rendre défilable :
-   * l'axe vertical reste au navigateur, et il n'y a plus qu'un ascenseur.
+   * Le corps de page en portait un pour rogner les halos du fond. Deux
+   * ennuis, et le second est celui qui se sentait au doigt :
+   *
+   * - `hidden` fait basculer l'axe vertical laissé en `visible` vers `auto` :
+   *   le corps de page devient une zone défilante imbriquée dans celle de la
+   *   fenêtre. C'est le défaut qu'on croyait avoir réglé en passant à `clip`.
+   * - `clip` évite ça sur Chrome, mais la valeur posée sur le corps de page
+   *   est PROPAGÉE à la fenêtre, et chaque moteur applique ses propres règles
+   *   à cette propagation. Se reposer là-dessus pour un simple effet
+   *   décoratif, c'est parier sur un coin obscur de la spécification.
+   *
+   * Les halos se rognent maintenant eux-mêmes, dans leur propre cadre (voir
+   * `Glow` dans Shell.tsx). Il ne reste donc plus rien à masquer ici, et la
+   * fenêtre est l'unique zone défilante de l'application.
    */
-  overflow-x: clip;
+}
+
+/*
+ * La hauteur du cadre de l'application.
+ *
+ * `100vh` ment sur iPhone : cette unité vaut la hauteur de l'écran BARRES
+ * MASQUÉES, alors que la barre d'adresse est visible à l'ouverture. Le cadre
+ * était donc systématiquement plus haut que la surface réellement visible —
+ * une centaine de pixels de défilement qui n'affichent rien, que le premier
+ * geste dépense à rétracter la barre au lieu de faire descendre la page. Ce
+ * geste « qui ne sert à rien » est exactement ce qu'on ressent comme un
+ * défilement qui bloque et qu'il faut relancer.
+ *
+ * `100svh` est la hauteur visible la PLUS PETITE, barres comprises : le cadre
+ * couvre l'écran sans jamais inventer de course en trop. La ligne `100vh` qui
+ * précède reste le repli des navigateurs trop anciens pour connaître `svh`.
+ */
+.cadre-appli {
+  min-height: 100vh;
+  min-height: 100svh;
 }
 
 ::selection {
