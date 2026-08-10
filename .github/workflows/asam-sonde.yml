@@ -1,14 +1,14 @@
-# Sonde temporaire : où est passée la base ASAM ?
+# Sonde temporaire : retrouver le fichier officiel ASAM dans les archives.
 #
-# Acquis : l'API publique de la NGA marche (config et stored-pubs répondent
-# 200 sans authentification), mais tous les chemins « asam » répondent 404.
-# Ce n'est donc pas un problème de jeton : ces endpoints ne sont plus servis.
+# Établi : la NGA ne sert plus ASAM. Ses voisins (World Port Index, Broadcast
+# Warnings, Radio Navaids) répondent 200 sans authentification ; les onze
+# orthographes du chemin « asam » répondent toutes 404, et le catalogue des
+# publications téléchargeables n'en contient aucune trace.
 #
-# Deux pistes restantes, testées ici :
-#   1. la liste des publications téléchargeables contient peut-être ASAM
-#      sous forme de fichier ;
-#   2. la page appelle une fonction getCDN() — les appels d'API passent
-#      peut-être par une autre base que « /api/ ».
+# Piste restante : les archives du Web ont pu capturer la réponse officielle
+# de la NGA avant son retrait. Ce serait la vraie base — celle publiée par la
+# NGA, à son adresse — simplement figée à une date de capture. Ce qui compte
+# alors, c'est de savoir laquelle, et de l'afficher.
 #
 # Ce fichier est jetable : il disparaît dès la source atteinte.
 name: Sonde ASAM
@@ -28,79 +28,113 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sonder
+      - name: Chercher les captures
         run: |
           mkdir -p sonde
           R=sonde/asam-sonde.txt
           : > "$R"
-          B=https://msi.nga.mil
-
           section() { printf '\n═══ %s\n' "$1" >> "$R"; }
 
-          # --- 1. La page elle-même, en entier -----------------------------
-          # 9 Ko : assez petit pour être lu intégralement, et c'est là que
-          # vit getCDN().
-          curl -s -m 60 "$B/Piracy" -o sonde/piracy.html
+          # L'index CDX liste toutes les captures d'une adresse : date, code
+          # de réponse et poids. Le poids est le signal décisif — la base
+          # entière pèse des mégaoctets, une page d'erreur quelques centaines
+          # d'octets.
+          section "captures de l'API ASAM"
+          curl -s -m 120 --get 'https://web.archive.org/cdx/search/cdx' \
+            --data-urlencode 'url=msi.nga.mil/api/publications/asam*' \
+            --data-urlencode 'output=json' \
+            --data-urlencode 'fl=timestamp,original,statuscode,length' \
+            --data-urlencode 'collapse=digest' \
+            --data-urlencode 'limit=200' \
+            -o /tmp/cdx.json
+          echo "réponse CDX : $(wc -c < /tmp/cdx.json) octets" >> "$R"
+          head -c 12000 /tmp/cdx.json >> "$R"; echo >> "$R"
 
-          paquet=$(grep -o '/static/js/main[^"]*\.js' sonde/piracy.html | head -1)
-          curl -s -m 120 "$B$paquet" -o /tmp/b.js
+          section "captures de la page Piraterie"
+          curl -s -m 120 --get 'https://web.archive.org/cdx/search/cdx' \
+            --data-urlencode 'url=msi.nga.mil/Piracy' \
+            --data-urlencode 'output=json' \
+            --data-urlencode 'fl=timestamp,statuscode,length' \
+            --data-urlencode 'limit=20' \
+            --data-urlencode 'from=2024' \
+            -o /tmp/cdx2.json
+          head -c 3000 /tmp/cdx2.json >> "$R"; echo >> "$R"
 
-          section "définition complète de fetchData"
-          grep -o -E 'fetchData[^}]{0,80}\}[^}]{0,400}' /tmp/b.js | head -6 >> "$R"
-          grep -o -E '.{300}e\.ok\?e\.json\(\).{200}' /tmp/b.js | head -3 >> "$R"
-
-          # --- 2. ASAM dans les publications téléchargeables ----------------
-          section "ASAM dans stored-pubs"
-          curl -s -m 120 "$B/api/publications/stored-pubs" -o /tmp/pubs.json
-          echo "taille : $(wc -c < /tmp/pubs.json) octets" >> "$R"
-          grep -o -i -E '.{150}(asam|anti-shipping|antishipping|piracy).{250}' /tmp/pubs.json \
-            | head -12 >> "$R"
-
-          # --- 3. Chemins alternatifs --------------------------------------
-          essayer() {
-            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 60 "$1" || echo 000)
-            printf '\n─── %s  %so  %s\n' "$code" "$(wc -c < /tmp/r)" "$1" >> "$R"
-            head -c 250 /tmp/r >> "$R"; echo >> "$R"
-          }
-
-          section "chemins alternatifs"
-          for chemin in \
-            "api/publications/asam" \
-            "api/publications/ASAM" \
-            "api/publications/asams" \
-            "api/publications/asam-query" \
-            "api/publications/anti-shipping" \
-            "api/publications/antishipping" \
-            "api/publications/piracy" \
-            "api/piracy" \
-            "api/asam" \
-            "api/publications/asam/query" \
-            "api/publications/query/asam"
-          do
-            essayer "$B/$chemin?output=json"
-          done
-
-          # --- 4. Ce que l'API expose réellement ---------------------------
-          # Spring renvoie 404 avec le chemin demandé : en interrogeant la
-          # racine et les voisins connus, on cerne ce qui existe encore.
-          section "voisins connus de l'API"
-          for chemin in \
-            "api/publications/stored-nav-pubs" \
-            "api/publications/world-port-index?output=json" \
-            "api/publications/radio-navaids/areas" \
-            "api/publications/broadcast-warn?output=json" \
-            "api/application/config"
-          do
-            essayer "$B/$chemin"
-          done
+          # Le catalogue fédéral référence peut-être une copie officielle.
+          section "data.gov"
+          curl -s -m 60 --get 'https://catalog.data.gov/api/3/action/package_search' \
+            --data-urlencode 'q=anti-shipping activity messages' \
+            --data-urlencode 'rows=5' -o /tmp/dg.json
+          grep -o -E '"(title|name|url|format)":"[^"]{0,140}"' /tmp/dg.json \
+            | head -40 >> "$R"
 
           echo "relevé : $(wc -c < "$R") octets"
 
+      - name: Récupérer la meilleure capture et compter
+        run: |
+          R=sonde/asam-sonde.txt
+          printf '\n═══ meilleure capture\n' >> "$R"
+
+          # On retient la capture réussie la plus lourde : c'est celle qui a
+          # le plus de chances de contenir la base entière plutôt qu'une
+          # réponse partielle ou une page d'erreur.
+          meilleure=$(node -e '
+            const fs = require("fs");
+            let lignes;
+            try { lignes = JSON.parse(fs.readFileSync("/tmp/cdx.json", "utf8")); }
+            catch { process.exit(0); }
+            if (!Array.isArray(lignes) || lignes.length < 2) process.exit(0);
+            const [entete, ...reste] = lignes;
+            const iT = entete.indexOf("timestamp");
+            const iO = entete.indexOf("original");
+            const iS = entete.indexOf("statuscode");
+            const iL = entete.indexOf("length");
+            const ok = reste
+              .filter((l) => l[iS] === "200")
+              .sort((a, b) => Number(b[iL]) - Number(a[iL]));
+            if (!ok.length) process.exit(0);
+            console.log(ok[0][iT] + " " + ok[0][iO]);
+          ')
+
+          if [ -z "$meilleure" ]; then
+            echo "Aucune capture réussie." >> "$R"
+            exit 0
+          fi
+
+          horodatage=${meilleure%% *}
+          adresse=${meilleure#* }
+          echo "capture : $horodatage" >> "$R"
+          echo "adresse : $adresse" >> "$R"
+
+          # Le suffixe « id_ » demande la réponse d'origine, sans le bandeau
+          # ni les réécritures que l'archive ajoute pour l'affichage.
+          curl -sL -m 300 "https://web.archive.org/web/${horodatage}id_/${adresse}" \
+            -o /tmp/asam.json
+          echo "poids : $(wc -c < /tmp/asam.json) octets" >> "$R"
+          head -c 300 /tmp/asam.json >> "$R"; echo >> "$R"
+
+          node -e '
+            const fs = require("fs");
+            let charge;
+            try { charge = JSON.parse(fs.readFileSync("/tmp/asam.json", "utf8")); }
+            catch (e) { console.log("illisible : " + e.message); process.exit(0); }
+            const tableau = Array.isArray(charge)
+              ? charge
+              : Object.values(charge).find((v) => Array.isArray(v));
+            if (!tableau) { console.log("aucun tableau"); process.exit(0); }
+            const dates = tableau.map((r) => r.date || r.dateOfOccurrence || "").filter(Boolean).sort();
+            console.log("incidents  : " + tableau.length);
+            console.log("plus ancien: " + dates[0]);
+            console.log("plus récent: " + dates[dates.length - 1]);
+            console.log("champs     : " + Object.keys(tableau[0] || {}).join(", "));
+          ' >> "$R"
+
       - name: Déposer le résultat sur la branche
+        if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f sonde/asam-sonde.txt sonde/piracy.html
+          git add -f sonde/asam-sonde.txt
           git commit -m "Sonde ASAM : relevé brut" || exit 0
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
