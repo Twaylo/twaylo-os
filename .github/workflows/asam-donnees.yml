@@ -61,14 +61,21 @@ jobs:
 
       - name: Reverser les données dans la branche
         run: |
-          if git diff --quiet -- public/donnees; then
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # L'indexation vient avant la comparaison, et c'est ce qui compte :
+          # « git diff » ne regarde que les fichiers déjà suivis. Au premier
+          # passage, le dossier est entièrement nouveau — la comparaison ne
+          # voyait donc aucun changement et les données restaient sur place,
+          # produites mais jamais déposées.
+          git add -A public/donnees
+
+          if git diff --cached --quiet -- public/donnees; then
             echo "Données inchangées, aucun commit."
             exit 0
           fi
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/donnees
           git commit -m "Régénère les données ASAM depuis la source NGA
 
           Fichiers produits par scripts/asam-recuperer.mjs à partir de la base
