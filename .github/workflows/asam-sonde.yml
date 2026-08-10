@@ -1,16 +1,14 @@
-# Sonde temporaire : comprendre comment l'API ASAM s'atteint aujourd'hui.
+# Sonde temporaire : où est passée la base ASAM ?
 #
-# Acquis des passages précédents :
-#   · le site appelle bien « publications/asam », via une base « /api/ » ;
-#   · cette adresse répond 404, y compris « publications/asam/areas » que
-#     l'application appelle elle-même au chargement ;
-#   · le paquet contient « /api/auth/token » et la page charge un reCAPTCHA.
+# Acquis : l'API publique de la NGA marche (config et stored-pubs répondent
+# 200 sans authentification), mais tous les chemins « asam » répondent 404.
+# Ce n'est donc pas un problème de jeton : ces endpoints ne sont plus servis.
 #
-# Hypothèse à vérifier : l'API réclame désormais un jeton, ou un en-tête que
-# curl n'envoie pas. Ce passage extrait le code d'appel et essaie les variantes.
-#
-# Le résultat est écrit dans un fichier commité sur la branche : les journaux
-# GitHub se lisent par la fin et tronquent, un fichier se lit en entier.
+# Deux pistes restantes, testées ici :
+#   1. la liste des publications téléchargeables contient peut-être ASAM
+#      sous forme de fichier ;
+#   2. la page appelle une fonction getCDN() — les appels d'API passent
+#      peut-être par une autre base que « /api/ ».
 #
 # Ce fichier est jetable : il disparaît dès la source atteinte.
 name: Sonde ASAM
@@ -35,64 +33,74 @@ jobs:
           mkdir -p sonde
           R=sonde/asam-sonde.txt
           : > "$R"
-
-          curl -s -m 60 https://msi.nga.mil/Piracy -o /tmp/piracy.html
-          paquet=$(grep -o '/static/js/main[^"]*\.js' /tmp/piracy.html | head -1)
-          curl -s -m 120 "https://msi.nga.mil$paquet" -o /tmp/b.js
-          echo "paquet : $paquet ($(wc -c < /tmp/b.js) octets)" >> "$R"
+          B=https://msi.nga.mil
 
           section() { printf '\n═══ %s\n' "$1" >> "$R"; }
 
-          # --- Comment l'application construit ses appels -------------------
-          section "définition de fetchData"
-          grep -o -E '.{100}fetchData\s*[=:(].{700}' /tmp/b.js | head -4 >> "$R"
+          # --- 1. La page elle-même, en entier -----------------------------
+          # 9 Ko : assez petit pour être lu intégralement, et c'est là que
+          # vit getCDN().
+          curl -s -m 60 "$B/Piracy" -o sonde/piracy.html
 
-          section "contexte de /api/auth/token"
-          grep -o -E '.{400}api/auth/token.{700}' /tmp/b.js | head -3 >> "$R"
+          paquet=$(grep -o '/static/js/main[^"]*\.js' sonde/piracy.html | head -1)
+          curl -s -m 120 "$B$paquet" -o /tmp/b.js
 
-          section "contexte de queryResults"
-          grep -o -E '.{200}queryResults.{600}' /tmp/b.js | head -4 >> "$R"
+          section "définition complète de fetchData"
+          grep -o -E 'fetchData[^}]{0,80}\}[^}]{0,400}' /tmp/b.js | head -6 >> "$R"
+          grep -o -E '.{300}e\.ok\?e\.json\(\).{200}' /tmp/b.js | head -3 >> "$R"
 
-          section "en-têtes posés par l'application"
-          grep -o -E '.{120}(Authorization|X-API|apiKey|Bearer|recaptcha|captcha).{300}' /tmp/b.js \
-            | head -8 >> "$R"
+          # --- 2. ASAM dans les publications téléchargeables ----------------
+          section "ASAM dans stored-pubs"
+          curl -s -m 120 "$B/api/publications/stored-pubs" -o /tmp/pubs.json
+          echo "taille : $(wc -c < /tmp/pubs.json) octets" >> "$R"
+          grep -o -i -E '.{150}(asam|anti-shipping|antishipping|piracy).{250}' /tmp/pubs.json \
+            | head -12 >> "$R"
 
-          # --- Ce que le serveur répond vraiment ----------------------------
+          # --- 3. Chemins alternatifs --------------------------------------
           essayer() {
-            nom="$1"; shift
-            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 60 "$@" || echo 000)
-            printf '\n─── %s\n    %s  %so\n' "$nom" "$code" "$(wc -c < /tmp/r)" >> "$R"
-            head -c 400 /tmp/r >> "$R"; echo >> "$R"
+            code=$(curl -s -o /tmp/r -w '%{http_code}' -m 60 "$1" || echo 000)
+            printf '\n─── %s  %so  %s\n' "$code" "$(wc -c < /tmp/r)" "$1" >> "$R"
+            head -c 250 /tmp/r >> "$R"; echo >> "$R"
           }
 
-          section "réponses du serveur"
-          B=https://msi.nga.mil
+          section "chemins alternatifs"
+          for chemin in \
+            "api/publications/asam" \
+            "api/publications/ASAM" \
+            "api/publications/asams" \
+            "api/publications/asam-query" \
+            "api/publications/anti-shipping" \
+            "api/publications/antishipping" \
+            "api/publications/piracy" \
+            "api/piracy" \
+            "api/asam" \
+            "api/publications/asam/query" \
+            "api/publications/query/asam"
+          do
+            essayer "$B/$chemin?output=json"
+          done
 
-          essayer "areas nu" "$B/api/publications/asam/areas"
-          essayer "areas + entêtes navigateur" "$B/api/publications/asam/areas" \
-            -H "Referer: $B/Piracy" -H "Origin: $B" \
-            -H "Accept: application/json, text/plain, */*" \
-            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
-          essayer "jeton (GET)"  "$B/api/auth/token"
-          essayer "jeton (POST)" -X POST "$B/api/auth/token"
-          essayer "config"       "$B/api/application/config"
-          essayer "asam filter=none" "$B/api/publications/asam?filter=none&output=json"
-          essayer "asam annee 2025" "$B/api/publications/asam?filter=none&year=2025&output=json"
-          essayer "queryResults" "$B/queryResults?publications/asam?filter=none&sort=date&output=json"
+          # --- 4. Ce que l'API expose réellement ---------------------------
+          # Spring renvoie 404 avec le chemin demandé : en interrogeant la
+          # racine et les voisins connus, on cerne ce qui existe encore.
+          section "voisins connus de l'API"
+          for chemin in \
+            "api/publications/stored-nav-pubs" \
+            "api/publications/world-port-index?output=json" \
+            "api/publications/radio-navaids/areas" \
+            "api/publications/broadcast-warn?output=json" \
+            "api/application/config"
+          do
+            essayer "$B/$chemin"
+          done
 
-          # --- La base est-elle proposée en téléchargement ? ----------------
-          section "ASAM parmi les publications téléchargeables"
-          grep -o -E '.{200}[Aa][Ss][Aa][Mm].{200}' /tmp/piracy.html | head -5 >> "$R"
-          essayer "liste des publications" "$B/api/publications/stored-pubs"
-
-          echo "──── fin"
-          wc -l "$R"
+          echo "relevé : $(wc -c < "$R") octets"
 
       - name: Déposer le résultat sur la branche
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f sonde/asam-sonde.txt
+          git add -f sonde/asam-sonde.txt sonde/piracy.html
           git commit -m "Sonde ASAM : relevé brut" || exit 0
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
