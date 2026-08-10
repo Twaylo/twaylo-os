@@ -40,8 +40,43 @@ const nextConfig: NextConfig = {
    * qu'un dashboard plein de boutons de suppression soit affiché dans une
    * iframe pilotée par un tiers.
    */
+  /*
+   * La carte des attaques de pirates est un site statique complet, posé dans
+   * `public/piraterie/`. Cette réécriture lui donne une adresse propre :
+   * « /piraterie » plutôt que « /piraterie/index.html » — ça part dans la
+   * description d'une vidéo, ça doit se lire.
+   *
+   * Les réécritures rendues sous forme de tableau sont examinées APRÈS les
+   * fichiers : rien de ce qui existe déjà n'est détourné, seule l'adresse
+   * sans fichier correspondant tombe ici.
+   */
+  async rewrites() {
+    return [{ source: "/piraterie", destination: "/piraterie/index.html" }];
+  },
+
   async headers() {
     return [
+      {
+        /*
+         * Le dossier `public` est servi par défaut en `max-age=0` : chaque
+         * visite retéléchargerait MapLibre, le fond de carte et les données —
+         * près d'un mégaoctet. Sur un lien posé en commentaire épinglé d'une
+         * vidéo, c'est le pire moment pour ne pas savoir garder en cache.
+         *
+         * Dix minutes chez le visiteur, un jour sur le CDN, et une semaine de
+         * tolérance pendant laquelle une version périmée est servie
+         * immédiatement puis rafraîchie en fond. Une mise à jour des données
+         * se propage donc en une journée au plus, sans jamais faire attendre
+         * personne.
+         */
+        source: "/piraterie/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
       {
         /*
          * Le service worker ne doit jamais être servi depuis le cache HTTP :
@@ -71,6 +106,12 @@ const nextConfig: NextConfig = {
               // Next injecte du script et du CSS en ligne : 'unsafe-inline'
               // est ici une contrainte du framework, pas un choix.
               "script-src 'self' 'unsafe-inline'",
+              // MapLibre lance un worker pour découper ses données. Il est
+              // servi depuis notre domaine — pas un blob — donc 'self' suffit.
+              // Écrit explicitement plutôt que laissé à la chaîne de repli de
+              // la spécification, que les navigateurs n'appliquent pas tous
+              // de la même façon.
+              "worker-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}`,

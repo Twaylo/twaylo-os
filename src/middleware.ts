@@ -55,12 +55,32 @@ const CHEMINS_PUBLICS = new Set([
   // elle-même et refuse tout si la variable manque.
   "/api/cron/brief-matin",
   "/api/cron/recap-soir",
+  // La carte de la piraterie, servie à « /piraterie » par une réécriture.
+  // Ses ressources sont ouvertes juste en dessous, par préfixe.
+  "/piraterie",
 ]);
+
+/**
+ * Le site public de la carte des attaques : ouvert en entier, par préfixe.
+ *
+ * C'est la seule exception à la règle des chemins exacts, et elle est
+ * réfléchie. Ce dossier n'existe QUE pour être public — il contient une page,
+ * ses deux fichiers de données, le fond de carte et une copie de MapLibre,
+ * tous destinés à des spectateurs venus de YouTube qui n'ont aucun compte
+ * ici. Les énumérer un par un donnerait six lignes qui se périmeraient à la
+ * première ressource ajoutée, avec un symptôme trompeur : la carte
+ * renverrait l'écran de connexion au lieu d'un fichier.
+ *
+ * Ce qui rend le préfixe sûr, c'est que rien de privé ne peut y arriver par
+ * accident : le dossier est produit par les scripts de la carte, et le reste
+ * de l'OS vit ailleurs.
+ */
+const PREFIXE_PUBLIC = "/piraterie/";
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  if (CHEMINS_PUBLICS.has(pathname)) {
+  if (CHEMINS_PUBLICS.has(pathname) || pathname.startsWith(PREFIXE_PUBLIC)) {
     return NextResponse.next();
   }
 

@@ -39,7 +39,12 @@ import process from "node:process";
 /* ------------------------------------------------------------------ */
 
 const RACINE = path.resolve(import.meta.dirname, "..");
-const DOSSIER_SORTIE = path.join(RACINE, "public", "donnees");
+/*
+ * Les données sortent sous `public/piraterie/` avec le reste du site public.
+ * Un seul dossier public, une seule surface exposée : c'est ce qui permet au
+ * middleware de n'ouvrir qu'un chemin plutôt que d'en énumérer huit.
+ */
+const DOSSIER_SORTIE = path.join(RACINE, "public", "piraterie", "donnees");
 const DOSSIER_CACHE = path.join(RACINE, ".cache");
 const CACHE_BRUT = path.join(DOSSIER_CACHE, "asam-brut.json");
 

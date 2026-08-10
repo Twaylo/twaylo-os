@@ -1,0 +1,785 @@
+/*
+ * Carte des attaques de pirates — habillage.
+ *
+ * Parti pris : un instrument, pas une page de promotion. Fond sombre, texte
+ * net, aucune animation qui ne serve à lire quelque chose. Les seuls
+ * mouvements sont ceux qui portent une information : l'ouverture d'un
+ * panneau, le déroulé du temps.
+ *
+ * Aucune police n'est téléchargée. Celles du système suffisent, s'affichent
+ * sans attendre, et évitent une requête vers un domaine tiers.
+ */
+
+:root {
+  --fond: #060d14;
+  --fond-panneau: #0b1520;
+  --fond-panneau-haut: #101d2a;
+  --bord: rgba(255, 255, 255, 0.09);
+  --bord-net: rgba(255, 255, 255, 0.16);
+
+  --texte: #e8eef4;
+  --texte-doux: #93a5b5;
+  --texte-faible: #64778a;
+
+  /* Orange → rouge : la gamme des points et des regroupements. */
+  --feu-1: #ffb02e;
+  --feu-2: #ff7a1a;
+  --feu-3: #f4471f;
+  --feu-4: #c2160f;
+
+  --focus: #4da3ff;
+
+  --marge-basse: env(safe-area-inset-bottom, 0px);
+  --marge-haute: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--fond);
+  color: var(--texte);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  /* Le bleu de sélection par défaut d'iOS jure avec la gamme sombre. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Réservé aux lecteurs d'écran : présent dans l'arbre d'accessibilité,
+   absent de l'affichage. `clip-path` plutôt que `display:none`, qui le
+   retirerait aussi de la lecture. */
+.lecteur-ecran {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.saut-lien {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 50;
+  padding: 10px 14px;
+  background: var(--fond-panneau-haut);
+  color: var(--texte);
+  border: 1px solid var(--bord-net);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.saut-lien:focus {
+  top: calc(8px + var(--marge-haute));
+}
+
+/* Un anneau de focus visible partout, y compris sur les jetons de filtre :
+   la page doit se piloter entièrement au clavier. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ══ Carte ═══════════════════════════════════════════════════════════════ */
+
+.carte {
+  position: absolute;
+  inset: 0;
+  background: var(--fond);
+}
+
+/* MapLibre pose ses propres couleurs sur les commandes ; on les ramène dans
+   la gamme sombre plutôt que de laisser deux styles cohabiter. */
+.maplibregl-ctrl-group {
+  background: var(--fond-panneau-haut);
+  border: 1px solid var(--bord);
+  box-shadow: none;
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--bord);
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(0.85);
+}
+.maplibregl-ctrl-attrib {
+  background: rgba(6, 13, 20, 0.8) !important;
+  color: var(--texte-faible);
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--texte-doux);
+}
+
+/*
+ * Les nombres des regroupements.
+ *
+ * MapLibre ne sait pas écrire de texte sans serveur de polices, et en appeler
+ * un ferait joindre un domaine tiers à chaque spectateur. Les cercles sont
+ * donc dessinés par la carte, et les nombres posés par-dessus en HTML.
+ *
+ * `pointer-events: none` est indispensable : sans lui, l'étiquette
+ * intercepterait le clic destiné au cercle qu'elle recouvre, et toucher un
+ * regroupement ne zoomerait plus.
+ */
+.maplibregl-marker {
+  pointer-events: none;
+}
+.grappe-etiquette {
+  display: block;
+  color: #21100a;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+  user-select: none;
+}
+
+/* ══ En-tête ═════════════════════════════════════════════════════════════ */
+
+.entete {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: calc(10px + var(--marge-haute)) 12px 14px;
+  /* Un dégradé plutôt qu'un aplat : le texte reste lisible sur la carte sans
+     poser un bandeau opaque qui mangerait de la mer. */
+  background: linear-gradient(180deg, rgba(6, 13, 20, 0.95) 0%, rgba(6, 13, 20, 0) 100%);
+  pointer-events: none;
+}
+.entete > * {
+  pointer-events: auto;
+}
+.entete-titre {
+  flex: 1;
+  min-width: 0;
+}
+.entete h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.entete-phrase {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--texte-doux);
+  text-wrap: balance;
+}
+.entete-chiffres {
+  display: block;
+  color: var(--texte-faible);
+}
+.entete-phrase strong {
+  color: var(--texte-doux);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══ Boutons ═════════════════════════════════════════════════════════════ */
+
+.bouton,
+.bouton-icone {
+  font: inherit;
+  color: var(--texte);
+  background: var(--fond-panneau-haut);
+  border: 1px solid var(--bord-net);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.bouton {
+  padding: 9px 13px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.bouton:hover,
+.bouton-icone:hover {
+  background: #16273a;
+}
+.bouton-icone {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 700;
+}
+/* `display` doit être neutralisé explicitement : une règle d'affichage
+   l'emporte sur l'attribut `hidden`, et la pastille restait visible à zéro. */
+.pastille[hidden] {
+  display: none;
+}
+.pastille {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--feu-2);
+  color: #1a0c00;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* ══ Écran d'attente ═════════════════════════════════════════════════════ */
+
+.attente {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  justify-items: center;
+  background: var(--fond);
+  color: var(--texte-doux);
+  font-size: 13px;
+  transition: opacity 0.35s ease;
+}
+.attente[data-fini] {
+  opacity: 0;
+  pointer-events: none;
+}
+.attente-barre {
+  width: 150px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.attente-barre span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--feu-2);
+  animation: glisse 1.1s ease-in-out infinite;
+}
+@keyframes glisse {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.attente p {
+  margin: 0;
+}
+
+.sans-script {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: var(--fond);
+  color: var(--texte-doux);
+}
+.sans-script a {
+  color: var(--feu-1);
+}
+
+/* ══ Commandes ═══════════════════════════════════════════════════════════ */
+
+.commandes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  padding: 0 12px calc(10px + var(--marge-basse));
+  background: linear-gradient(180deg, rgba(6, 13, 20, 0) 0%, rgba(6, 13, 20, 0.93) 22%);
+  backdrop-filter: blur(6px);
+}
+.poignee {
+  display: block;
+  width: 100%;
+  padding: 9px 0 7px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.poignee-trait {
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: var(--bord-net);
+}
+.commandes[data-replie] #commandes-corps {
+  display: none;
+}
+
+.compteur {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--texte-doux);
+  letter-spacing: 0.02em;
+}
+.compteur strong {
+  color: var(--feu-1);
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Curseur temporel ── */
+
+.temps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.bouton-lecture {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: var(--fond-panneau-haut);
+  border: 1px solid var(--bord-net);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.icone-lecture {
+  width: 0;
+  height: 0;
+  margin-left: 3px;
+  border-left: 11px solid var(--feu-1);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+}
+/* En lecture, le triangle devient deux barres — sans changer de bouton, donc
+   sans déplacer le pouce de l'utilisateur. */
+.bouton-lecture[data-joue] .icone-lecture {
+  margin-left: 0;
+  width: 12px;
+  height: 13px;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    var(--feu-1) 0 4px,
+    transparent 4px 8px,
+    var(--feu-1) 8px 12px
+  );
+}
+
+.temps-piste {
+  flex: 1;
+  min-width: 0;
+}
+.temps-bornes {
+  position: relative;
+  height: 26px;
+}
+/* Le rail et la portion sélectionnée sont purement décoratifs : ce sont les
+   deux `input` au-dessus qui portent la valeur, le nom et le clavier. */
+.temps-rail {
+  position: absolute;
+  top: 11px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.11);
+  pointer-events: none;
+}
+.temps-rail span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--feu-1), var(--feu-3));
+}
+
+.curseur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  background: none;
+  appearance: none;
+  /*
+   * La piste laisse passer le doigt jusqu'à l'autre curseur ; seules les
+   * poignées le captent. Sans ça, celui des deux `input` qui est au-dessus
+   * couvrirait toute la largeur et l'autre deviendrait impossible à saisir.
+   */
+  pointer-events: none;
+}
+.curseur::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--feu-3);
+  cursor: grab;
+}
+.curseur::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--feu-3);
+  cursor: grab;
+}
+.curseur::-webkit-slider-runnable-track,
+.curseur::-moz-range-track {
+  background: none;
+}
+/* Le focus clavier doit se voir sur la poignée, pas sur un rectangle invisible
+   qui occupe toute la largeur. */
+.curseur:focus-visible {
+  outline: none;
+}
+.curseur:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.curseur:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.temps-libelle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* ── Recherche et actions ── */
+
+.actions {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.champ-recherche {
+  flex: 1;
+  min-width: 0;
+}
+.champ-recherche input {
+  width: 100%;
+  padding: 9px 11px;
+  /* 16 px : en dessous, Safari zoome d'autorité à la saisie et l'écran part
+     de travers sans jamais revenir. */
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--texte);
+  background: var(--fond-panneau);
+  border: 1px solid var(--bord-net);
+  border-radius: 9px;
+}
+.champ-recherche input::placeholder {
+  color: var(--texte-faible);
+}
+.champ-recherche input:disabled {
+  opacity: 0.55;
+}
+
+/* ── Filtres ── */
+
+.filtres {
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-bottom: 10px;
+  padding: 12px;
+  background: var(--fond-panneau);
+  border: 1px solid var(--bord);
+  border-radius: 11px;
+}
+.filtre-groupe + .filtre-groupe {
+  margin-top: 13px;
+}
+.filtre-groupe h3 {
+  margin: 0 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--texte-faible);
+}
+.jetons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.jeton {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  color: var(--texte-doux);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--bord);
+  border-radius: 20px;
+  cursor: pointer;
+}
+.jeton[aria-pressed="true"] {
+  color: #1a0c00;
+  background: var(--feu-1);
+  border-color: var(--feu-1);
+  font-weight: 700;
+}
+.jeton-compte {
+  margin-left: 5px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+.bouton-effacer {
+  margin-top: 13px;
+  width: 100%;
+}
+
+/* ── Pied ── */
+
+.pied {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--texte-faible);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.pied a {
+  color: var(--texte-doux);
+  text-decoration: none;
+  border-bottom: 1px solid var(--bord-net);
+}
+.pied a:hover {
+  color: var(--texte);
+}
+.lien-video {
+  color: var(--feu-1) !important;
+  border-bottom-color: rgba(255, 176, 46, 0.4) !important;
+  font-weight: 600;
+}
+
+/* ══ Fiche et « à propos » ═══════════════════════════════════════════════ */
+
+.fiche,
+.apropos {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  max-height: 72vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px calc(18px + var(--marge-basse));
+  background: var(--fond-panneau-haut);
+  border-top: 1px solid var(--bord-net);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.5);
+  animation: monte 0.22s ease;
+}
+@keyframes monte {
+  from { transform: translateY(14px); opacity: 0; }
+}
+.fiche-tete {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0 10px;
+  background: var(--fond-panneau-haut);
+}
+.fiche-tete h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.fiche-champs {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 13.5px;
+}
+.fiche-champs dt {
+  color: var(--texte-faible);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+.fiche-champs dd {
+  margin: 0;
+  color: var(--texte);
+}
+/* Un champ absent de la source reste vide, et se voit comme tel. */
+.fiche-champs dd[data-vide] {
+  color: var(--texte-faible);
+  font-style: italic;
+}
+.fiche-recit h3 {
+  margin: 16px 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--texte-faible);
+}
+.fiche-recit p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #d3dde6;
+  white-space: pre-line;
+}
+.fiche-source {
+  margin: 16px 0 0;
+  font-size: 11.5px;
+  color: var(--texte-faible);
+}
+.apropos-texte p {
+  font-size: 13.5px;
+  color: var(--texte-doux);
+}
+.apropos-texte strong {
+  color: var(--texte);
+}
+
+/* ══ Message éphémère ════════════════════════════════════════════════════ */
+
+.souffle {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  z-index: 40;
+  transform: translateX(-50%);
+  padding: 9px 15px;
+  font-size: 13px;
+  background: var(--fond-panneau-haut);
+  border: 1px solid var(--bord-net);
+  border-radius: 20px;
+  animation: monte 0.18s ease;
+}
+
+/* ══ Grand écran ═════════════════════════════════════════════════════════ */
+
+@media (min-width: 900px) {
+  .entete {
+    padding: 16px 20px 20px;
+    background: linear-gradient(180deg, rgba(6, 13, 20, 0.92) 0%, rgba(6, 13, 20, 0) 100%);
+  }
+  .entete h1 {
+    font-size: 23px;
+  }
+  .entete-phrase {
+    font-size: 13.5px;
+    max-width: 60ch;
+  }
+  .entete-chiffres {
+    display: inline;
+    margin-left: 4px;
+  }
+
+  /* Les commandes quittent le bas de l'écran pour une colonne : sur un grand
+     écran, une barre horizontale gaspillerait la largeur et écraserait la
+     carte en hauteur. */
+  .commandes {
+    left: 20px;
+    right: auto;
+    bottom: 20px;
+    width: 372px;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+    padding: 0 16px 14px;
+    background: rgba(11, 21, 32, 0.94);
+    border: 1px solid var(--bord);
+    border-radius: 14px;
+  }
+  .filtres {
+    max-height: none;
+  }
+
+  /* La fiche devient un panneau latéral droit : on lit le récit sans perdre
+     de vue le point sur la carte. */
+  .fiche,
+  .apropos {
+    left: auto;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 420px;
+    max-height: none;
+    padding: 4px 22px 24px;
+    border-top: 0;
+    border-left: 1px solid var(--bord-net);
+    border-radius: 0;
+    box-shadow: -14px 0 44px rgba(0, 0, 0, 0.45);
+    animation: entre 0.22s ease;
+  }
+  @keyframes entre {
+    from { transform: translateX(20px); opacity: 0; }
+  }
+  .souffle {
+    left: 20px;
+    transform: none;
+    bottom: auto;
+    top: 20px;
+  }
+}
+
+/* ══ Mouvement réduit ════════════════════════════════════════════════════ */
+
+/*
+ * Respecté pour de vrai : les panneaux cessent de glisser, la barre d'attente
+ * cesse de défiler. L'animation temporelle, elle, reste disponible — c'est
+ * une lecture de données demandée explicitement par un bouton, pas une
+ * décoration subie.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .attente-barre span {
+    width: 100%;
+    animation: none;
+  }
+}

@@ -28,6 +28,13 @@
 # retélécharger. Plusieurs mégaoctets, régénérables : hors du dépôt.
 /.cache
 
+# Ressources de la carte reconstruites avant chaque build par
+# `scripts/carte-preparer.mjs` : la copie de MapLibre et le fond de carte,
+# tous deux tirés de node_modules. Les commiter, ce serait dupliquer une
+# dépendance et risquer qu'elle se désynchronise de sa version.
+/public/piraterie/vendeur
+/public/piraterie/monde.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
