@@ -47,6 +47,10 @@ export async function POST(req: Request) {
       nom: String(s.nom ?? "").slice(0, 60),
       categorie: String(s.categorie ?? "Autre").slice(0, 40),
       niveau: borner(Number(s.niveau)),
+      // `mois` porte soit un mois (`AAAA-MM`, les anciennes données) soit une
+      // SEMAINE (`AAAA-MM-JJ`, le lundi qui la commence). Aucune migration
+      // n'est possible sur cette base, et les deux formats se trient
+      // correctement entre eux dans l'ordre alphabétique.
       historique: Array.isArray(s.historique)
         ? s.historique
             .slice(0, 60)
@@ -54,7 +58,7 @@ export async function POST(req: Request) {
               (h) =>
                 Boolean(h) &&
                 typeof h === "object" &&
-                /^\d{4}-\d{2}$/.test(String((h as { mois?: unknown }).mois)),
+                /^\d{4}-\d{2}(-\d{2})?$/.test(String((h as { mois?: unknown }).mois)),
             )
             .map((h) => ({
               mois: String((h as { mois: string }).mois),

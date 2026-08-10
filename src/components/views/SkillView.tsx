@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { useProgression } from "@/lib/progression-context";
-import { localDateKey } from "@/lib/local-date";
+import {
+  aActualiser,
+  cleSemaine,
+  majPoint,
+  progressionDepuis,
+  semainesDepuis,
+} from "@/lib/skills-suivi";
+import { GrapheSkills } from "@/components/cards/GrapheSkills";
 import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 import { Eclats } from "@/components/ui";
@@ -14,8 +21,9 @@ import type { Skill } from "@/lib/types";
  * SKILL — la fenêtre de statut, façon Solo Leveling.
  *
  * Chaque compétence a une maîtrise 0-100, d'où un rang (E→S) et une barre
- * d'XP. Un instantané par mois trace la montée : Twaylo voit, mois après mois,
- * de combien il a grimpé. Rien ne redescend tout seul — c'est lui qui règle.
+ * d'XP. Un instantané par SEMAINE trace la montée, et la courbe en bas de la
+ * fenêtre de statut la rend lisible. Rien ne redescend tout seul — c'est lui
+ * qui règle.
  *
  * La vue est construite comme le jeu : une fenêtre de statut (rang global,
  * titre, radar des domaines), les quêtes d'entraînement que « le Système »
@@ -58,23 +66,15 @@ function borner(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-function moisCourant(): string {
-  return localDateKey().slice(0, 7);
-}
-
-/** Met à jour (ou crée) l'instantané du mois courant dans l'historique. */
-function majMois(historique: Skill["historique"], mois: string, niveau: number) {
-  return [...historique.filter((h) => h.mois !== mois), { mois, niveau }].sort((a, b) =>
-    a.mois.localeCompare(b.mois),
-  );
-}
-
-/** Ce qui a été gagné depuis le dernier mois enregistré, ou null si nouveau. */
+/**
+ * Ce qui a été gagné depuis le dernier point enregistré, ou null si nouveau.
+ *
+ * Le suivi est passé du mois à la SEMAINE (voir `skills-suivi`) : sur un
+ * rythme mensuel, trois points ne font pas une courbe et une progression
+ * mettait un trimestre à devenir visible.
+ */
 function progressionMois(s: Skill): number | null {
-  const mois = moisCourant();
-  const anterieurs = s.historique.filter((h) => h.mois < mois);
-  if (anterieurs.length === 0) return null;
-  return s.niveau - anterieurs[anterieurs.length - 1].niveau;
+  return progressionDepuis(s, cleSemaine());
 }
 
 /* Jeu de démonstration, pour filmer sans exposer la vraie progression.
@@ -137,11 +137,27 @@ export function SkillView() {
   function reglerNiveau(id: string, niveau: number) {
     if (!skills) return;
     const n = borner(niveau);
-    const mois = moisCourant();
+    const semaine = cleSemaine();
     appliquer(
       skills.map((s) =>
-        s.id === id ? { ...s, niveau: n, historique: majMois(s.historique, mois, n) } : s,
+        s.id === id ? { ...s, niveau: n, historique: majPoint(s.historique, semaine, n) } : s,
       ),
+    );
+  }
+
+  /**
+   * « Rien n'a changé cette semaine » — et c'est une information.
+   *
+   * Sans ce bouton, la seule façon de clore la semaine serait de bouger un
+   * curseur puis de le remettre. Une semaine sans progrès posée volontairement
+   * vaut mieux qu'un trou dans la courbe : elle dit un palier, le trou ne dit
+   * rien.
+   */
+  function figerLaSemaine() {
+    if (!skills) return;
+    const semaine = cleSemaine();
+    appliquer(
+      skills.map((s) => ({ ...s, historique: majPoint(s.historique, semaine, s.niveau) })),
     );
   }
 
@@ -187,9 +203,10 @@ export function SkillView() {
     <div className="flex flex-col gap-[14px]">
       <ViewHeader
         title="Skill"
-        subtitle="Ta fenêtre de statut — le Système suit ta montée, mois après mois."
+        subtitle="Ta fenêtre de statut — le Système suit ta montée, semaine après semaine."
       />
 
+      <RelanceHebdo skills={skills} demoMode={demoMode} onFiger={figerLaSemaine} />
       <FenetreStatut skills={skills} serie={serie} />
       <QuetesEntrainement skills={skills} />
 
@@ -313,7 +330,7 @@ function FenetreStatut({ skills, serie }: { skills: Skill[]; serie: number }) {
           </div>
           <div className="mt-[8px] flex flex-wrap gap-x-[16px] gap-y-[4px]">
             <StatStatut
-              label="PROGRESSION DU MOIS"
+              label="PROGRESSION, 7 JOURS"
               valeur={progresMois > 0 ? `+${progresMois}` : String(progresMois)}
               couleur={progresMois >= 0 ? "var(--color-ver-soft)" : "var(--color-mag-soft)"}
             />
@@ -338,6 +355,70 @@ function FenetreStatut({ skills, serie }: { skills: Skill[]; serie: number }) {
           </div>
         </div>
       )}
+
+      {/*
+        Le radar dit l'équilibre à un instant, la courbe dit le SENS.
+        Les deux répondent à des questions différentes : « où suis-je fort ? »
+        et « est-ce que ça monte ? ». C'est la seconde qui fait bouger un
+        curseur.
+      */}
+      <div className="w-full basis-full">
+        <GrapheSkills skills={skills} />
+      </div>
+    </Panel>
+  );
+}
+
+/**
+ * La proposition d'actualisation, une fois par semaine.
+ *
+ * Elle ne s'affiche que si aucune compétence n'a bougé depuis lundi — une
+ * bannière permanente devient un décor qu'on ne voit plus. Et elle propose
+ * DEUX sorties, parce qu'une semaine sans progrès est une réponse valable :
+ * régler les curseurs, ou figer la semaine telle quelle. Sans la seconde, il
+ * faudrait bouger un curseur puis le remettre pour clore la semaine.
+ */
+function RelanceHebdo({
+  skills,
+  demoMode,
+  onFiger,
+}: {
+  skills: Skill[];
+  demoMode: boolean;
+  onFiger: () => void;
+}) {
+  if (demoMode || !aActualiser(skills)) return null;
+  const semaines = semainesDepuis(skills);
+
+  return (
+    <Panel accent="var(--color-amb)" size="sm" style={{ border: "1px solid rgba(255,198,61,0.22)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <div className="min-w-0 flex-1">
+          <div
+            className="text-[10px] font-black tracking-[0.12em]"
+            style={{ color: "var(--color-amb-soft)" }}
+          >
+            ⚔️ BILAN DE LA SEMAINE
+          </div>
+          <div className="mt-[3px] text-[12.5px] font-bold leading-[1.4] text-white/70">
+            {semaines <= 1
+              ? "Où en sont tes compétences ? Règle les curseurs, la courbe retiendra."
+              : `${semaines} semaines sans point posé — la courbe s'arrête là où tu l'as laissée.`}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onFiger}
+          className="min-h-[44px] flex-none cursor-pointer rounded-[10px] px-[13px] py-[8px] text-[11.5px] font-extrabold transition-all hover:brightness-125 lg:min-h-0"
+          style={{
+            color: "var(--color-amb)",
+            background: "rgba(255,198,61,0.12)",
+            border: "1px solid rgba(255,198,61,0.3)",
+          }}
+        >
+          Rien n&apos;a bougé
+        </button>
+      </div>
     </Panel>
   );
 }
