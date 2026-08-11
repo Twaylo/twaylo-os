@@ -315,23 +315,108 @@ const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
  * Les règles sont appliquées dans l'ordre, du plus grave au moins grave :
  * une attaque qui tue et vole est comptée parmi les morts.
  *
- * Relevé sur les 8 897 récits : 250 morts, 2 590 violences ou enlèvements,
- * 4 510 abordages avec vol, 1 541 tentatives ou approches.
+ * Relevé sur les 8 897 récits : 264 morts, 2 296 violences ou enlèvements,
+ * 4 761 abordages avec vol, 1 570 tentatives ou approches. Six incidents
+ * n'ont aucun récit et ne sont pas classés.
+ */
+/*
+ * Les tournures où les mots de la gravité ne disent RIEN de ce qu'on cherche.
+ *
+ * Elles sont effacées du texte AVANT toute recherche, et cette étape n'est
+ * pas un raffinement : sans elle, un cinquième des « attaques mortelles »
+ * n'en étaient pas. Le relevé, fait sur les 8 897 récits :
+ *
+ *   · « following the activation of the DEAD MAN alarm » — un dispositif de
+ *     sécurité qui détecte l'immobilité d'un homme de quart ;
+ *   · « the towed DEAD SHIP », « the DEAD VESSEL DAWN 1 » — un navire sans
+ *     propulsion ;
+ *   · « hurling lead weights, anchors, trash, DEAD FISH » — des poissons ;
+ *   · « a small craft STOPPED DEAD ahead », « observed DEAD AHEAD » — un
+ *     relèvement, une manœuvre ;
+ *   · « repeated three times before the line WENT DEAD » — une liaison radio
+ *     qui se coupe, au moment précis où le navire est pris ;
+ *   · « they THREATENED TO KILL him if he failed to cooperate » — une menace,
+ *     et le propre d'une menace est de ne pas avoir été exécutée.
+ *
+ * Même chose au niveau « violence » : « NO INJURIES REPORTED » et « all crew
+ * safe » contiennent les mots qu'on cherche et affirment exactement le
+ * contraire. 266 incidents en étaient faussement crédités.
+ */
+const LEURRES = new RegExp(
+  [
+    // « dead » qui ne parle pas d'un mort
+    "dead[- ]?(?:man|ship|vessel|boat|craft|fish|slow|weight|reckoning|end)",
+    "dead (?:ahead|astern|calm)",
+    "dead in the water",
+    "stopped dead",
+    "(?:line|lines|communications?|contact|radio|signal|call)[^.]{0,20}went dead",
+    "went dead",
+    "\\bdeadweight\\b",
+    // menaces et tentatives : personne n'est mort
+    "threaten(?:ed|ing)?[^.]{0,30}\\bkill\\b",
+    "attempt(?:ed|ing)?[^.]{0,20}\\bkill\\b",
+    "would[^.]{0,30}\\bkill\\b",
+    "going to \\bkill\\b",
+    "\\bkill\\b (?:him|her|them|the crew|all|everyone)",
+    // absence explicite de blessé
+    "no (?:one |crew |persons? )?(?:were |was |been )?(?:injur|hurt|harm|wound|casualt)[a-z]*",
+    "no (?:injuries|injury|casualties|harm)",
+    "(?:crew|all|everyone)[^.]{0,20}(?:safe|unharmed|uninjured)",
+    "without injury",
+  ].join("|"),
+  "gi",
+);
+
+/*
+ * La mort ne se dit pas d'une seule façon, et chaque tournure oubliée est un
+ * mort qui disparaît de la carte. Le premier jet ne cherchait que « killed » :
+ * il laissait de côté l'attaque du City of Poros (« KILLING at least nine
+ * people »), les 23 marins du Cheung Son (« the MURDER of its crew »), les
+ * corps repêchés (« BODIES WERE RECOVERED ») et les noyés jetés par-dessus
+ * bord. 45 incidents mortels étaient rangés ailleurs.
+ *
+ * Certaines formes exigent leur contexte, sans quoi elles mentent :
+ *   · « deaths OF » — sinon « the DEATH PENALTY » et « DEATH THREATS » ;
+ *   · « WERE executed » — sinon « EXECUTED evasive maneuvers », la manœuvre
+ *     d'évitement, de loin l'emploi le plus fréquent du mot ici ;
+ *   · « BODY … recovered » — sinon « an able BODY seaman », « a steel BODY
+ *     boat » et l'organisation ReCAAP, « anti-piracy BODY ».
  */
 const REGLES_GRAVITE = [
-  [3, /\b(killed|kill|dead|died|murder|fatally|deceased)\b/i],
+  [
+    3,
+    new RegExp(
+      [
+        "\\b(?:killed|killing|died|dead|deceased|fatally|beheaded|slain|perished)\\b",
+        "\\bmurder(?:ed|ing|s)?\\b",
+        "\\bfatalit(?:y|ies)\\b",
+        "\\bto death\\b", // hacked, beaten, shot to death
+        "\\bdeaths? of\\b",
+        "\\bdrown(?:ed|ing)\\b",
+        "\\b(?:were|was|been|being) executed\\b",
+        "\\bdid not survive\\b",
+        "\\bbodies\\b",
+        "\\bbod(?:y|ies)[^.]{0,30}(?:recovered|retrieved|found)",
+        "\\blost (?:his|her|their) li(?:fe|ves)\\b",
+      ].join("|"),
+      "i",
+    ),
+  ],
   [
     2,
-    /\b(kidnap|hostage|abduct|hijack|injur|wounded|stabbed|beaten|fired upon|opened fire|gunfire|rocket|rpg|grenade)/i,
+    /\b(?:kidnap|hostage|abduct|hijack|injur|wounded|stabbed|beaten|fired upon|opened fire|gunfire|rocket|rpg|grenade)/i,
   ],
-  [1, /\b(board|stole|stolen|robbed|theft|ransack)/i],
+  [1, /\b(?:board|stole|stolen|robbed|theft|ransack)/i],
 ];
 
 /** -1 quand la source ne fournit aucun récit : on ne classe pas à l'aveugle. */
 function graviter(description) {
   if (!description) return -1;
+  // Le texte nettoyé ne sert QU'au classement : le récit affiché sur la fiche
+  // reste celui de la NGA, mot pour mot.
+  const net = description.replace(LEURRES, " ");
   for (const [niveau, motif] of REGLES_GRAVITE) {
-    if (motif.test(description)) return niveau;
+    if (motif.test(net)) return niveau;
   }
   return 0;
 }
