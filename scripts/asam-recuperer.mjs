@@ -300,6 +300,43 @@ export function coordonnee(valeur, borne) {
 const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
 
 /**
+ * L'échelle de gravité, lue dans le récit de la NGA.
+ *
+ * La base ne classe pas les incidents par gravité : elle range côte à côte
+ * un équipage assassiné et une barque qui s'approche puis repart. Sur une
+ * carte où chaque attaque est un bateau, il faut pourtant distinguer les
+ * deux — sinon quarante-cinq ans d'événements se valent tous.
+ *
+ * Ce qu'on fait, et il faut le dire tel quel : on CLASSE, on n'ajoute rien.
+ * Chaque niveau vient de mots présents dans le récit officiel, et le récit
+ * intégral reste affiché sur la fiche, sans coupe. Le lecteur peut toujours
+ * vérifier le classement sur pièce.
+ *
+ * Les règles sont appliquées dans l'ordre, du plus grave au moins grave :
+ * une attaque qui tue et vole est comptée parmi les morts.
+ *
+ * Relevé sur les 8 897 récits : 250 morts, 2 590 violences ou enlèvements,
+ * 4 510 abordages avec vol, 1 541 tentatives ou approches.
+ */
+const REGLES_GRAVITE = [
+  [3, /\b(killed|kill|dead|died|murder|fatally|deceased)\b/i],
+  [
+    2,
+    /\b(kidnap|hostage|abduct|hijack|injur|wounded|stabbed|beaten|fired upon|opened fire|gunfire|rocket|rpg|grenade)/i,
+  ],
+  [1, /\b(board|stole|stolen|robbed|theft|ransack)/i],
+];
+
+/** -1 quand la source ne fournit aucun récit : on ne classe pas à l'aveugle. */
+function graviter(description) {
+  if (!description) return -1;
+  for (const [niveau, motif] of REGLES_GRAVITE) {
+    if (motif.test(description)) return niveau;
+  }
+  return 0;
+}
+
+/**
  * Transforme un enregistrement brut en incident exploitable, ou explique
  * pourquoi il est écarté.
  */
@@ -325,6 +362,8 @@ export function normaliser(brut) {
       agresseur: texte(champ(brut, "hostility", "hostilityType", "aggressor")),
       navire: texte(champ(brut, "victim", "victimType", "vesselType")),
       description: texte(champ(brut, "description", "desc", "narrative")),
+      // Classement de gravité, lu dans le récit et non ajouté à la source.
+      gravite: graviter(texte(champ(brut, "description", "desc", "narrative"))),
       position: texte(champ(brut, "position")),
     },
   };
@@ -392,6 +431,7 @@ export function construireSortie(incidents, meta) {
       agresseur: agresseurs.codes,
       navire: navires.codes,
       reference: incidents.map((i) => i.reference),
+      gravite: incidents.map((i) => i.gravite),
     },
   };
 

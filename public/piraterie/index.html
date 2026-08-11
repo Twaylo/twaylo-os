@@ -135,6 +135,16 @@
           <span class="mono">Pirates</span> y comptent séparément. Chaque fiche
           affiche toujours le libellé exact enregistré par la NGA.
         </p>
+        <p>
+          <strong>La couleur des bateaux est un classement, pas une donnée
+          de la NGA.</strong> La base ne hiérarchise pas ses incidents : elle
+          range côte à côte un équipage tué et une barque qui s'approche puis
+          repart. Les quatre niveaux sont déduits de mots présents dans le
+          récit officiel — mort, enlèvement, détournement, tirs, abordage,
+          vol, tentative — appliqués du plus grave au moins grave. Un incident
+          sans récit n'est pas classé. Le récit intégral figure sur chaque
+          fiche&nbsp;: le classement s'y vérifie sur pièce.
+        </p>
       </div>
     </aside>
 
@@ -150,6 +160,19 @@
         <p class="compteur" id="compteur" role="status" aria-live="polite">
           <strong>—</strong> incidents affichés
         </p>
+        <!-- Recalculé à chaque filtre : ce que la sélection en cours raconte. -->
+        <p class="stats" id="stats"></p>
+
+        <!--
+          Gravité : à la fois légende et filtre, et jamais replié.
+
+          C'est la clé de lecture des couleurs de la flotte. La ranger dans le
+          panneau des filtres l'aurait rendue invisible par défaut : on
+          verrait des bateaux de quatre couleurs sans savoir ce qu'elles
+          disent.
+        -->
+        <div class="gravites" id="filtre-gravites" role="group"
+             aria-label="Gravité — sert aussi de légende des couleurs"></div>
 
         <!-- Curseur temporel -->
         <div class="temps">
