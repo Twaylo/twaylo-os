@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Copie de MapLibre, reconstruite avant chaque build depuis node_modules.
+    // C'est du code tiers minifié : l'analyser ne dit rien d'utile sur ce
+    // projet, et noie les vrais avertissements sous des milliers de lignes.
+    "public/piraterie/vendeur/**",
   ]),
 ]);
 
