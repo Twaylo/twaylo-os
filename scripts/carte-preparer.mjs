@@ -16,7 +16,8 @@
  * service, et une politique de sécurité qui reste fermée à « soi-même ».
  */
 
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { feature } from "topojson-client";
 import { createRequire } from "node:module";
@@ -163,6 +164,77 @@ async function preparerFond() {
   console.error(`Fond de carte : ${allege.features.length} pays, ${Math.round(poids / 1024)} Ko`);
 }
 
+/**
+ * Découpe les récits en tranches.
+ *
+ * Les récits pèsent 927 Ko compressés — 65 % de tout ce qu'un visiteur
+ * télécharge — et la carte n'en a besoin d'AUCUN pour s'afficher. Les envoyer
+ * en bloc à chaque visite, c'est facturer à tout le monde le confort de ceux
+ * qui se serviront de la recherche.
+ *
+ * Découpés, ouvrir la fiche d'un navire ne coûte plus que sa tranche : une
+ * quinzaine de kilo-octets au lieu de neuf cents. Le fichier entier reste là,
+ * intact, pour la recherche — qui, elle, a vraiment besoin de tout lire.
+ *
+ * La taille de tranche est un compromis : plus petite, on télécharge moins
+ * par clic mais on multiplie les allers-retours ; plus grande, l'inverse.
+ * 128 récits font une tranche d'environ 14 Ko compressés, soit le coût d'une
+ * petite image pour ouvrir n'importe quelle fiche.
+ */
+const PAR_TRANCHE = 128;
+
+async function decouperRecits() {
+  const dossier = path.join(SORTIE, "donnees");
+  const source = path.join(dossier, "asam-descriptions.json");
+  if (!existsSync(source)) {
+    console.error("Récits absents : découpage sauté (les données seront régénérées).");
+    return;
+  }
+
+  const recits = JSON.parse(await readFile(source, "utf8"));
+  const traductions = existsSync(path.join(dossier, "asam-recits-fr.json"))
+    ? JSON.parse(await readFile(path.join(dossier, "asam-recits-fr.json"), "utf8"))
+    : {};
+
+  const dossierVo = path.join(dossier, "recits");
+  const dossierFr = path.join(dossier, "recits-fr");
+  await mkdir(dossierVo, { recursive: true });
+  await mkdir(dossierFr, { recursive: true });
+
+  const nombre = Math.ceil(recits.length / PAR_TRANCHE);
+  let poidsVo = 0;
+  let tranchesFr = 0;
+
+  for (let k = 0; k < nombre; k += 1) {
+    const debut = k * PAR_TRANCHE;
+    const tranche = recits.slice(debut, debut + PAR_TRANCHE);
+    const contenu = JSON.stringify(tranche);
+    poidsVo += Buffer.byteLength(contenu);
+    await writeFile(path.join(dossierVo, `${k}.json`), contenu, "utf8");
+
+    /*
+     * La traduction est éparse : la plupart des tranches n'en contiennent
+     * aucune. On n'écrit QUE celles qui portent quelque chose — le client
+     * traite un 404 comme « rien à traduire ici », ce qui est exact.
+     */
+    const morceau = {};
+    for (let i = debut; i < debut + tranche.length; i += 1) {
+      if (traductions[i]) morceau[i] = traductions[i];
+    }
+    if (Object.keys(morceau).length > 0) {
+      await writeFile(path.join(dossierFr, `${k}.json`), JSON.stringify(morceau), "utf8");
+      tranchesFr += 1;
+    }
+  }
+
+  console.error(
+    `Récits : ${recits.length} en ${nombre} tranches de ${PAR_TRANCHE} ` +
+      `(${Math.round(poidsVo / nombre / 1024)} Ko chacune en moyenne), ` +
+      `dont ${tranchesFr} tranches traduites.`,
+  );
+}
+
 await copierMaplibre();
 await copierPolices();
 await preparerFond();
+await decouperRecits();

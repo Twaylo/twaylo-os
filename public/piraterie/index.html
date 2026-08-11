@@ -64,8 +64,20 @@
       « /piraterie/index.html ». Un chemin relatif se résoudrait à la racine du
       site dans le premier cas, et ne trouverait rien.
     -->
-    <link rel="modulepreload" href="/piraterie/vendeur/maplibre-gl.mjs" />
-    <link rel="modulepreload" href="/piraterie/vendeur/maplibre-gl-shared.mjs" />
+    <!--
+      `crossorigin` sur les modules aussi : un module est toujours cherché en
+      mode CORS, et le préchargement doit le déclarer pour se faire
+      reconnaître.
+
+      À noter, parce que la mesure surprend : `maplibre-gl-shared.mjs` part
+      malgré tout DEUX fois au premier affichage. Ce n'est pas un défaut de
+      cette page. MapLibre lance un worker, et un worker a son propre graphe
+      de modules : il importe sa propre copie du fichier commun. Les deux
+      requêtes étant simultanées, aucune ne profite du cache de l'autre. Rien
+      à corriger ici — seulement à ne pas rechercher deux fois.
+    -->
+    <link rel="modulepreload" crossorigin href="/piraterie/vendeur/maplibre-gl.mjs" />
+    <link rel="modulepreload" crossorigin href="/piraterie/vendeur/maplibre-gl-shared.mjs" />
     <!--
       `crossorigin` est indispensable, y compris pour ces fichiers du même
       domaine : sans lui le préchargement part en mode « no-cors » tandis que
@@ -92,7 +104,7 @@
       effet qu'une fois le nouveau service worker installé. Changer l'adresse
       libère immédiatement les navigateurs encore tenus par l'ancien.
     -->
-    <link rel="stylesheet" href="/piraterie/carte.css?v=4" />
+    <link rel="stylesheet" href="/piraterie/carte.css?v=5" />
   </head>
 
   <body>
@@ -291,13 +303,13 @@
             Un téléphone garde parfois l'ancienne, et on cherche alors un
             défaut déjà corrigé. Une mention à lire, et on sait.
           -->
-          <span class="version">v4</span>
+          <span class="version">v5</span>
         </p>
       </div>
     </section>
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js?v=4"></script>
+    <script type="module" src="/piraterie/carte.js?v=5"></script>
   </body>
 </html>

@@ -23,7 +23,7 @@ import {
   Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
-import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=4";
+import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=5";
 
 const CHEMIN = "/piraterie";
 const $ = (id) => document.getElementById(id);
@@ -197,8 +197,28 @@ let base = null;
  * Quand la traduction manque, on affiche l'original et on le dit. Jamais de
  * texte inventé pour combler un trou.
  */
-let recitsVo = null;
-let recitsFr = null;
+let recitsVo = [];
+let recitsFr = {};
+
+/*
+ * Les récits arrivent par TRANCHES, pas en bloc.
+ *
+ * En bloc, ils pesaient 927 Ko compressés — 65 % de tout ce qu'une visite
+ * télécharge — et partaient chez tout le monde, alors que la carte n'en a
+ * besoin d'aucun pour s'afficher et que la plupart des visiteurs ouvriront
+ * trois fiches sans jamais se servir de la recherche. Sur une vidéo qui amène
+ * dix mille personnes, c'est neuf gigaoctets payés pour du texte que
+ * personne n'a demandé.
+ *
+ * Ouvrir une fiche ne coûte donc plus que sa tranche : 13 Ko. Le fichier
+ * entier n'est téléchargé que si l'on tape vraiment dans la recherche — elle
+ * seule a besoin de tout lire — et il ne l'est qu'une fois.
+ */
+const PAR_TRANCHE = 128;
+const tranchesVo = new Set();
+const tranchesFr = new Set();
+let toutVoCharge = false;
+let toutFrCharge = false;
 let carteGL = null;
 let visibles = [];
 let parAnneeVisible = new Map();
@@ -887,9 +907,22 @@ $("recherche").addEventListener("input", (evenement) => {
   clearTimeout(minuterieRecherche);
   // Une frappe ne doit pas relancer un balayage des 8 897 récits : on attend
   // que la saisie se pose.
-  minuterieRecherche = setTimeout(() => {
+  minuterieRecherche = setTimeout(async () => {
     etat.recherche = evenement.target.value;
     arreterLecture();
+
+    /*
+     * Les récits ne sont pas encore là : on le dit, on les charge, puis on
+     * cherche. Le champ reste utilisable pendant ce temps — le bloquer
+     * ferait perdre la frappe en cours.
+     */
+    if (etat.recherche.trim() && !toutVoCharge) {
+      const champ = $("recherche");
+      champ.placeholder = t("rechercheAttente");
+      await chargerTousLesRecits();
+      champ.placeholder = t("recherchePlaceholder");
+    }
+
     appliquer();
   }, 180);
 });
@@ -901,13 +934,16 @@ $("recherche").addEventListener("input", (evenement) => {
  * c'est sur lui que le classement de gravité se vérifie.
  */
 function recitDe(index) {
-  const vo = recitsVo ? recitsVo[index] : null;
-  const traduction = langue === "fr" && recitsFr ? recitsFr[index] : null;
+  const vo = recitsVo[index] ?? null;
+  const traduction = langue === "fr" ? (recitsFr[index] ?? null) : null;
   return {
     texte: traduction || vo || "",
     vo: vo || "",
     traduit: Boolean(traduction),
-    charge: recitsVo !== null,
+    // « chargé » se juge récit par récit, et non plus sur la présence du
+    // fichier entier : c'est ce qui permet d'en afficher un sans les avoir
+    // tous.
+    charge: vo !== null,
   };
 }
 
@@ -920,34 +956,79 @@ function recitDe(index) {
  * langue le demande — un lecteur anglophone n'a aucune raison de la
  * télécharger.
  */
-function chargerRecits() {
-  const attendus = [
-    fetch(`${CHEMIN}/donnees/asam-descriptions.json`).then((r) => (r.ok ? r.json() : null)),
-    langue === "fr" && recitsFr === null
-      ? fetch(`${CHEMIN}/donnees/asam-recits-fr.json`)
-          .then((r) => (r.ok ? r.json() : {}))
-          .catch(() => ({}))
-      : Promise.resolve(recitsFr),
-  ];
+/** La tranche qui contient ce récit, et sa traduction si la langue la demande. */
+async function assurerTranche(index) {
+  const k = Math.floor(index / PAR_TRANCHE);
+  const travaux = [];
 
-  Promise.all(attendus)
-    .then(([vo, fr]) => {
-      if (vo) recitsVo = vo;
-      if (fr) recitsFr = fr;
+  if (!toutVoCharge && !tranchesVo.has(k)) {
+    tranchesVo.add(k);
+    travaux.push(
+      fetch(`${CHEMIN}/donnees/recits/${k}.json`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((tranche) => {
+          tranche.forEach((texte, decalage) => {
+            if (texte) recitsVo[k * PAR_TRANCHE + decalage] = texte;
+          });
+        })
+        // On oublie l'échec : la tranche redeviendra demandable au prochain
+        // clic, plutôt que de rester marquée « chargée » et vide à jamais.
+        .catch(() => tranchesVo.delete(k)),
+    );
+  }
 
-      const champ = $("recherche");
-      if (recitsVo) {
-        champ.disabled = false;
-        champ.placeholder = t("recherchePlaceholder");
-      }
-      if (ficheOuverte !== null) remplirDescription(ficheOuverte);
-      // Une recherche reçue par l'adresse n'a pu porter que sur les libellés
-      // jusqu'ici : maintenant que les récits sont là, on la rejoue.
-      if (etat.recherche.trim()) appliquer();
-    })
-    .catch(() => {
-      $("recherche").placeholder = t("rechercheIndispo");
-    });
+  if (langue === "fr" && !toutFrCharge && !tranchesFr.has(k)) {
+    tranchesFr.add(k);
+    travaux.push(
+      fetch(`${CHEMIN}/donnees/recits-fr/${k}.json`)
+        // Une tranche sans aucune traduction n'est pas écrite : le 404 veut
+        // dire « rien à traduire ici », ce qui est exact.
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((morceau) => Object.assign(recitsFr, morceau))
+        .catch(() => tranchesFr.delete(k)),
+    );
+  }
+
+  if (travaux.length) await Promise.all(travaux);
+}
+
+/**
+ * Tous les récits d'un coup — le prix de la recherche, et d'elle seule.
+ *
+ * Chercher un mot exige de lire les 8 897 récits : il n'y a pas de demi-mesure
+ * possible. On paie donc le fichier entier, mais seulement à la première
+ * frappe, et une seule fois.
+ */
+async function chargerTousLesRecits() {
+  const travaux = [];
+
+  if (!toutVoCharge) {
+    travaux.push(
+      fetch(`${CHEMIN}/donnees/asam-descriptions.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((vo) => {
+          if (!vo) return;
+          vo.forEach((texte, i) => {
+            if (texte) recitsVo[i] = texte;
+          });
+          toutVoCharge = true;
+        }),
+    );
+  }
+
+  if (langue === "fr" && !toutFrCharge) {
+    travaux.push(
+      fetch(`${CHEMIN}/donnees/asam-recits-fr.json`)
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((fr) => {
+          Object.assign(recitsFr, fr);
+          toutFrCharge = true;
+        })
+        .catch(() => {}),
+    );
+  }
+
+  if (travaux.length) await Promise.all(travaux);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1040,6 +1121,29 @@ function ouvrirEncart(incident) {
   boite.append(bouton);
 
   encart.setLngLat([incident.lon, incident.lat]).setDOMContent(boite).addTo(carteGL);
+
+  /*
+   * L'encart est le PREMIER contact avec un récit : c'est lui qui déclenche
+   * le chargement de la tranche, pas la fiche complète.
+   *
+   * Sans cela, l'extrait restait bloqué sur « Chargement du récit… » jusqu'à
+   * ce qu'on clique « Lire le récit complet » — donc pour toujours chez qui
+   * se contente de survoler quelques navires, c'est-à-dire presque tout le
+   * monde.
+   */
+  if (!recit.charge) {
+    assurerTranche(incident.i).then(() => {
+      // L'encart a pu être fermé, ou un autre navire cliqué entre-temps :
+      // on ne réécrit que si c'est toujours celui-ci qui est affiché.
+      if (!extrait.isConnected) return;
+      const arrive = recitDe(incident.i);
+      if (!arrive.texte) return;
+      delete extrait.dataset.attente;
+      extrait.lang = arrive.traduit ? langue : "en";
+      extrait.textContent =
+        arrive.texte.length > 175 ? `${arrive.texte.slice(0, 175).trimEnd()}…` : arrive.texte;
+    });
+  }
 }
 
 carteGL.on("click", "navires", (evenement) => {
@@ -1130,6 +1234,16 @@ function ouvrirFiche(index) {
   ligneFiche(champs, mots.graviteAria, nomGravite(incident.gravite));
 
   remplirDescription(index);
+  /*
+   * La tranche part maintenant, et la fiche se remplit à son arrivée.
+   * L'affichage ci-dessus a déjà posé « Chargement du récit… » si le texte
+   * manque : la fiche s'ouvre donc tout de suite, avec ses coordonnées, sa
+   * date et son navire, et le récit s'y glisse ensuite.
+   */
+  assurerTranche(index).then(() => {
+    if (ficheOuverte === index) remplirDescription(index);
+  });
+
   $("fiche-reference").textContent = incident.reference
     ? t("referenceFiche", { reference: incident.reference })
     : t("referenceAbsente");
@@ -1255,9 +1369,23 @@ for (const bouton of document.querySelectorAll("#langues button")) {
     appliquerLangue();
     rafraichirTextesDynamiques();
     majUrl();
-    // Passer au français après coup demande un fichier qui n'a jamais été
-    // réclamé : on le récupère maintenant, sans bloquer l'affichage.
-    if (langue === "fr" && recitsFr === null) chargerRecits();
+    /*
+     * Passer au français après coup réclame des traductions qu'on n'avait
+     * aucune raison de télécharger jusque-là. On ne rattrape que ce qui est
+     * réellement à l'écran : la fiche ouverte, et l'ensemble des récits si la
+     * recherche les avait déjà tous fait venir.
+     */
+    if (langue === "fr" && !toutFrCharge) {
+      const suite = toutVoCharge
+        ? chargerTousLesRecits()
+        : ficheOuverte !== null
+          ? assurerTranche(ficheOuverte)
+          : Promise.resolve();
+      suite.then(() => {
+        if (ficheOuverte !== null) remplirDescription(ficheOuverte);
+        if (etat.recherche.trim()) appliquer();
+      });
+    }
   });
 }
 
@@ -1268,7 +1396,7 @@ function rafraichirTextesDynamiques() {
     debut: base.anneeMin,
     fin: base.anneeMax,
   });
-  $("recherche").placeholder = recitsVo ? t("recherchePlaceholder") : t("rechercheAttente");
+  $("recherche").placeholder = t("recherchePlaceholder");
   $("bouton-lecture").setAttribute("aria-label", lecture ? t("arreter") : t("lire"));
   $("bascule-couleur").title = etat.colorer ? t("colorerActif") : t("colorerInactif");
 
@@ -1392,5 +1520,34 @@ appliquer();
 $("attente").dataset.fini = "";
 setTimeout(() => $("attente").remove(), 400);
 
-// Une fois la carte posée et le premier rendu fait, on va chercher les récits.
-carteGL.once("idle", chargerRecits);
+/*
+ * Rien n'est chargé d'avance.
+ *
+ * Les récits partaient ici, tous, dès que la carte était posée. Ils ne
+ * partent plus : une fiche va chercher sa tranche, une recherche va chercher
+ * le tout. Un visiteur qui regarde la carte et repart ne télécharge aucun
+ * récit.
+ *
+ * Le champ de recherche s'ouvre donc tout de suite, sans rien attendre : il
+ * était désactivé jusqu'à l'arrivée des 927 Ko, ce qui n'a plus lieu d'être.
+ * C'est la première frappe qui déclenche le téléchargement, et elle le dit.
+ */
+$("recherche").disabled = false;
+$("recherche").placeholder = t("recherchePlaceholder");
+
+/*
+ * Une recherche reçue par l'adresse — un lien partagé — doit s'appliquer
+ * sans qu'on ait à retaper quoi que ce soit. Elle n'a porté que sur les
+ * libellés jusqu'ici, faute de récits : on va les chercher, puis on rejoue.
+ */
+if (etat.recherche.trim()) {
+  $("recherche").placeholder = t("rechercheAttente");
+  chargerTousLesRecits()
+    .then(() => {
+      $("recherche").placeholder = t("recherchePlaceholder");
+      appliquer();
+    })
+    .catch(() => {
+      $("recherche").placeholder = t("rechercheIndispo");
+    });
+}
