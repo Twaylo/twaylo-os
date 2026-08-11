@@ -315,8 +315,8 @@ const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
  * Les règles sont appliquées dans l'ordre, du plus grave au moins grave :
  * une attaque qui tue et vole est comptée parmi les morts.
  *
- * Relevé sur les 8 897 récits : 219 morts, 2 326 violences ou enlèvements,
- * 4 764 abordages avec vol, 1 582 tentatives ou approches. Six incidents
+ * Relevé sur les 8 897 récits : 264 morts, 2 296 violences ou enlèvements,
+ * 4 761 abordages avec vol, 1 570 tentatives ou approches. Six incidents
  * n'ont aucun récit et ne sont pas classés.
  */
 /*
@@ -367,10 +367,41 @@ const LEURRES = new RegExp(
   "gi",
 );
 
+/*
+ * La mort ne se dit pas d'une seule façon, et chaque tournure oubliée est un
+ * mort qui disparaît de la carte. Le premier jet ne cherchait que « killed » :
+ * il laissait de côté l'attaque du City of Poros (« KILLING at least nine
+ * people »), les 23 marins du Cheung Son (« the MURDER of its crew »), les
+ * corps repêchés (« BODIES WERE RECOVERED ») et les noyés jetés par-dessus
+ * bord. 45 incidents mortels étaient rangés ailleurs.
+ *
+ * Certaines formes exigent leur contexte, sans quoi elles mentent :
+ *   · « deaths OF » — sinon « the DEATH PENALTY » et « DEATH THREATS » ;
+ *   · « WERE executed » — sinon « EXECUTED evasive maneuvers », la manœuvre
+ *     d'évitement, de loin l'emploi le plus fréquent du mot ici ;
+ *   · « BODY … recovered » — sinon « an able BODY seaman », « a steel BODY
+ *     boat » et l'organisation ReCAAP, « anti-piracy BODY ».
+ */
 const REGLES_GRAVITE = [
-  // « murdered », « fatality » et « beheaded » manquaient à la première
-  // version : « \bmurder\b » ne trouve pas « murdered ».
-  [3, /\b(?:killed|murdered|died|dead|deceased|fatally|fatalit(?:y|ies)|beheaded)\b/i],
+  [
+    3,
+    new RegExp(
+      [
+        "\\b(?:killed|killing|died|dead|deceased|fatally|beheaded|slain|perished)\\b",
+        "\\bmurder(?:ed|ing|s)?\\b",
+        "\\bfatalit(?:y|ies)\\b",
+        "\\bto death\\b", // hacked, beaten, shot to death
+        "\\bdeaths? of\\b",
+        "\\bdrown(?:ed|ing)\\b",
+        "\\b(?:were|was|been|being) executed\\b",
+        "\\bdid not survive\\b",
+        "\\bbodies\\b",
+        "\\bbod(?:y|ies)[^.]{0,30}(?:recovered|retrieved|found)",
+        "\\blost (?:his|her|their) li(?:fe|ves)\\b",
+      ].join("|"),
+      "i",
+    ),
+  ],
   [
     2,
     /\b(?:kidnap|hostage|abduct|hijack|injur|wounded|stabbed|beaten|fired upon|opened fire|gunfire|rocket|rpg|grenade)/i,
