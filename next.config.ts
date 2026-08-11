@@ -56,24 +56,68 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
+      /*
+       * Le cache de la carte, en deux régimes.
+       *
+       * Le dossier `public` est servi par défaut en `max-age=0` : sans rien
+       * faire, chaque visite retéléchargerait MapLibre, les polices, le fond
+       * de carte et les données — près d'un mégaoctet. Sur un lien posé en
+       * commentaire épinglé d'une vidéo, c'est le pire moment pour ne pas
+       * savoir garder en cache.
+       *
+       * Mais tout garder longtemps a un coût symétrique, payé une fois : la
+       * page et ses scripts gardés dix minutes, une correction déployée ne se
+       * voyait pas. Les fichiers sont donc séparés selon ce qu'ils sont —
+       * ceux qui changent à chaque correction se revérifient toujours, ceux
+       * qui ne changent jamais se gardent longtemps. Les chemins sont
+       * énumérés un par un plutôt que filtrés par motif : c'est la même règle
+       * que le middleware, et un fichier ajouté doit être un geste délibéré.
+       */
+      ...[
+        "/piraterie",
+        "/piraterie/index.html",
+        "/piraterie/carte.js",
+        "/piraterie/carte.css",
+        "/piraterie/i18n.js",
+      ].map((source) => ({
+        source,
+        headers: [
+          {
+            // « no-cache » ne veut pas dire « ne garde rien » : le navigateur
+            // garde la copie mais demande au serveur si elle est encore bonne.
+            // Inchangée, la réponse est un 304 de quelques octets.
+            key: "Cache-Control",
+            value: "public, no-cache",
+          },
+        ],
+      })),
       {
-        /*
-         * Le dossier `public` est servi par défaut en `max-age=0` : chaque
-         * visite retéléchargerait MapLibre, le fond de carte et les données —
-         * près d'un mégaoctet. Sur un lien posé en commentaire épinglé d'une
-         * vidéo, c'est le pire moment pour ne pas savoir garder en cache.
-         *
-         * Dix minutes chez le visiteur, un jour sur le CDN, et une semaine de
-         * tolérance pendant laquelle une version périmée est servie
-         * immédiatement puis rafraîchie en fond. Une mise à jour des données
-         * se propage donc en une journée au plus, sans jamais faire attendre
-         * personne.
-         */
-        source: "/piraterie/:path*",
+        // MapLibre et les polices : leur contenu ne bouge qu'en changeant de
+        // version de la bibliothèque, ce qui n'arrive pas tout seul.
+        source: "/piraterie/vendeur/:path*",
         headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800",
+            value: "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800",
+          },
+        ],
+      },
+      {
+        // Les données et le fond : lourds, et renouvelés au rythme de la NGA.
+        source: "/piraterie/donnees/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
+      {
+        source: "/piraterie/monde.json",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800",
           },
         ],
       },

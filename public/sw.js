@@ -205,6 +205,25 @@ self.addEventListener("fetch", (evt) => {
   if (url.origin !== self.location.origin) return;
 
   /*
+   * La carte de la piraterie ne passe JAMAIS par ici.
+   *
+   * Elle partage le domaine de l'OS mais n'en fait pas partie : c'est un site
+   * public, servi à des spectateurs venus de YouTube, avec sa propre stratégie
+   * de cache posée dans les en-têtes HTTP.
+   *
+   * Sans cette sortie, le défaut était sévère et silencieux : `carte.js` et
+   * `carte.css` finissent par « .js » et « .css », donc `estUnFichierFige` les
+   * déclarait figés, et `fichier()` les sert depuis le cache SANS JAMAIS
+   * revérifier. Leur adresse ne changeant pas d'une version à l'autre, la
+   * toute première carte chargée restait affichée pour toujours — un
+   * déploiement pouvait passer, le téléphone montrait encore l'ancienne.
+   *
+   * Ces fichiers n'ont rien à faire dans le cache hors-ligne de l'OS : personne
+   * n'a besoin de consulter la carte des attaques dans un tunnel.
+   */
+  if (url.pathname === "/piraterie" || url.pathname.startsWith("/piraterie/")) return;
+
+  /*
    * Les données ne sont jamais mises en cache.
    *
    * L'application garde déjà, elle-même, ce qu'il faut pour se peindre hors

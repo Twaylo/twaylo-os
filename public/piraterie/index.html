@@ -49,7 +49,16 @@
           href="/piraterie/vendeur/ibm-plex-sans-latin-400-normal.woff2" />
 
     <link rel="stylesheet" href="/piraterie/vendeur/maplibre-gl.css" />
-    <link rel="stylesheet" href="/piraterie/carte.css" />
+    <!--
+      L'empreinte « ?v= » n'est pas décorative : le service worker de l'OS,
+      déjà installé sur les téléphones, garde tout fichier « .css » ou « .js »
+      en cache À VIE, sans jamais revérifier. Il servait donc la toute première
+      carte publiée, quel que soit le déploiement. Le correctif définitif est
+      dans `public/sw.js`, qui ignore désormais ce dossier — mais il ne prend
+      effet qu'une fois le nouveau service worker installé. Changer l'adresse
+      libère immédiatement les navigateurs encore tenus par l'ancien.
+    -->
+    <link rel="stylesheet" href="/piraterie/carte.css?v=3" />
   </head>
 
   <body>
@@ -233,6 +242,6 @@
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js"></script>
+    <script type="module" src="/piraterie/carte.js?v=3"></script>
   </body>
 </html>

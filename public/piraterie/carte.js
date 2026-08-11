@@ -23,7 +23,7 @@ import {
   Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
-import { TEXTES } from "/piraterie/i18n.js";
+import { TEXTES } from "/piraterie/i18n.js?v=3";
 
 const CHEMIN = "/piraterie";
 const $ = (id) => document.getElementById(id);
