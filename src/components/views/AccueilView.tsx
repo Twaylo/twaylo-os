@@ -21,6 +21,8 @@ import { JournalCard } from "@/components/cards/JournalCard";
 import { NutritionCard } from "@/components/cards/NutritionCard";
 import { JourneeCard } from "@/components/cards/JourneeCard";
 import { BlocagesCard } from "@/components/cards/BlocagesCard";
+import { QuetesCard } from "@/components/cards/QuetesCard";
+import { ExploitsCard } from "@/components/cards/ExploitsCard";
 
 /**
  * La carte de l'accueil correspondant à chaque bloc du catalogue.
@@ -38,6 +40,7 @@ import { BlocagesCard } from "@/components/cards/BlocagesCard";
 const CARTES: Record<string, ComponentType> = {
   operateur: OperateurCard,
   progression: ProgressionCard,
+  quetes: QuetesCard,
   taches: TachesCard,
   journee: JourneeCard,
   habitudes: HabitudesCard,
@@ -46,6 +49,7 @@ const CARTES: Record<string, ComponentType> = {
   semaine: SemaineCard,
   nutrition: NutritionCard,
   revenus: RevenusCard,
+  exploits: ExploitsCard,
   pipeline: PipelineContenu,
   journal: JournalCard,
 };

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useOs } from "@/lib/os-context";
+import { useProgression } from "@/lib/progression-context";
 import { AMBIANCES, CUSTOM_DEFAUT, type AmbianceId } from "@/lib/custom";
 import {
   BLOCS,
@@ -23,6 +24,15 @@ import {
  */
 export function Personnaliser({ onClose }: { onClose: () => void }) {
   const { custom, majCustom, identite, demoMode } = useOs();
+  /*
+   * Le niveau sert à ouvrir les ambiances.
+   *
+   * Une ambiance verrouillée n'est pas cachée : la voir grisée avec son
+   * niveau est ce qui donne envie d'y aller. Une récompense qu'on ne sait pas
+   * exister ne récompense rien.
+   */
+  const { palier, affichable } = useProgression();
+  const niveau = affichable ? palier.niveau : 1;
 
   // Fermer sur Échap : un panneau qu'on ne sait pas fermer est une impasse.
   useEffect(() => {
@@ -148,13 +158,26 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
               {(Object.entries(AMBIANCES) as [AmbianceId, (typeof AMBIANCES)[AmbianceId]][]).map(
                 ([id, amb]) => {
                   const active = custom.ambiance === id;
+                  /*
+                   * Une ambiance déjà active reste utilisable même si le
+                   * niveau redescendait : on ne reprend pas ce qui a été
+                   * donné, et un écran qui change de couleur tout seul serait
+                   * incompréhensible.
+                   */
+                  const verrou = amb.niveau > niveau && !active;
                   return (
                     <button
                       key={id}
                       type="button"
-                      onClick={() => majCustom({ ambiance: id })}
+                      onClick={() => !verrou && majCustom({ ambiance: id })}
+                      disabled={verrou}
                       aria-pressed={active}
-                      className="cursor-pointer rounded-[13px] p-[10px] text-left transition-all hover:brightness-110"
+                      title={
+                        verrou
+                          ? `Se débloque au niveau ${amb.niveau}`
+                          : `${amb.nom} — ${amb.description}`
+                      }
+                      className="cursor-pointer rounded-[13px] p-[10px] text-left transition-all hover:brightness-110 disabled:cursor-not-allowed"
                       style={{
                         background: "rgba(255,255,255,0.03)",
                         border: `1px solid ${active ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.08)"}`,
@@ -163,19 +186,39 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
                     >
                       <span
                         className="block h-[26px] w-full rounded-[8px]"
-                        style={{ background: amb.grad }}
+                        style={{
+                          background: amb.grad,
+                          filter: verrou ? "grayscale(0.85) brightness(0.55)" : "none",
+                        }}
                         aria-hidden
                       />
-                      <span className="mt-[7px] flex items-baseline justify-between">
-                        <span className="text-[12.5px] font-extrabold">{amb.nom}</span>
-                        {active && (
-                          <span className="text-[9.5px] font-black tracking-[0.08em] text-white/50">
+                      <span className="mt-[7px] flex items-baseline justify-between gap-2">
+                        <span
+                          className="text-[12.5px] font-extrabold"
+                          style={{ color: verrou ? "rgba(255,255,255,0.4)" : undefined }}
+                        >
+                          {verrou && "🔒 "}
+                          {amb.nom}
+                        </span>
+                        {active ? (
+                          <span className="flex-none text-[9.5px] font-black tracking-[0.08em] text-white/50">
                             ACTIVE
                           </span>
+                        ) : (
+                          verrou && (
+                            <span
+                              className="flex-none font-mono text-[9.5px] font-black"
+                              style={{ color: "var(--color-amb-soft)" }}
+                            >
+                              NIV {amb.niveau}
+                            </span>
+                          )
                         )}
                       </span>
                       <span className="block text-[10.5px] leading-[1.35] text-white/40">
-                        {amb.description}
+                        {verrou
+                          ? `Encore ${amb.niveau - niveau} niveau${amb.niveau - niveau > 1 ? "x" : ""} avant de l'ouvrir.`
+                          : amb.description}
                       </span>
                     </button>
                   );
