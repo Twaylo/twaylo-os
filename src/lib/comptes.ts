@@ -48,6 +48,20 @@ async function empreinter(motDePasse: string, sel: string): Promise<string> {
   return hex(bits);
 }
 
+/**
+ * Le registre, SANS prototype.
+ *
+ * Un objet JSON ordinaire hérite de `Object.prototype`, et l'on interroge
+ * celui-ci avec un nom choisi par l'appelant. Or « constructor » passe le
+ * filtre des identifiants : il est en minuscules, sans accent, assez long.
+ * `registre["constructor"]` renvoyait donc la fonction `Object` — un compte
+ * bien réel aux yeux du code. Conséquences, sans aucune authentification :
+ * la connexion avec ce nom lisait `compte.empreinte.length` sur `undefined`
+ * et rendait une 500, et le nom restait à jamais « déjà pris » à la création.
+ *
+ * `Object.create(null)` supprime la question à la racine plutôt que de la
+ * traiter aux trois endroits qui consultent le registre.
+ */
 async function lireRegistre(): Promise<Record<string, Compte>> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
@@ -57,7 +71,19 @@ async function lireRegistre(): Promise<Record<string, Compte>> {
     .maybeSingle();
   if (error) throw error;
   const brut = (data?.habitudes ?? {}) as Record<string, unknown>;
-  return (brut.comptes ?? {}) as Record<string, Compte>;
+  const comptes = (brut.comptes ?? {}) as Record<string, Compte>;
+  return Object.assign(Object.create(null) as Record<string, Compte>, comptes);
+}
+
+/** Vrai si l'entrée a bien la forme attendue — une base abîmée ne doit pas
+ *  faire tomber la route de connexion. */
+function estUnCompte(v: unknown): v is Compte {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as Compte).sel === "string" &&
+    typeof (v as Compte).empreinte === "string"
+  );
 }
 
 async function ecrireRegistre(comptes: Record<string, Compte>): Promise<void> {
@@ -126,7 +152,9 @@ export async function creerCompte(
 /** Vrai si le couple identifiant / mot de passe ouvre bien ce compte. */
 export async function verifierCompte(id: string, motDePasse: string): Promise<boolean> {
   const compte = (await lireRegistre())[id];
-  if (!compte) return false;
+  // La forme est vérifiée, pas seulement la présence : une entrée abîmée en
+  // base doit refuser la connexion, pas faire tomber la route.
+  if (!estUnCompte(compte)) return false;
   const attendu = await empreinter(motDePasse, compte.sel);
   // Comparaison à temps constant : la durée ne doit rien dire du mot de passe.
   if (attendu.length !== compte.empreinte.length) return false;

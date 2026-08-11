@@ -23,7 +23,7 @@ export async function POST(req: Request) {
    * différents. La faire grossir sans limite, c'est ralentir tout l'OS pour
    * tout le monde — une panne provoquée depuis une route ouverte.
    */
-  if (!souslaLimite(`creer:${adresse(req)}`, 5, 3_600_000)) {
+  if (!souslaLimite(`creer:${adresse(req)}`, 5, 3_600_000, 40)) {
     return NextResponse.json(
       { error: "Trop de créations d'affilée. Réessaie dans une heure." },
       { status: 429 },

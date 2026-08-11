@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { SESSION_COOKIE, lireUtilisateur, verifySessionToken } from "./auth";
@@ -60,42 +62,45 @@ export const USER_ID = process.env.USER_ID ?? "twaylo";
  * manquait qu'une chose : que sa valeur vienne de QUI EST CONNECTÉ, et non
  * d'une constante lue au démarrage du serveur.
  *
- * Le nom est lu dans le cookie de session, qui est signé : il ne peut pas
- * être fabriqué depuis le navigateur. Sans cookie — tâche planifiée, webhook
- * Telegram — on retombe sur le compte par défaut, ce qui préserve exactement
- * le comportement d'avant.
+ * Le nom est lu dans le cookie de session, dont LA SIGNATURE EST VÉRIFIÉE ICI.
+ *
+ * Elle l'était auparavant par le seul middleware, en s'appuyant sur l'idée
+ * qu'aucune requête n'arrive jusqu'ici sans être passée devant lui. C'est faux
+ * pour les routes publiques, qu'il laisse traverser sans regarder le cookie —
+ * et le webhook Telegram, précisément, appelle `uid()` cinq fois. Il n'y
+ * manquait qu'un cookie fabriqué à la main, portant le compte de son choix,
+ * pour écrire dans l'OS de quelqu'un d'autre. Le secret d'en-tête de Telegram
+ * fermait la porte en pratique ; l'invariant, lui, ne tenait plus.
+ *
+ * On ne s'appuie donc plus sur ce qu'un autre fichier est censé avoir fait.
+ * Le coût est nul en pratique : `cache` de React ne fait la vérification
+ * qu'une fois par requête, quel que soit le nombre d'appels à `uid()`.
+ *
+ * Sans cookie — tâche planifiée, webhook Telegram — on retombe sur le compte
+ * par défaut, ce qui préserve exactement le comportement d'avant.
  *
  * Volontairement asynchrone : `cookies()` l'est depuis Next 15. Le compilateur
  * s'en sert d'ailleurs comme garde-fou — un appel oublié dans une fonction non
  * asynchrone ne compile pas, ce qui est précisément la vérification qu'on veut
  * sur les quatre-vingt-quatorze endroits concernés.
  */
+const compteDeLaSession = cache(async (): Promise<string | null> => {
+  const { cookies } = await import("next/headers");
+  const jeton = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!jeton) return null;
+
+  const secret = process.env.AUTH_SECRET;
+  const motDePasse = process.env.DASHBOARD_PASSWORD;
+  if (!secret || !motDePasse) return null;
+
+  // Signature d'abord : sans elle, la charge utile n'est qu'un vœu du client.
+  if (!(await verifySessionToken(jeton, secret, motDePasse))) return null;
+  return lireUtilisateur(jeton);
+});
+
 export async function uid(): Promise<string> {
   try {
-    const { cookies } = await import("next/headers");
-    const jeton = (await cookies()).get(SESSION_COOKIE)?.value;
-    if (!jeton) return USER_ID;
-
-    /*
-     * LA SIGNATURE EST VÉRIFIÉE ICI, et pas seulement par le middleware.
-     *
-     * S'en remettre au middleware paraissait suffisant : il tourne avant
-     * chaque requête et refuse un jeton invalide. Sauf que certaines routes
-     * sont PUBLIQUES, donc ne passent pas par lui — le webhook Telegram en
-     * premier. Un cookie fabriqué à la main portant le nom de quelqu'un
-     * d'autre y aurait été cru sur parole, et aurait écrit dans l'OS de cette
-     * personne.
-     *
-     * Le coût est un calcul HMAC par requête. Il est dérisoire, et il
-     * transforme « c'est vérifié ailleurs » — une garantie qui se périme au
-     * premier chemin public ajouté — en « c'est vérifié ici ».
-     */
-    const secret = process.env.AUTH_SECRET;
-    const mdp = process.env.DASHBOARD_PASSWORD;
-    if (!secret || !mdp) return USER_ID;
-    if (!(await verifySessionToken(jeton, secret, mdp))) return USER_ID;
-
-    return lireUtilisateur(jeton) ?? USER_ID;
+    return (await compteDeLaSession()) ?? USER_ID;
   } catch {
     /*
      * Hors contexte de requête — une tâche planifiée, un script. `cookies()`

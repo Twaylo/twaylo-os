@@ -54,7 +54,7 @@ export async function POST(req: Request) {
    * Dix, c'est très large pour un usage réel : on refait rarement son OS plus
    * d'une ou deux fois.
    */
-  if (!souslaLimite(`sas:${adresse(req)}`, 10, 3_600_000)) {
+  if (!souslaLimite(`sas:${adresse(req)}`, 10, 3_600_000, 80)) {
     return NextResponse.json(
       { error: "Trop de constructions d'affilée. Réessaie dans une heure." },
       { status: 429 },

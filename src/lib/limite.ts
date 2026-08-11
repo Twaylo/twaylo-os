@@ -20,9 +20,43 @@
 type Fenetre = { debut: number; nombre: number };
 const compteurs = new Map<string, Fenetre>();
 
-/** Vrai si la requête passe ; faux si le plafond est atteint. */
-export function souslaLimite(cle: string, maximum: number, fenetreMs: number): boolean {
+/**
+ * Vrai si la requête passe ; faux si le plafond est atteint.
+ *
+ * `plafondGlobal`, s'il est donné, ajoute un second compte TOUTES ADRESSES
+ * CONFONDUES sur la famille de la clé — ce qui précède les deux points.
+ *
+ * Ce n'est pas une ceinture de plus par prudence. Le compte par adresse
+ * repose sur `x-forwarded-for` ; derrière le proxy de la plateforme il est
+ * fiable pour un client ordinaire, mais il ne dit rien contre quelqu'un qui
+ * dispose de mille adresses — un parc de relais, ou simplement un
+ * hébergeur. Cinq créations par heure et par adresse deviennent alors cinq
+ * mille, ce qui suffit à faire grossir la ligne des comptes jusqu'à gêner
+ * tout le monde. Le compte global, lui, ne dépend d'aucun en-tête.
+ *
+ * Il est volontairement placé très au-dessus de l'usage réel : il ne doit
+ * jamais gêner les vraies personnes, seulement arrêter une boucle.
+ */
+export function souslaLimite(
+  cle: string,
+  maximum: number,
+  fenetreMs: number,
+  plafondGlobal?: number,
+): boolean {
   const maintenant = Date.now();
+
+  if (plafondGlobal !== undefined) {
+    const famille = `@${cle.split(":")[0]}`;
+    const g = compteurs.get(famille);
+    if (!g || maintenant - g.debut > fenetreMs) {
+      compteurs.set(famille, { debut: maintenant, nombre: 1 });
+    } else if (g.nombre >= plafondGlobal) {
+      return false;
+    } else {
+      g.nombre += 1;
+    }
+  }
+
   const f = compteurs.get(cle);
 
   if (!f || maintenant - f.debut > fenetreMs) {
