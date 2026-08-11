@@ -198,3 +198,26 @@ export function pruneOldDailyKeys(base: string): void {
     console.error("[storage] purge impossible :", err);
   }
 }
+
+/**
+ * Efface tout ce que ce navigateur garde de l'OS.
+ *
+ * À appeler à CHAQUE changement de compte — connexion, création. Sans ça, un
+ * second OS ouvert sur le même téléphone se repeignait avec les caches du
+ * premier : sa journée type, ses tâches, son XP. Les caches existent pour
+ * afficher avant que le serveur réponde ; ils ne portent pas de nom de compte,
+ * donc ils mentent dès qu'on en change.
+ *
+ * Le mode démo part avec : hériter du mode démo de quelqu'un d'autre en
+ * ouvrant son propre OS n'aurait aucun sens.
+ */
+export function purgerCachesLocaux(): void {
+  if (typeof window === "undefined") return;
+  try {
+    for (const cle of Object.keys(window.localStorage)) {
+      if (cle.startsWith(`${PREFIX}-`)) window.localStorage.removeItem(cle);
+    }
+  } catch (err) {
+    console.error("[storage] purge impossible :", err);
+  }
+}

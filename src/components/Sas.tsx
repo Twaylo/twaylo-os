@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { CATEGORIES_BLOC } from "@/lib/journees";
 import { LONGUEUR_PRECISION, PROFILS, QUESTIONS, type Reponses } from "@/lib/sas";
 import type { PlanOs } from "@/lib/sas-plan";
+import { purgerCachesLocaux } from "@/lib/storage";
 
 /**
  * Le sas d'accueil.
@@ -227,6 +228,12 @@ export function Sas() {
                 });
                 const d = (await r.json()) as { error?: string };
                 if (!r.ok) throw new Error(d.error ?? "Création impossible.");
+                /*
+                 * Les caches du compte précédent sont vidés ici, pas plus tard.
+                 * Le nouvel OS est vierge ; sans cette purge il se peindrait
+                 * avec la journée type et les tâches de l'ancien.
+                 */
+                purgerCachesLocaux();
                 // Le compte est ouvert et la session posée : on enchaîne.
                 setPhase("questions");
               } catch (err) {

@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+import { purgerCachesLocaux } from "@/lib/storage";
+
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -30,6 +32,16 @@ export function LoginForm() {
         setPassword("");
         return;
       }
+
+      /*
+       * On vide les caches AVANT d'entrer.
+       *
+       * Ils ne portent pas de nom de compte : ouvrir un second OS sur le même
+       * appareil le repeindrait avec la journée type, les tâches et l'XP du
+       * précédent. Le coût est d'un affichage un peu plus lent à la première
+       * ouverture — négligeable face à des données qui ne sont pas les siennes.
+       */
+      purgerCachesLocaux();
 
       // `refresh` force le middleware à réévaluer le cookie fraîchement posé.
       router.replace(next);
