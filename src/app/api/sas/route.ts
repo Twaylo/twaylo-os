@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { CATEGORIES_BLOC } from "@/lib/journees";
 import { MAX, nettoyerPlan, planDeSecours, planUtilisable } from "@/lib/sas-plan";
 import { reponsesValides, resumerReponses } from "@/lib/sas";
+import { adresse, souslaLimite } from "@/lib/limite";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,22 @@ Les règles qui comptent :
 - Tout en FRANÇAIS, tutoiement.`;
 
 export async function POST(req: Request) {
+  /*
+   * Dix constructions par heure et par adresse.
+   *
+   * Cette route est publique — elle doit l'être, on ne demande pas de compte à
+   * quelqu'un qui vient d'arriver — et elle appelle un modèle payant. Sans
+   * plafond, une boucle depuis un script vide la cagnotte en quelques minutes.
+   * Dix, c'est très large pour un usage réel : on refait rarement son OS plus
+   * d'une ou deux fois.
+   */
+  if (!souslaLimite(`sas:${adresse(req)}`, 10, 3_600_000, 80)) {
+    return NextResponse.json(
+      { error: "Trop de constructions d'affilée. Réessaie dans une heure." },
+      { status: 429 },
+    );
+  }
+
   let corps: unknown;
   try {
     corps = await req.json();

@@ -93,6 +93,17 @@ export async function creerCompte(
 
   const comptes = await lireRegistre();
   if (comptes[id]) return "Ce nom est déjà pris.";
+  /*
+   * Un plafond dur, en plus de la limite par adresse.
+   *
+   * La limite de fréquence est tenue en mémoire, donc par instance : plusieurs
+   * instances en parallèle la contournent mécaniquement. Ce plafond-ci est
+   * dans la base, donc il tient quoi qu'il arrive — et il protège la seule
+   * chose qui compte, la taille de la ligne qui les contient toutes.
+   */
+  if (Object.keys(comptes).length >= 200) {
+    return "Trop de comptes ouverts pour l'instant. Reviens plus tard.";
+  }
 
   const sel = hex(crypto.getRandomValues(new Uint8Array(16)).buffer);
   comptes[id] = {
