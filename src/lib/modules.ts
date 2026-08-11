@@ -183,17 +183,17 @@ export const BLOCS: BlocAccueil[] = [
     profils: TOUS,
   },
   {
-    id: "quetes",
-    titre: "Quêtes du jour",
-    emoji: "🎲",
-    description: "Trois objectifs tirés chaque matin. Ils changent tous les jours.",
-    profils: TOUS,
-  },
-  {
     id: "taches",
     titre: "Tâches clés",
     emoji: "✅",
     description: "Focus principal, secondaire, annexes — rangés par ce qui compte.",
+    profils: TOUS,
+  },
+  {
+    id: "quetes",
+    titre: "Quêtes du jour",
+    emoji: "🎲",
+    description: "Trois objectifs tirés chaque matin. Ils changent tous les jours.",
     profils: TOUS,
   },
   {

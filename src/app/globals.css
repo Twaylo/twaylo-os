@@ -1390,3 +1390,50 @@ details[open] .chevron-section {
     transition: none;
   }
 }
+
+/*
+ * Le bouton d'actions d'une ligne de tâche.
+ *
+ * 30 px à la souris, 40 px au doigt. Il remplace trois boutons de dix-huit
+ * pixels collés les uns aux autres : viser « déplacer » sans toucher
+ * « supprimer » relevait de la chance, et sur téléphone — où le survol
+ * n'existe pas — il fallait déjà deviner qu'ils étaient là.
+ */
+.bouton-ligne {
+  width: 30px;
+  height: 30px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.group:hover .bouton-ligne,
+.bouton-ligne:focus-visible,
+.bouton-ligne[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* Sans survol, il n'y a pas d'autre moment pour le montrer. */
+  .bouton-ligne {
+    width: 40px;
+    height: 40px;
+    opacity: 1;
+  }
+}
+
+/*
+ * La place du bouton d'actions, réservée dans la ligne.
+ *
+ * Il est posé en absolu par-dessus la ligne : sans cette réserve, la
+ * catégorie affichée à droite (« BUSINESS », « CONTENU ») passait dessous et
+ * se lisait « BUS… ». Mesuré à l'écran, pas supposé.
+ */
+.ligne-tache .check-row {
+  padding-right: 38px;
+}
+
+@media (hover: none) {
+  .ligne-tache .check-row {
+    padding-right: 48px;
+  }
+}
