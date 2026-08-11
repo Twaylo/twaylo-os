@@ -158,11 +158,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({ error: "non authentifié" }, { status: 401 });
   }
 
-  const login = req.nextUrl.clone();
-  login.pathname = "/login";
-  login.search = "";
-  if (pathname !== "/") login.searchParams.set("next", pathname + search);
-  return NextResponse.redirect(login);
+  /*
+   * La racine mène à la PRÉSENTATION, pas au mot de passe.
+   *
+   * Quelqu'un qui arrive sans être connecté n'est pas forcément quelqu'un qui
+   * a oublié de se connecter : c'est d'abord quelqu'un qui découvre. Le
+   * renvoyer sur un champ de mot de passe, c'est une porte close sans
+   * enseigne — et c'est ce qui arrivait aussi après une déconnexion.
+   *
+   * Les autres chemins gardent la connexion et leur destination : celui qui
+   * visait `/demarrer` doit y revenir une fois entré, pas atterrir ailleurs.
+   */
+  const destination = req.nextUrl.clone();
+  destination.search = "";
+  if (pathname === "/") {
+    destination.pathname = "/bienvenue";
+  } else {
+    destination.pathname = "/login";
+    destination.searchParams.set("next", pathname + search);
+  }
+  return NextResponse.redirect(destination);
 }
 
 export const config = {

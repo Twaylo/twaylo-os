@@ -82,6 +82,23 @@ export default function Bienvenue() {
           paddingBottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
         }}
       >
+        {/*
+          Se connecter, tout en haut et dès le premier écran.
+
+          Le lien existait déjà, mais tout en bas de la page : quelqu'un qui a
+          déjà un OS et qui vient d'être déconnecté devait traverser quatre
+          écrans de présentation pour retrouver son mot de passe.
+        */}
+        <div className="mb-[16px] flex justify-end">
+          <Link
+            href="/login"
+            className="flex min-h-[40px] items-center rounded-full px-[14px] text-[12.5px] font-extrabold text-white/55 transition-colors hover:text-white"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+          >
+            Se connecter
+          </Link>
+        </div>
+
         {/* ---------- L'accroche ---------- */}
         <header className="flex flex-col items-center text-center">
           <div className="flex items-center gap-[10px]">

@@ -280,7 +280,10 @@ function Compte() {
                   // La route renvoie du JSON : on redirige nous-mêmes plutôt
                   // que d'atterrir sur `{"ok":true}` à l'écran.
                   await fetch("/api/auth/logout", { method: "POST" });
-                  window.location.href = "/login";
+                  // Vers la présentation, pas vers le mot de passe : se
+                  // déconnecter, c'est sortir de son OS, pas se retrouver
+                  // devant une porte close.
+                  window.location.href = "/bienvenue";
                 }}
                 className="w-full cursor-pointer rounded-[9px] py-[7px] text-[11.5px] font-extrabold transition-all hover:brightness-125"
                 style={{
