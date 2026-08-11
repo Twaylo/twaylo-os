@@ -12,7 +12,7 @@ import {
   sendMessage,
   todoKeyboard,
 } from "@/lib/telegram";
-import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { uid, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
 import { lireOrdreTaches, lireTaches, versTaches } from "@/lib/db";
 import type { TacheBouton } from "@/lib/telegram";
 
@@ -312,7 +312,7 @@ async function basculerTacheBouton(
     .from("tasks")
     .select("statut")
     .eq("id", taskId)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .single();
 
   if (!tache) {
@@ -328,7 +328,7 @@ async function basculerTacheBouton(
       completed_at: faite ? new Date().toISOString() : null,
     })
     .eq("id", taskId)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   await answerCallbackQuery(query.id, faite ? "✅ Fait" : "⬜️ Décochée");
 
@@ -385,7 +385,7 @@ async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>)
       // Filtré sur l'utilisateur comme toutes les autres requêtes de cette
       // route : la clé service role contourne RLS, c'est donc ici que la
       // frontière se tient.
-      .eq("user_id", USER_ID)
+      .eq("user_id", (await uid()))
       .single();
 
     const route = capture?.routed_to as { table?: string; id?: string } | null;
@@ -395,7 +395,7 @@ async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>)
         .from("tasks")
         .update({ cle: true, urgence: "aujourdhui" })
         .eq("id", route.id)
-        .eq("user_id", USER_ID);
+        .eq("user_id", (await uid()));
       libelle = "tâche clé";
     } else {
       await answerCallbackQuery(query.id, "Seule une tâche peut être marquée clé");
@@ -418,7 +418,7 @@ async function gererBouton(query: NonNullable<TelegramUpdate["callback_query"]>)
       .from("captures")
       .update({ priorite: valeur })
       .eq("id", captureId)
-      .eq("user_id", USER_ID);
+      .eq("user_id", (await uid()));
     libelle = LABEL_URGENCE[valeur] ?? valeur;
   }
 

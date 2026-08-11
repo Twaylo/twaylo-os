@@ -63,12 +63,22 @@ export async function createSessionToken(
   secret: string,
   motDePasse: string,
   maxAgeSeconds: number = SESSION_MAX_AGE,
+  /*
+   * Le compte auquel la session donne accès.
+   *
+   * Absent, c'est le compte historique : les jetons émis avant l'arrivée des
+   * comptes multiples restent donc valables et continuent de désigner le bon
+   * OS. Une session qui expirerait le jour du déploiement serait une
+   * déconnexion générale pour rien.
+   */
+  utilisateur?: string,
 ): Promise<string> {
   const payload = toBase64Url(
     encoder.encode(
       JSON.stringify({
         exp: Date.now() + maxAgeSeconds * 1000,
         v: await versionSession(secret, motDePasse),
+        ...(utilisateur ? { u: utilisateur } : {}),
       }),
     ),
   );
@@ -116,6 +126,31 @@ export async function verifySessionToken(
  * authentifiée par cette lecture seule. Elle sert à savoir s'il est temps de
  * réémettre le cookie, pas à décider si l'accès est permis.
  */
+/**
+ * Le compte porté par le jeton, ou null.
+ *
+ * NE VÉRIFIE PAS la signature — c'est délibéré, et sans danger : le middleware
+ * l'a déjà vérifiée avant de laisser passer la requête. La refaire ici, à
+ * chaque lecture en base, coûterait un calcul cryptographique par requête pour
+ * une garantie déjà acquise.
+ *
+ * Le nom est néanmoins BORNÉ à ce qu'un identifiant peut être. Un jeton forgé
+ * ne franchit pas le middleware, mais on ne laisse pas pour autant une chaîne
+ * arbitraire descendre jusqu'à une requête SQL.
+ */
+export function lireUtilisateur(token: string | undefined): string | null {
+  if (!token) return null;
+  const [payload] = token.split(".");
+  if (!payload) return null;
+  try {
+    const decoded = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    const u = decoded?.u;
+    return typeof u === "string" && /^[a-z0-9][a-z0-9-]{1,30}$/.test(u) ? u : null;
+  } catch {
+    return null;
+  }
+}
+
 export function lireExpiration(token: string | undefined): number | null {
   if (!token) return null;
   const [payload] = token.split(".");

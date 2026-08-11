@@ -1,5 +1,5 @@
 import type { Classification } from "./classifyCapture";
-import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { uid, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
 import { localDateKey } from "@/lib/local-date";
 import { placerEnTeteOrdre } from "@/lib/db";
 
@@ -37,7 +37,7 @@ export async function routeCapture(
   const { data: capture, error: captureError } = await db
     .from("captures")
     .insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       texte,
       type: classification.type,
       priorite: classification.urgence,
@@ -66,7 +66,7 @@ export async function routeCapture(
         const { data, error } = await db
           .from("tasks")
           .insert({
-            user_id: USER_ID,
+            user_id: (await uid()),
             titre: classification.resume,
             urgence: classification.urgence,
             categorie: classification.tags[0] ?? null,
@@ -93,7 +93,7 @@ export async function routeCapture(
         const { data, error } = await db
           .from("videos")
           .insert({
-            user_id: USER_ID,
+            user_id: (await uid()),
             titre: classification.resume,
             statut: "idee",
             // Le format se décide au montage ; « long » est le défaut du schéma.
@@ -111,7 +111,7 @@ export async function routeCapture(
         const { data, error } = await db
           .from("contacts")
           .insert({
-            user_id: USER_ID,
+            user_id: (await uid()),
             nom: classification.resume,
             type: "collab",
             relation: "froid",
@@ -129,7 +129,7 @@ export async function routeCapture(
         const { data, error } = await db
           .from("goals")
           .insert({
-            user_id: USER_ID,
+            user_id: (await uid()),
             objectif: classification.resume,
             portee:
               classification.urgence === "aujourdhui" ||
@@ -154,7 +154,7 @@ export async function routeCapture(
         const { data: existant } = await db
           .from("daily_logs")
           .select("journal_texte")
-          .eq("user_id", USER_ID)
+          .eq("user_id", (await uid()))
           .eq("jour", jour)
           .maybeSingle();
 
@@ -173,7 +173,7 @@ export async function routeCapture(
         const { error } = await db
           .from("daily_logs")
           .upsert(
-            { user_id: USER_ID, jour, journal_texte: fusion },
+            { user_id: (await uid()), jour, journal_texte: fusion },
             { onConflict: "user_id,jour" },
           );
         if (error) throw error;
@@ -194,7 +194,7 @@ export async function routeCapture(
         // Filtré sur l'utilisateur comme toutes les autres écritures : la clé
         // service role contourne RLS, c'est donc dans le code que la frontière
         // se tient. La seule requête du fichier qui l'avait oubliée.
-        .eq("user_id", USER_ID);
+        .eq("user_id", (await uid()));
     }
   } catch (err) {
     // La capture est déjà sauvée ; on remonte l'échec du routage sans le
@@ -205,7 +205,7 @@ export async function routeCapture(
   // 3. Journal d'audit.
   try {
     await db.from("audit_log").insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       action: "capture.create",
       resource_type: routedTo ?? "captures",
       resource_id: captureId,

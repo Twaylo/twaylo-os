@@ -1,4 +1,4 @@
-import { supabaseAdmin, USER_ID } from "./supabase";
+import { supabaseAdmin, uid } from "./supabase";
 import {
   lireBlocages,
   lireContacts,
@@ -36,7 +36,7 @@ async function lireJournalRecent(
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("jour, journal_texte")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .neq("jour", "2000-01-01")
     .lte("jour", jusqua)
     .order("jour", { ascending: false })

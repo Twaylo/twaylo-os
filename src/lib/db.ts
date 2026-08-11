@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { USER_ID, supabaseAdmin } from "./supabase";
+import { uid, supabaseAdmin } from "./supabase";
 import { archiverTachesOubliees, estOubliee, seuilOubli } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
@@ -137,7 +137,7 @@ async function dejaSeme(cle: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -182,7 +182,7 @@ export async function lireTaches(): Promise<TacheDB[]> {
     db
       .from("tasks")
       .select(COLONNES)
-      .eq("user_id", USER_ID)
+      .eq("user_id", (await uid()))
       .neq("statut", "abandonnee")
       .order("created_at", { ascending: true }),
   ]);
@@ -195,10 +195,12 @@ export async function lireTaches(): Promise<TacheDB[]> {
   // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
   if (await tachesDejaSemees()) return [];
 
+  // Sorti de la boucle : un seul calcul, et un `.map()` reste synchrone.
+  const moi = await uid();
   const { error: erreurSemis } = await db.from("tasks").upsert(
     REAL_DATA.tasks.map((t) => ({
       id: uuidStable(t.text),
-      user_id: USER_ID,
+      user_id: moi,
       titre: t.text,
       categorie: t.categorie ?? null,
       urgence: "semaine",
@@ -217,7 +219,7 @@ export async function lireTaches(): Promise<TacheDB[]> {
   const { data: apres, error: erreurRelecture } = await db
     .from("tasks")
     .select(COLONNES)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .neq("statut", "abandonnee")
     .order("created_at", { ascending: true });
 
@@ -233,7 +235,7 @@ export async function basculerTache(id: string, faite: boolean): Promise<void> {
       completed_at: faite ? new Date().toISOString() : null,
     })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -261,7 +263,7 @@ export async function creerTache(
   const { data, error } = await supabaseAdmin()
     .from("tasks")
     .insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       titre,
       categorie: categorie ?? null,
       urgence: NIVEAUX[retenu].urgence,
@@ -335,7 +337,7 @@ export async function placerEnTeteOrdre(id: string): Promise<void> {
       const { data: vivantes, error } = await db
         .from("tasks")
         .select("id")
-        .eq("user_id", USER_ID);
+        .eq("user_id", (await uid()));
       if (error) throw error;
       const existants = new Set((vivantes ?? []).map((t) => t.id as string));
       retenus = retenus.filter((x) => existants.has(x));
@@ -359,7 +361,7 @@ export async function changerNiveauTache(id: string, niveau: Niveau): Promise<vo
     .from("tasks")
     .update({ urgence: NIVEAUX[niveau].urgence })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -369,7 +371,7 @@ export async function renommerTache(id: string, titre: string): Promise<void> {
     .from("tasks")
     .update({ titre })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -388,7 +390,7 @@ export async function archiverTache(id: string): Promise<void> {
     .from("tasks")
     .update({ statut: "abandonnee" })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -398,7 +400,7 @@ export async function supprimerTache(id: string): Promise<void> {
     .from("tasks")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -415,7 +417,7 @@ export async function supprimerToutesTaches(): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
     .delete()
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     // L'archive des Oubliés survit à tout vidage : elle ne se perd jamais,
     // c'est sa raison d'être. On n'y touche que depuis l'onglet Oubliés.
     .neq("statut", "abandonnee");
@@ -435,7 +437,7 @@ export async function supprimerTachesFaites(): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
     .delete()
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("statut", "faite");
 
   if (error) throw error;
@@ -451,7 +453,7 @@ export async function lireJour(
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes, journal_texte")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", jour)
     .maybeSingle();
 
@@ -484,7 +486,7 @@ export async function calculerSerie(aujourdhui: string): Promise<number> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("jour, habitudes, journal_texte")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .neq("jour", JOUR_SENTINELLE)
     .lte("jour", aujourdhui)
     .order("jour", { ascending: false })
@@ -597,7 +599,7 @@ export async function ecrireJour(
       (patch.journal === undefined || patch.journal === actuel.journal);
     if (identique) return;
 
-    const ligne: Record<string, unknown> = { user_id: USER_ID, jour, habitudes: fusion };
+    const ligne: Record<string, unknown> = { user_id: (await uid()), jour, habitudes: fusion };
     if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
 
     const { error } = await db
@@ -652,7 +654,7 @@ export async function lireVideos(): Promise<VideoDB[]> {
   const { data, error } = await db
     .from("videos")
     .select(COLONNES_VIDEO)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("priorite", { ascending: false })
     .order("created_at", { ascending: true });
 
@@ -670,10 +672,11 @@ export async function lireVideos(): Promise<VideoDB[]> {
 
   // Même amorçage idempotent que les tâches : identifiant déduit du titre,
   // donc deux semis concurrents écrivent la même ligne.
+  const moi = await uid();
   const semences = REAL_DATA.pipeline.flatMap((col) =>
     col.videos.map((v) => ({
       id: uuidStable(v.title),
-      user_id: USER_ID,
+      user_id: moi,
       titre: v.title,
       statut: col.status,
       format: v.format.toLowerCase() === "short" ? "short" : "long",
@@ -692,7 +695,7 @@ export async function lireVideos(): Promise<VideoDB[]> {
   const { data: apres, error: erreurRelecture } = await db
     .from("videos")
     .select(COLONNES_VIDEO)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
 
   if (erreurRelecture) throw erreurRelecture;
@@ -710,7 +713,7 @@ export async function deplacerVideo(id: string, statut: string): Promise<void> {
       publie_le: statut === "publie" ? new Date().toISOString().slice(0, 10) : null,
     })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -726,7 +729,7 @@ export async function creerVideo(
   const { data, error } = await supabaseAdmin()
     .from("videos")
     .insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       titre,
       statut: ETAPES.includes(statut as (typeof ETAPES)[number]) ? statut : "idee",
       format,
@@ -743,7 +746,7 @@ export async function supprimerVideo(id: string): Promise<void> {
     .from("videos")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -769,7 +772,7 @@ export async function lireContacts(): Promise<ContactDB[]> {
   const { data, error } = await db
     .from("contacts")
     .select(COLONNES_CONTACT)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -779,10 +782,12 @@ export async function lireContacts(): Promise<ContactDB[]> {
   // reste. Sans lui, les contacts d'amorçage revenaient à chaque chargement.
   if (await dejaSeme("contactsSemes")) return [];
 
+  // Sorti de la boucle : un seul calcul, et le `.map()` reste synchrone.
+  const moi = await uid();
   const { error: erreurSemis } = await db.from("contacts").upsert(
     REAL_DATA.contacts.map((c) => ({
       id: uuidStable(c.nom),
-      user_id: USER_ID,
+      user_id: moi,
       nom: c.nom,
       type: c.type,
       relation: c.relation,
@@ -797,7 +802,7 @@ export async function lireContacts(): Promise<ContactDB[]> {
   const { data: apres, error: erreurRelecture } = await db
     .from("contacts")
     .select(COLONNES_CONTACT)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
 
   if (erreurRelecture) throw erreurRelecture;
@@ -812,7 +817,7 @@ export async function majContact(
     .from("contacts")
     .update(patch)
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -830,7 +835,7 @@ export async function creerContact(
   const { data, error } = await supabaseAdmin()
     .from("contacts")
     .insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       nom,
       type,
       relation: RELATIONS.includes(relation as (typeof RELATIONS)[number])
@@ -849,7 +854,7 @@ export async function supprimerContact(id: string): Promise<void> {
     .from("contacts")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -873,7 +878,7 @@ export async function lireCaptures(limite = 4): Promise<CaptureDB[]> {
   const { data, error } = await supabaseAdmin()
     .from("captures")
     .select("id, texte, type")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("traite", false)
     .order("created_at", { ascending: false })
     .limit(limite);
@@ -940,7 +945,7 @@ export async function renommerVideo(id: string, titre: string): Promise<void> {
     .from("videos")
     .update({ titre })
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -982,7 +987,7 @@ export async function lireDeals(): Promise<DealDB[]> {
   const { data, error } = await supabaseAdmin()
     .from("deals")
     .select(COLONNES_DEAL)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
 
   if (!error) return data as DealDB[];
@@ -991,7 +996,7 @@ export async function lireDeals(): Promise<DealDB[]> {
   const repli = await supabaseAdmin()
     .from("deals")
     .select(COLONNES_DEAL_ANCIEN)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
   if (repli.error) throw repli.error;
   return (repli.data as Omit<DealDB, "echeance">[]).map((d) => ({ ...d, echeance: null }));
@@ -1003,7 +1008,7 @@ export async function creerDeal(nom: string, etape = "prospect"): Promise<DealDB
   // deux (l'insertion peut avoir abouti même si la projection a échoué).
   const { data, error } = await supabaseAdmin()
     .from("deals")
-    .insert({ user_id: USER_ID, nom, etape })
+    .insert({ user_id: (await uid()), nom, etape })
     .select(COLONNES_DEAL_ANCIEN)
     .single();
 
@@ -1025,7 +1030,7 @@ export async function majDeal(
     .from("deals")
     .update(patch)
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -1035,7 +1040,7 @@ export async function supprimerDeal(id: string): Promise<void> {
     .from("deals")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -1119,7 +1124,7 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
   const { data, error } = await db
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -1178,7 +1183,7 @@ export async function lireSkills(): Promise<Skill[]> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -1216,7 +1221,7 @@ export async function lireOrdreTaches(): Promise<string[]> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -1234,7 +1239,7 @@ export async function lireBlocages(): Promise<BlocageStocke[]> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -1340,7 +1345,7 @@ export async function lireObjectifs(): Promise<ObjectifDB[]> {
   const { data, error } = await supabaseAdmin()
     .from("goals")
     .select("id, objectif, portee, statut, categorie, cible, echeance")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -1355,7 +1360,7 @@ export async function creerObjectif(
   const { data, error } = await supabaseAdmin()
     .from("goals")
     .insert({
-      user_id: USER_ID,
+      user_id: (await uid()),
       objectif,
       portee,
       cible: JSON.stringify(cible),
@@ -1381,7 +1386,7 @@ export async function majObjectif(
     .from("goals")
     .update(champs)
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -1391,7 +1396,7 @@ export async function supprimerObjectif(id: string): Promise<void> {
     .from("goals")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -1423,7 +1428,7 @@ export async function lireRevenus(limite = 24): Promise<RevenuDB[]> {
   const { data, error } = await supabaseAdmin()
     .from("revenue_snapshots")
     .select("id, periode, date, revenu_estime, rpm, vues_monetisees, objectif_mois, sources")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .order("date", { ascending: false })
     .limit(limite);
 
@@ -1444,7 +1449,7 @@ export async function ecrireRevenu(patch: {
   sources: Record<string, number>;
 }): Promise<void> {
   const { error } = await supabaseAdmin().from("revenue_snapshots").upsert(
-    { user_id: USER_ID, periode: "mois", ...patch },
+    { user_id: (await uid()), periode: "mois", ...patch },
     { onConflict: "user_id,periode,date" },
   );
 
@@ -1456,7 +1461,7 @@ export async function supprimerRevenu(id: string): Promise<void> {
     .from("revenue_snapshots")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID);
+    .eq("user_id", (await uid()));
 
   if (error) throw error;
 }
@@ -1478,7 +1483,7 @@ export async function lireTokenYoutube(): Promise<string | null> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
