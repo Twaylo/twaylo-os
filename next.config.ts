@@ -51,7 +51,21 @@ const nextConfig: NextConfig = {
    * sans fichier correspondant tombe ici.
    */
   async rewrites() {
-    return [{ source: "/piraterie", destination: "/piraterie/index.html" }];
+    return [
+      { source: "/piraterie", destination: "/piraterie/index.html" },
+      /*
+       * Les Tway'tools sont des fichiers statiques, comme la carte, et pour
+       * la même raison : la mise en page racine de l'OS y imposerait son
+       * écran de lancement et son service worker, alors que ces pages
+       * s'adressent à des visiteurs venus de YouTube.
+       *
+       * `/tway-tools/confirmation` n'est PAS réécrit : c'est une route
+       * serveur, et les réécritures de ce tableau sont examinées APRÈS les
+       * routes existantes.
+       */
+      { source: "/tway-tools", destination: "/tway-tools/index.html" },
+      { source: "/tway-tools/acces", destination: "/tway-tools/acces.html" },
+    ];
   },
 
   async headers() {
@@ -76,6 +90,11 @@ const nextConfig: NextConfig = {
       ...[
         "/piraterie",
         "/piraterie/index.html",
+        "/tway-tools",
+        "/tway-tools/index.html",
+        "/tway-tools/acces",
+        "/tway-tools/acces.html",
+        "/tway-tools/tway.css",
         "/piraterie/carte.js",
         "/piraterie/carte.css",
         "/piraterie/i18n.js",

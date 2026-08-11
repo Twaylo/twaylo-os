@@ -1,0 +1,416 @@
+/**
+ * Tway'tools — l'habillage commun de la bibliothèque et de sa porte.
+ *
+ * L'idée tient en une phrase : une MALLETTE D'INSTRUMENTS, pas une page
+ * d'accueil. D'où le catalogue numéroté, les filets d'un pixel, les
+ * capitales espacées en monospace, et une seule couleur — le jaune ne sert
+ * qu'à signaler, jamais à décorer. Tout le reste est du gris sur du noir.
+ *
+ * Les polices sont celles que la carte embarque déjà : quelqu'un qui vient de
+ * l'outil ne retélécharge rien, et l'ensemble a le même grain typographique.
+ */
+
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/piraterie/vendeur/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/piraterie/vendeur/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/piraterie/vendeur/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  --noir: #05090f;
+  --nuit: #0a1018;
+  --filet: #1a2430;
+  --filet-vif: #2b3949;
+  --texte: #eef3f8;
+  --doux: #93a5b6;
+  --faible: #5f6f7e;
+  --jaune: #ffd60a;
+  --rouge: #ff2d4d;
+  --r: 3px;
+  --large: 1180px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--noir);
+  color: var(--texte);
+  font: 400 16px/1.6 "Plex Sans", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  position: relative;
+}
+
+/*
+ * Le halo et le quadrillage : très en dessous du seuil de perception, et
+ * c'est le but. Ce qu'on cherche n'est pas un décor mais une texture — la
+ * différence entre un fond noir plat, qui fait « page vide », et une surface,
+ * qui fait « instrument ». `fixed` pour qu'ils ne défilent pas avec le texte.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(80rem 40rem at 50% -10%, rgba(255, 214, 10, 0.07), transparent 65%),
+    linear-gradient(var(--filet) 1px, transparent 1px) 0 0 / 100% 88px,
+    linear-gradient(90deg, var(--filet) 1px, transparent 1px) 0 0 / 88px 100%;
+  opacity: 0.32;
+  z-index: 0;
+}
+
+.enveloppe {
+  position: relative;
+  z-index: 1;
+  max-width: var(--large);
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+/* ── Micro-étiquettes ─────────────────────────────────────────────────── */
+
+.etiquette {
+  font: 600 11px/1 "Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--faible);
+}
+
+.marque {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  text-decoration: none;
+}
+.marque-nom {
+  font: 600 15px/1 "Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--jaune);
+}
+.marque-suite {
+  font: 400 11px/1 "Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faible);
+}
+
+/* ── En-tête ──────────────────────────────────────────────────────────── */
+
+.tete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 26px 0 0;
+}
+
+/* ── Hauteur de page ──────────────────────────────────────────────────── */
+
+.titre {
+  margin: 54px 0 0;
+  font: 600 clamp(38px, 8vw, 68px) / 1.02 "Plex Sans", sans-serif;
+  letter-spacing: -0.035em;
+}
+.titre em {
+  font-style: normal;
+  color: var(--jaune);
+}
+
+.chapeau {
+  margin: 20px 0 0;
+  max-width: 54ch;
+  font-size: 17px;
+  color: var(--doux);
+}
+
+.filet {
+  height: 1px;
+  background: var(--filet);
+  border: 0;
+  margin: 46px 0 0;
+}
+
+/* ── Le catalogue ─────────────────────────────────────────────────────── */
+
+.catalogue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outil {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  gap: 22px;
+  align-items: start;
+  padding: 30px 0;
+  border-bottom: 1px solid var(--filet);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.16s ease;
+}
+.outil::before {
+  /* La bande jaune qui s'allume au survol : elle déborde la gouttière pour
+     que la ligne entière paraisse s'activer, sans décaler le texte. */
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: 0;
+  bottom: -1px;
+  width: 2px;
+  background: var(--jaune);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.2s ease;
+}
+.outil:hover,
+.outil:focus-visible {
+  background: linear-gradient(90deg, rgba(255, 214, 10, 0.045), transparent 42%);
+  outline: none;
+}
+.outil:hover::before,
+.outil:focus-visible::before {
+  transform: scaleY(1);
+}
+
+.outil-num {
+  font: 400 13px/1.5 "Plex Mono", ui-monospace, monospace;
+  color: var(--faible);
+  padding-top: 5px;
+}
+
+.outil-nom {
+  margin: 0;
+  font: 600 clamp(22px, 3.4vw, 30px) / 1.15 "Plex Sans", sans-serif;
+  letter-spacing: -0.02em;
+}
+.outil-dit {
+  margin: 9px 0 0;
+  max-width: 58ch;
+  color: var(--doux);
+  font-size: 15.5px;
+}
+
+.faits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 20px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.faits li {
+  font: 400 12.5px/1 "Plex Mono", ui-monospace, monospace;
+  color: var(--faible);
+}
+.faits b {
+  color: var(--texte);
+  font-weight: 600;
+}
+
+.etat {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--filet-vif);
+  border-radius: var(--r);
+  font: 600 10.5px/1 "Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--doux);
+  white-space: nowrap;
+  margin-top: 5px;
+}
+.etat i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faible);
+}
+.etat[data-vif] {
+  color: var(--jaune);
+  border-color: rgba(255, 214, 10, 0.34);
+}
+.etat[data-vif] i {
+  background: var(--jaune);
+  box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.16);
+}
+
+/* ── Formulaire de la porte ───────────────────────────────────────────── */
+
+.porte {
+  display: grid;
+  gap: 0;
+  grid-template-columns: 1fr;
+  align-items: center;
+  min-height: 100dvh;
+  padding: 0 0 40px;
+}
+@media (min-width: 900px) {
+  .porte {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 70px;
+  }
+}
+
+.boite {
+  border: 1px solid var(--filet);
+  border-radius: 6px;
+  background: linear-gradient(var(--nuit), #070d14);
+  padding: 30px;
+}
+
+.champ {
+  width: 100%;
+  margin: 0;
+  padding: 15px 16px;
+  background: #060b11;
+  border: 1px solid var(--filet-vif);
+  border-radius: var(--r);
+  color: var(--texte);
+  font: 400 16px/1.2 "Plex Sans", sans-serif;
+  transition: border-color 0.15s ease;
+}
+.champ::placeholder {
+  color: var(--faible);
+}
+.champ:focus {
+  outline: none;
+  border-color: rgba(255, 214, 10, 0.55);
+}
+
+.bouton {
+  width: 100%;
+  margin: 12px 0 0;
+  padding: 15px 18px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--jaune);
+  color: var(--noir);
+  font: 600 15px/1 "Plex Sans", sans-serif;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.bouton:hover:not(:disabled) {
+  filter: brightness(1.09);
+}
+.bouton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mention {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--faible);
+}
+.mention a {
+  color: var(--doux);
+}
+
+.message {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid var(--filet-vif);
+  color: var(--doux);
+}
+.message[data-ton="bien"] {
+  border-color: rgba(255, 214, 10, 0.4);
+  background: rgba(255, 214, 10, 0.07);
+  color: var(--texte);
+}
+.message[data-ton="mal"] {
+  border-color: rgba(255, 45, 77, 0.42);
+  background: rgba(255, 45, 77, 0.07);
+  color: #ffc4cd;
+}
+
+/* Le champ-piège : invisible pour l'œil ET pour le lecteur d'écran, mais
+   bien présent dans le formulaire — c'est tout l'intérêt. */
+.piege {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ── Pied ─────────────────────────────────────────────────────────────── */
+
+.pied {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: center;
+  padding: 34px 0 46px;
+  margin-top: 40px;
+  border-top: 1px solid var(--filet);
+  font: 400 12.5px/1.5 "Plex Mono", ui-monospace, monospace;
+  color: var(--faible);
+}
+.pied a {
+  color: var(--doux);
+  text-decoration: none;
+}
+.pied a:hover {
+  color: var(--jaune);
+}
+
+/* ── Accessibilité ────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--jaune);
+  outline-offset: 3px;
+}
+
+.lecteur-ecran {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

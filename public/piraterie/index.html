@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Piraterie — carte mondiale des attaques contre les navires</title>
+    <title>Pirats Attack ! — Tway'tools</title>
     <meta
       name="description"
       content="8 897 attaques contre des navires recensées par la NGA entre 1978 et 2023, situées sur une carte du monde."
@@ -104,7 +104,7 @@
       effet qu'une fois le nouveau service worker installé. Changer l'adresse
       libère immédiatement les navigateurs encore tenus par l'ancien.
     -->
-    <link rel="stylesheet" href="/piraterie/carte.css?v=5" />
+    <link rel="stylesheet" href="/piraterie/carte.css?v=6" />
   </head>
 
   <body>
@@ -113,7 +113,7 @@
     <!-- ══ En-tête ══════════════════════════════════════════════════════ -->
     <header class="entete">
       <div class="entete-titre">
-        <h1 data-i18n="titre">Piraterie</h1>
+        <h1 data-i18n="titre">Pirats Attack !</h1>
         <p class="entete-phrase">
           <span data-i18n="phrase">Chaque marque est une attaque réelle contre un navire.</span>
           <span class="entete-chiffres" id="entete-chiffres"></span>
@@ -283,6 +283,8 @@
 
         <!-- ── Pied ─────────────────────────────────────────────────── -->
         <p class="pied">
+          <a href="/tway-tools" data-i18n="bibliotheque">← Tway'tools</a>
+          <span aria-hidden="true">·</span>
           <a href="https://msi.nga.mil/Piracy" rel="noreferrer" data-i18n="source">Source : NGA — base ASAM</a>
           <span aria-hidden="true">·</span>
           <!--
@@ -303,13 +305,13 @@
             Un téléphone garde parfois l'ancienne, et on cherche alors un
             défaut déjà corrigé. Une mention à lire, et on sait.
           -->
-          <span class="version">v5</span>
+          <span class="version">v6</span>
         </p>
       </div>
     </section>
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js?v=5"></script>
+    <script type="module" src="/piraterie/carte.js?v=6"></script>
   </body>
 </html>
