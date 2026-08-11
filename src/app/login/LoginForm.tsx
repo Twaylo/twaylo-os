@@ -5,10 +5,29 @@ import { useState } from "react";
 
 import { purgerCachesLocaux } from "@/lib/storage";
 
+/**
+ * La destination d'après connexion, bornée à ce site.
+ *
+ * `next` arrive de l'adresse, donc de n'importe qui : il suffisait d'envoyer
+ * `/login?next=https://exemple.test` pour qu'une connexion RÉUSSIE dépose la
+ * personne sur un site tiers — l'ouverture idéale pour une fausse page qui
+ * redemande le mot de passe, puisque la victime vient de le saisir sur le vrai
+ * site et n'a rien vu d'anormal.
+ *
+ * On n'accepte donc qu'un chemin absolu de ce site. Le second test n'est pas
+ * redondant : `//exemple.test` commence bien par une barre oblique, et le
+ * navigateur le lit comme une adresse externe au protocole implicite.
+ */
+function destinationSure(brut: string | null): string {
+  if (!brut || !brut.startsWith("/")) return "/";
+  if (brut.startsWith("//") || brut.startsWith("/\\")) return "/";
+  return brut;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/";
+  const next = destinationSure(params.get("next"));
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

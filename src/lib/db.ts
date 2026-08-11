@@ -113,9 +113,17 @@ export type TacheDB = {
  * Avec un identifiant déduit du titre, semer deux fois écrit deux fois la
  * même ligne : le second passage ne fait rien. La concurrence devient sans
  * effet, au lieu d'être seulement improbable.
+ *
+ * LE COMPTE ENTRE DANS L'EMPREINTE, et ce n'est pas un détail de propreté.
+ * Sans lui, deux OS différents déduisaient le MÊME identifiant du même titre.
+ * Comme l'amorçage écrit en `onConflict: "id", ignoreDuplicates: true`, les
+ * lignes du second compte tombaient sur celles du premier et étaient
+ * silencieusement ignorées ; la sentinelle marquait pourtant « semé », et le
+ * nouvel OS s'ouvrait définitivement vide — sans tâches, sans vidéos, sans
+ * contacts, et sans moyen de rejouer le semis.
  */
-function uuidStable(texte: string): string {
-  const h = createHash("sha1").update(`twaylo:${texte}`).digest("hex");
+function uuidStable(compte: string, texte: string): string {
+  const h = createHash("sha1").update(`twaylo:${compte}:${texte}`).digest("hex");
   // Format UUID v5 : on force la version (5) et la variante (8/9/a/b).
   return [
     h.slice(0, 8),
@@ -199,7 +207,7 @@ export async function lireTaches(): Promise<TacheDB[]> {
   const moi = await uid();
   const { error: erreurSemis } = await db.from("tasks").upsert(
     REAL_DATA.tasks.map((t) => ({
-      id: uuidStable(t.text),
+      id: uuidStable(moi, t.text),
       user_id: moi,
       titre: t.text,
       categorie: t.categorie ?? null,
@@ -675,7 +683,7 @@ export async function lireVideos(): Promise<VideoDB[]> {
   const moi = await uid();
   const semences = REAL_DATA.pipeline.flatMap((col) =>
     col.videos.map((v) => ({
-      id: uuidStable(v.title),
+      id: uuidStable(moi, v.title),
       user_id: moi,
       titre: v.title,
       statut: col.status,
@@ -786,7 +794,7 @@ export async function lireContacts(): Promise<ContactDB[]> {
   const moi = await uid();
   const { error: erreurSemis } = await db.from("contacts").upsert(
     REAL_DATA.contacts.map((c) => ({
-      id: uuidStable(c.nom),
+      id: uuidStable(moi, c.nom),
       user_id: moi,
       nom: c.nom,
       type: c.type,

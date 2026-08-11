@@ -158,6 +158,9 @@ const nextConfig: NextConfig = {
               "worker-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
+              // Rien à embarquer ici — et un <object> ou une <embed> est un
+              // contournement classique de `script-src` sur les vieux moteurs.
+              "object-src 'none'",
               `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
