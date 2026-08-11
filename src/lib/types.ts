@@ -77,6 +77,14 @@ export function niveauDepuisUrgence(urgence: string): Niveau {
 }
 
 export type Task = {
+  /**
+   * L'identifiant en base, absent tant que la tâche n'y est pas.
+   *
+   * Il était lu partout par une conversion à la volée (`t as { id?: string }`)
+   * alors qu'il fait partie de la donnée : le déclarer ici permet au
+   * compilateur de vérifier ce qui, jusqu'ici, se contentait d'espérer.
+   */
+  id?: string;
   text: string;
   done: boolean;
   categorie?: string;

@@ -22,12 +22,20 @@ export const DEMO_DATA: OsData = {
     { text: "Vocal Telegram — 0:42 transcrit", type: "idee_video" },
   ],
 
+  /*
+   * Les tâches de démonstration portent un NIVEAU et un IDENTIFIANT.
+   *
+   * Sans eux, le mode démo — celui qui sert à filmer l'OS — montrait les cinq
+   * tâches empilées dans « Secondaire », un « Focus principal » vide, et
+   * aucun bouton d'action : rien de ce qu'on voulait montrer. Une
+   * démonstration doit ressembler à l'outil, pas à une version dégradée.
+   */
   tasks: [
-    { text: "Finaliser le montage — Vérité #12", done: false, categorie: "Contenu" },
-    { text: "Répondre au sponsor NordVPN (18h)", done: false, categorie: "Business" },
-    { text: "Valider la miniature du Short", done: true, categorie: "Contenu" },
-    { text: "Repérage lieux — tournage Bolivie", done: false, categorie: "Contenu" },
-    { text: "Appeler l'agence de fixing (Congo)", done: false, categorie: "Business" },
+    { id: "demo-1", text: "Finaliser le montage — Vérité #12", done: false, categorie: "Contenu", niveau: "principal" },
+    { id: "demo-2", text: "Répondre au sponsor NordVPN (18h)", done: false, categorie: "Business", niveau: "principal" },
+    { id: "demo-3", text: "Valider la miniature du Short", done: true, categorie: "Contenu", niveau: "secondaire" },
+    { id: "demo-4", text: "Repérage lieux — tournage Bolivie", done: false, categorie: "Contenu", niveau: "secondaire" },
+    { id: "demo-5", text: "Appeler l'agence de fixing (Congo)", done: false, categorie: "Business", niveau: "annexe" },
   ],
 
   // Les habitudes vivent en base (date sentinelle) et sont modifiables par

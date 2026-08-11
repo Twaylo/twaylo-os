@@ -1,41 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
+import { emojiPourTache } from "@/lib/emoji-tache";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
-
-/** Les actions d'une ligne : discrètes au repos, lisibles au survol. */
-function BoutonLigne({
-  children,
-  onClick,
-  titre,
-  danger,
-}: {
-  children: string;
-  onClick: () => void;
-  titre: string;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={titre}
-      aria-label={titre}
-      className="cursor-pointer rounded-[6px] px-[5px] py-[2px] text-[11px] font-black transition-all hover:brightness-150"
-      style={{
-        color: danger ? "var(--color-mag-soft)" : "rgba(255,255,255,0.5)",
-        background: danger ? "rgba(255,61,139,0.12)" : "rgba(255,255,255,0.07)",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 const ORDRE_NIVEAUX: Niveau[] = ["principal", "secondaire", "annexe"];
 
@@ -96,6 +68,11 @@ export function TachesCard() {
   const [nouvelle, setNouvelle] = useState<Record<string, string>>({});
   /** L'identifiant de la tâche en cours de renommage, s'il y en a une. */
   const [edition, setEdition] = useState<string | null>(null);
+  /**
+   * La tâche dont les actions sont dépliées. Une seule à la fois : deux
+   * panneaux ouverts, et la liste devient illisible.
+   */
+  const [menu, setMenu] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
 
   /** Le bouton « passer au jour suivant » demande confirmation avant de vider. */
@@ -842,16 +819,12 @@ export function TachesCard() {
                     );
                   }
 
-                  // Le niveau suivant dans le cycle : principal → secondaire →
-                  // annexe → principal. Un bouton pour les cas que le glissement
-                  // couvre mal (niveau vide, clavier).
-                  const suivant =
-                    ORDRE_NIVEAUX[(ORDRE_NIVEAUX.indexOf(niveau) + 1) % ORDRE_NIVEAUX.length];
                   const tire = dragId === id;
+                  const ouvert = Boolean(id) && menu === id;
 
                   return (
+                    <Fragment key={id ?? t.text}>
                     <div
-                      key={id ?? t.text}
                       ref={id ? setRowRef(id) : undefined}
                       data-niveau={niveau}
                       // Tenir la ligne appuyée suffit à la déplacer : la poignée
@@ -897,9 +870,20 @@ export function TachesCard() {
                         </button>
                       )}
 
-                      <div className="relative flex-1">
+                      <div className="ligne-tache relative flex-1">
                         <CheckRow
-                          label={t.text}
+                          /*
+                           * Une pastille en tête de ligne, déduite de
+                           * l'intitulé.
+                           *
+                           * Dix lignes de même taille, même couleur, même
+                           * alignement : la liste ne se lit pas, elle se
+                           * survole — et ce qui n'est pas lu n'est pas fait.
+                           * L'emoji donne à chaque tâche une silhouette, et
+                           * l'œil retrouve la bonne sans déchiffrer les neuf
+                           * autres.
+                           */
+                          label={`${emojiPourTache(t.text, niveau)} ${t.text}`.trim()}
                           meta={t.categorie}
                           done={t.done}
                           accent={meta.couleur}
@@ -928,43 +912,121 @@ export function TachesCard() {
                           }}
                         />
                         {id && (
-                          // Fond opaque : la barre se superpose à la ligne, et
-                          // sans lui le titre d'une tâche longue passait sous
-                          // les boutons.
-                          <div
+                          <button
+                            type="button"
                             // La ligne entière arme un déplacement : sans cette
-                            // coupure, viser ⇅ ✎ × en bougeant un peu la souris
-                            // partirait en glissement.
+                            // coupure, viser le bouton en bougeant un peu le
+                            // doigt partirait en glissement.
                             onPointerDown={(e) => e.stopPropagation()}
-                            className="absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center gap-[2px] rounded-[8px] px-[3px] py-[2px] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+                            onClick={() => setMenu((m) => (m === id ? null : id))}
+                            aria-expanded={menu === id}
+                            aria-label={`Actions sur ${t.text}`}
+                            title="Déplacer, renommer, supprimer"
+                            className="bouton-ligne absolute right-[3px] top-1/2 flex -translate-y-1/2 items-center justify-center rounded-[9px] text-[15px] font-black leading-none text-white/35 transition-all hover:text-white"
                             style={{ background: "rgba(17,30,44,0.96)" }}
                           >
-                            <BoutonLigne
-                              onClick={() => changerNiveauTache(id, suivant)}
-                              titre={`Déplacer vers ${NIVEAUX[suivant].nom.toLowerCase()}`}
-                            >
-                              ⇅
-                            </BoutonLigne>
-                            <BoutonLigne
-                              onClick={() => {
-                                setBrouillon(t.text);
-                                setEdition(id);
-                              }}
-                              titre="Renommer"
-                            >
-                              ✎
-                            </BoutonLigne>
-                            <BoutonLigne
-                              onClick={() => supprimerTache(id)}
-                              titre="Supprimer"
-                              danger
-                            >
-                              ×
-                            </BoutonLigne>
-                          </div>
+                            ⋯
+                          </button>
                         )}
                       </div>
                     </div>
+
+                    {/*
+                      Les actions, DÉPLIÉES SOUS LA LIGNE — pas en bulle.
+
+                      Ce qu'il y avait avant : trois boutons de dix-huit pixels
+                      collés les uns aux autres au bord droit de la ligne, et
+                      visibles au survol seulement. Au doigt, viser « déplacer »
+                      sans toucher « supprimer » relevait de la chance ; sur
+                      téléphone, où le survol n'existe pas, il fallait déjà
+                      deviner qu'ils étaient là. Et « ⇅ » faisait tourner le
+                      niveau en aveugle : on ne savait pas où la tâche partait
+                      avant de l'y voir arriver.
+
+                      Ici tout est nommé et fait 44 px de haut. Déplié en place
+                      plutôt qu'en bulle flottante : une bulle se fait rogner
+                      par la carte, ou sort de l'écran sur la dernière ligne.
+                    */}
+                    {ouvert && id && (
+                      <div
+                        className="sas-in flex flex-col gap-[6px] rounded-[12px] p-[8px]"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.09)",
+                        }}
+                      >
+                        <div className="px-[3px] text-[9.5px] font-black tracking-[0.1em] text-white/30">
+                          DÉPLACER VERS
+                        </div>
+                        <div className="flex gap-[5px]">
+                          {ORDRE_NIVEAUX.map((n) => {
+                            const ici = n === niveau;
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                disabled={ici}
+                                onClick={() => {
+                                  changerNiveauTache(id, n);
+                                  setMenu(null);
+                                }}
+                                className="min-h-[44px] flex-1 cursor-pointer rounded-[10px] px-[6px] text-[11px] font-black leading-[1.15] transition-all hover:brightness-125 disabled:cursor-default"
+                                style={
+                                  ici
+                                    ? {
+                                        color: NIVEAUX[n].couleur,
+                                        background: "rgba(255,255,255,0.05)",
+                                        border: `1.5px solid ${NIVEAUX[n].couleur}`,
+                                      }
+                                    : {
+                                        color: "rgba(255,255,255,0.75)",
+                                        background: "rgba(255,255,255,0.05)",
+                                        border: "1.5px solid rgba(255,255,255,0.1)",
+                                      }
+                                }
+                              >
+                                {NIVEAUX[n].nom}
+                                {ici && (
+                                  <span className="mt-[2px] block text-[8.5px] font-black tracking-[0.08em] opacity-70">
+                                    ICI
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-[2px] flex gap-[5px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBrouillon(t.text);
+                              setEdition(id);
+                              setMenu(null);
+                            }}
+                            className="min-h-[44px] flex-1 cursor-pointer rounded-[10px] text-[12px] font-extrabold text-white/70 transition-all hover:brightness-125"
+                            style={{ background: "rgba(255,255,255,0.05)" }}
+                          >
+                            ✎ Renommer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              supprimerTache(id);
+                              setMenu(null);
+                            }}
+                            className="min-h-[44px] flex-1 cursor-pointer rounded-[10px] text-[12px] font-extrabold transition-all hover:brightness-125"
+                            style={{
+                              color: "var(--color-mag-soft)",
+                              background: "rgba(255,61,139,0.12)",
+                            }}
+                          >
+                            × Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    </Fragment>
                   );
                 })}
               </div>
