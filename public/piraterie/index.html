@@ -3,22 +3,59 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Piraterie maritime — carte mondiale des attaques</title>
+    <title>Piraterie — carte mondiale des attaques contre les navires</title>
     <meta
       name="description"
       content="8 897 attaques contre des navires recensées par la NGA entre 1978 et 2023, situées sur une carte du monde."
     />
-    <meta name="theme-color" content="#060d14" />
+    <meta name="theme-color" content="#05090f" />
     <!--
       Aucun traceur, aucun cookie, aucune mesure d'audience. Rien de tout cela
       n'est ici, et rien ne doit y arriver plus tard : la page ne joint aucun
       domaine extérieur, ce qui rend l'oubli impossible — une ressource tierce
       serait bloquée par la politique de sécurité du site.
+
+      La langue elle-même ne pose aucun cookie : elle se lit dans l'adresse,
+      et à défaut dans les préférences du navigateur.
     -->
     <meta name="robots" content="index, follow" />
 
+    <script>
+      /*
+       * Congédie cette page du cache hors-ligne de l'OS.
+       *
+       * L'OS installe un service worker sur tout le domaine, qui gardait
+       * `carte.js` et `carte.css` à vie sans jamais revérifier — et la page
+       * elle-même en secours. Résultat : la toute première carte publiée
+       * restait affichée sur les téléphones, quel que soit le déploiement.
+       *
+       * Le service worker ignore désormais ce dossier, mais le correctif ne
+       * s'applique qu'une fois la nouvelle version installée. Ces quelques
+       * lignes vident ce qu'il a déjà mis de côté ici — et seulement ici.
+       *
+       * On ne le désinscrit PAS : ce serait priver l'OS de son mode hors
+       * réseau depuis une page qui ne le concerne pas. On retire uniquement
+       * les entrées de /piraterie, chirurgicalement.
+       */
+      if (window.caches) {
+        caches.keys().then((noms) => {
+          for (const nom of noms) {
+            caches.open(nom).then((cache) =>
+              cache.keys().then((requetes) => {
+                for (const requete of requetes) {
+                  if (new URL(requete.url).pathname.startsWith("/piraterie")) {
+                    cache.delete(requete);
+                  }
+                }
+              }),
+            );
+          }
+        });
+      }
+    </script>
+
     <!--
-      Les quatre ressources du premier affichage, demandées dès la lecture de
+      Les ressources du premier affichage, demandées dès la lecture de
       l'en-tête plutôt qu'à la fin du script. Le navigateur les télécharge en
       parallèle du reste au lieu de les découvrir l'une après l'autre : c'est
       ce qui tient le budget de trois secondes en 4G.
@@ -40,40 +77,56 @@
           href="/piraterie/donnees/asam-carte.json" />
     <link rel="preload" as="fetch" crossorigin type="application/json"
           href="/piraterie/monde.json" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/piraterie/vendeur/ibm-plex-mono-latin-600-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/piraterie/vendeur/ibm-plex-sans-latin-400-normal.woff2" />
 
     <link rel="stylesheet" href="/piraterie/vendeur/maplibre-gl.css" />
-    <link rel="stylesheet" href="/piraterie/carte.css" />
+    <!--
+      L'empreinte « ?v= » n'est pas décorative : le service worker de l'OS,
+      déjà installé sur les téléphones, garde tout fichier « .css » ou « .js »
+      en cache À VIE, sans jamais revérifier. Il servait donc la toute première
+      carte publiée, quel que soit le déploiement. Le correctif définitif est
+      dans `public/sw.js`, qui ignore désormais ce dossier — mais il ne prend
+      effet qu'une fois le nouveau service worker installé. Changer l'adresse
+      libère immédiatement les navigateurs encore tenus par l'ancien.
+    -->
+    <link rel="stylesheet" href="/piraterie/carte.css?v=3" />
   </head>
 
   <body>
-    <a class="saut-lien" href="#commandes">Aller aux commandes</a>
+    <a class="saut-lien" href="#commandes" data-i18n="saut">Aller aux commandes</a>
 
     <!-- ══ En-tête ══════════════════════════════════════════════════════ -->
     <header class="entete">
       <div class="entete-titre">
-        <h1>Piraterie</h1>
+        <h1 data-i18n="titre">Piraterie</h1>
         <p class="entete-phrase">
-          Chaque point est une attaque réelle contre un navire.
-          <span class="entete-chiffres">
-            <!--
-              Le chiffre est écrit dans le HTML, donc peint immédiatement, et
-              le script le remplace par celui du fichier de données au
-              chargement. S'ils divergent un jour, c'est le fichier qui fait
-              foi — jamais cette ligne.
-            -->
-            <strong id="total-base">8 897</strong> incidents recensés de
-            <strong id="periode-base">1978 à 2023</strong>.
-          </span>
+          <span data-i18n="phrase">Chaque marque est une attaque réelle contre un navire.</span>
+          <span class="entete-chiffres" id="entete-chiffres"></span>
         </p>
       </div>
-      <button type="button" class="bouton-icone" id="bouton-apropos"
-              aria-expanded="false" aria-controls="apropos" title="À propos des données">
-        <span aria-hidden="true">i</span><span class="lecteur-ecran">À propos des données</span>
-      </button>
+      <div class="entete-outils">
+        <!--
+          Le sélecteur de langue est un vrai groupe de boutons, pas une liste
+          déroulante : deux langues, deux cibles pour le pouce, et l'état en
+          cours se lit sans ouvrir quoi que ce soit.
+        -->
+        <div class="langues" id="langues" role="group" aria-label="Langue / Language">
+          <button type="button" data-langue="fr" lang="fr">FR</button>
+          <button type="button" data-langue="en" lang="en">EN</button>
+        </div>
+        <button type="button" class="bouton-icone" id="bouton-apropos"
+                aria-expanded="false" aria-controls="apropos" data-i18n-title="aproposTitre">
+          <span aria-hidden="true">i</span>
+          <span class="lecteur-ecran" data-i18n="aproposTitre">À propos des données</span>
+        </button>
+      </div>
     </header>
 
     <!-- ══ Carte ════════════════════════════════════════════════════════ -->
-    <div id="carte" class="carte" aria-label="Carte mondiale des attaques"></div>
+    <div id="carte" class="carte" data-i18n-aria="carteAria" aria-label="Carte mondiale des attaques"></div>
 
     <!--
       L'écran d'attente fait partie du HTML : il est peint avant que la moindre
@@ -82,32 +135,38 @@
     -->
     <div class="attente" id="attente">
       <div class="attente-barre"><span></span></div>
-      <p id="attente-texte">Chargement des incidents…</p>
+      <p id="attente-texte" data-i18n="chargement">Chargement des incidents…</p>
     </div>
 
     <noscript>
       <div class="sans-script">
         <p>
-          Cette carte a besoin de JavaScript pour dessiner 8 897 points et les
-          filtrer. Les données brutes restent consultables&nbsp;:
+          Cette carte a besoin de JavaScript pour dessiner 8 897 navires et les
+          filtrer. Les données brutes restent consultables&nbsp;:<br />
+          <i lang="en">This map needs JavaScript. The raw data remains available:</i>
         </p>
-        <p><a href="/piraterie/donnees/asam-carte.json">fichier des incidents</a></p>
-        <p><a href="https://msi.nga.mil/Piracy">source d'origine — NGA</a></p>
+        <p><a href="/piraterie/donnees/asam-carte.json">incidents (JSON)</a></p>
+        <p><a href="https://msi.nga.mil/Piracy">source — NGA</a></p>
       </div>
     </noscript>
 
     <!-- ══ Fiche d'un incident ══════════════════════════════════════════ -->
     <aside class="fiche" id="fiche" hidden aria-labelledby="fiche-titre" tabindex="-1">
       <div class="fiche-tete">
-        <h2 id="fiche-titre">Incident</h2>
-        <button type="button" class="bouton-icone" id="fiche-fermer" title="Fermer">
-          <span aria-hidden="true">✕</span><span class="lecteur-ecran">Fermer la fiche</span>
+        <h2 id="fiche-titre">—</h2>
+        <button type="button" class="bouton-icone" id="fiche-fermer" data-i18n-title="fermer">
+          <span aria-hidden="true">✕</span>
+          <span class="lecteur-ecran" data-i18n="fermer">Fermer</span>
         </button>
       </div>
       <dl class="fiche-champs" id="fiche-champs"></dl>
       <div class="fiche-recit">
-        <h3>Description</h3>
-        <p id="fiche-description"></p>
+        <h3 data-i18n="recitTitre">Récit d'origine</h3>
+        <p class="fiche-recit-note" data-i18n="recitNote">
+          Texte de la NGA, en anglais. Il n'est pas traduit&nbsp;: c'est la pièce
+          d'origine.
+        </p>
+        <p id="fiche-description" lang="en"></p>
       </div>
       <p class="fiche-source" id="fiche-reference"></p>
     </aside>
@@ -115,127 +174,117 @@
     <!-- ══ Panneau « à propos » ═════════════════════════════════════════ -->
     <aside class="apropos" id="apropos" hidden aria-labelledby="apropos-titre" tabindex="-1">
       <div class="fiche-tete">
-        <h2 id="apropos-titre">D'où viennent ces données</h2>
-        <button type="button" class="bouton-icone" id="apropos-fermer" title="Fermer">
-          <span aria-hidden="true">✕</span><span class="lecteur-ecran">Fermer</span>
+        <h2 id="apropos-titre" data-i18n="aproposTitre">D'où viennent ces données</h2>
+        <button type="button" class="bouton-icone" id="apropos-fermer" data-i18n-title="fermer">
+          <span aria-hidden="true">✕</span>
+          <span class="lecteur-ecran" data-i18n="fermer">Fermer</span>
         </button>
       </div>
       <div class="apropos-texte">
-        <p>
-          Toutes les attaques affichées proviennent de la base
-          <strong>ASAM</strong> (<i lang="en">Anti-Shipping Activity Messages</i>)
-          de la <i lang="en">National Geospatial-Intelligence Agency</i>
-          américaine. Rien n'a été ajouté, complété ni corrigé&nbsp;: un champ
-          absent de la source reste vide ici.
-        </p>
+        <p data-i18n="apropos1"></p>
         <p id="apropos-capture"></p>
-        <p>
-          Les catégories des filtres regroupent les libellés d'origine, qui ne
-          sont pas normalisés dans la base — <span class="mono">PIRATES</span> et
-          <span class="mono">Pirates</span> y comptent séparément. Chaque fiche
-          affiche toujours le libellé exact enregistré par la NGA.
-        </p>
-        <p>
-          <strong>La couleur des bateaux est un classement, pas une donnée
-          de la NGA.</strong> La base ne hiérarchise pas ses incidents : elle
-          range côte à côte un équipage tué et une barque qui s'approche puis
-          repart. Les quatre niveaux sont déduits de mots présents dans le
-          récit officiel — mort, enlèvement, détournement, tirs, abordage,
-          vol, tentative — appliqués du plus grave au moins grave. Un incident
-          sans récit n'est pas classé. Le récit intégral figure sur chaque
-          fiche&nbsp;: le classement s'y vérifie sur pièce.
-        </p>
+        <p data-i18n="apropos2"></p>
+        <p data-i18n="apropos3"></p>
       </div>
     </aside>
 
     <!-- ══ Commandes ════════════════════════════════════════════════════ -->
-    <section class="commandes" id="commandes" aria-label="Filtres et recherche">
+    <section class="commandes" id="commandes" data-i18n-aria="commandesAria">
       <button type="button" class="poignee" id="bouton-replier"
               aria-expanded="true" aria-controls="commandes-corps">
         <span class="poignee-trait" aria-hidden="true"></span>
-        <span class="lecteur-ecran">Replier les commandes</span>
+        <span data-i18n="replier">Replier</span>
       </button>
 
       <div id="commandes-corps">
-        <p class="compteur" id="compteur" role="status" aria-live="polite">
-          <strong>—</strong> incidents affichés
-        </p>
+        <p class="compteur" id="compteur"><strong>—</strong> <span></span></p>
         <!-- Recalculé à chaque filtre : ce que la sélection en cours raconte. -->
         <p class="stats" id="stats"></p>
 
-        <!--
-          Gravité : à la fois légende et filtre, et jamais replié.
-
-          C'est la clé de lecture des couleurs de la flotte. La ranger dans le
-          panneau des filtres l'aurait rendue invisible par défaut : on
-          verrait des bateaux de quatre couleurs sans savoir ce qu'elles
-          disent.
-        -->
-        <div class="gravites" id="filtre-gravites" role="group"
-             aria-label="Gravité — sert aussi de légende des couleurs"></div>
-
-        <!-- Curseur temporel -->
+        <!-- ── Chronologie ──────────────────────────────────────────── -->
         <div class="temps">
           <button type="button" class="bouton-lecture" id="bouton-lecture"
-                  aria-label="Lancer l'animation temporelle">
+                  data-i18n-aria="lire">
             <span class="icone-lecture" aria-hidden="true"></span>
           </button>
           <div class="temps-piste">
             <div class="temps-bornes">
-              <label class="lecteur-ecran" for="annee-debut">Année de début</label>
-              <input type="range" id="annee-debut" class="curseur curseur-debut" />
-              <label class="lecteur-ecran" for="annee-fin">Année de fin</label>
-              <input type="range" id="annee-fin" class="curseur curseur-fin" />
+              <!--
+                L'histogramme est la piste elle-même : la hauteur de chaque
+                barre est le nombre d'attaques de l'année. On lit la forme du
+                phénomène en même temps qu'on le découpe.
+              -->
+              <div class="temps-histogramme" id="temps-histogramme" aria-hidden="true"></div>
               <div class="temps-rail" aria-hidden="true"><span id="temps-selection"></span></div>
+              <label class="lecteur-ecran" for="annee-debut" data-i18n="anneeDebut">Année de début</label>
+              <input type="range" id="annee-debut" class="curseur curseur-debut" />
+              <label class="lecteur-ecran" for="annee-fin" data-i18n="anneeFin">Année de fin</label>
+              <input type="range" id="annee-fin" class="curseur curseur-fin" />
             </div>
-            <p class="temps-libelle" id="temps-libelle" aria-hidden="true">1978 – 2023</p>
+            <p class="temps-libelle" id="temps-libelle" aria-hidden="true">—</p>
           </div>
         </div>
 
-        <!-- Recherche et actions -->
+        <!-- ── Gravité : filtre, et légende quand la couleur la porte ── -->
+        <div class="rangee-gravite">
+          <div class="gravites" id="filtre-gravites" role="group" data-i18n-aria="graviteAria"></div>
+          <button type="button" class="bascule" id="bascule-couleur" aria-pressed="false">
+            <span data-i18n="colorer">Colorer</span>
+          </button>
+        </div>
+
+        <!-- ── Recherche et actions ─────────────────────────────────── -->
         <div class="actions">
           <div class="champ-recherche">
-            <label class="lecteur-ecran" for="recherche">Rechercher dans les descriptions</label>
-            <input type="search" id="recherche" placeholder="Somalie, otage, tanker…"
-                   autocomplete="off" spellcheck="false" disabled />
+            <label class="lecteur-ecran" for="recherche" data-i18n="rechercheLabel">Rechercher</label>
+            <input type="search" id="recherche" autocomplete="off" spellcheck="false" disabled />
           </div>
           <button type="button" class="bouton" id="bouton-filtres"
                   aria-expanded="false" aria-controls="filtres">
-            Filtres <span class="pastille" id="pastille-filtres" hidden></span>
+            <span data-i18n="filtres">Filtres</span>
+            <span class="pastille" id="pastille-filtres" hidden></span>
           </button>
-          <button type="button" class="bouton" id="bouton-partage">Partager</button>
+          <button type="button" class="bouton" id="bouton-partage" data-i18n="partager">Partager</button>
         </div>
 
-        <!-- Filtres, dépliés à la demande -->
+        <!-- ── Filtres, dépliés à la demande ────────────────────────── -->
         <div class="filtres" id="filtres" hidden>
           <div class="filtre-groupe">
-            <h3 id="titre-zones">Zone maritime</h3>
+            <h3 id="titre-zones" data-i18n="zone">Zone maritime</h3>
             <div class="jetons" id="filtre-zones" role="group" aria-labelledby="titre-zones"></div>
           </div>
           <div class="filtre-groupe">
-            <h3 id="titre-types">Type d'incident</h3>
+            <h3 id="titre-types" data-i18n="typeIncident">Type d'incident</h3>
             <div class="jetons" id="filtre-types" role="group" aria-labelledby="titre-types"></div>
           </div>
           <div class="filtre-groupe">
-            <h3 id="titre-navires">Type de navire</h3>
+            <h3 id="titre-navires" data-i18n="typeNavire">Type de navire</h3>
             <div class="jetons" id="filtre-navires" role="group" aria-labelledby="titre-navires"></div>
           </div>
-          <button type="button" class="bouton bouton-effacer" id="bouton-effacer">
-            Tout effacer
-          </button>
+          <button type="button" class="bouton bouton-effacer" id="bouton-effacer"
+                  data-i18n="effacer">Tout effacer</button>
         </div>
 
-        <!-- Pied -->
+        <!-- ── Pied ─────────────────────────────────────────────────── -->
         <p class="pied">
-          <a href="https://msi.nga.mil/Piracy" rel="noreferrer">Source&nbsp;: NGA — base ASAM</a>
+          <a href="https://msi.nga.mil/Piracy" rel="noreferrer" data-i18n="source">Source : NGA — base ASAM</a>
           <span aria-hidden="true">·</span>
-          <a class="lien-video" href="[URL_VIDEO]">▶ Voir le documentaire</a>
+          <a class="lien-video" href="[URL_VIDEO]" data-i18n="video">▶ Voir le documentaire</a>
+          <!--
+            Le numéro de version, visible.
+
+            Sans lui, impossible de trancher la seule question qui bloque tout
+            dépannage : « est-ce que tu regardes bien la dernière version ? »
+            Un téléphone garde parfois l'ancienne, et on cherche alors un
+            défaut déjà corrigé. Une mention à lire, et on sait.
+          -->
+          <span class="version">v3</span>
         </p>
       </div>
     </section>
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js"></script>
+    <script type="module" src="/piraterie/carte.js?v=3"></script>
   </body>
 </html>

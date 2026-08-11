@@ -42,6 +42,36 @@ const FICHIERS_MAPLIBRE = [
   "maplibre-gl.css",
 ];
 
+/*
+ * Les polices, copiées depuis node_modules et servies par notre domaine.
+ *
+ * IBM Plex : dessinée pour la documentation technique, elle porte le ton
+ * qu'on cherche — un instrument, pas une application grand public. Le
+ * chiffre y est tabulaire, ce qui compte quand un compteur change vingt fois
+ * par seconde pendant l'animation temporelle.
+ *
+ * Sous-ensemble latin uniquement, quatre graisses : 80 Ko à elles toutes.
+ * Les appeler chez Google coûterait une requête vers un tiers à chaque
+ * spectateur — précisément ce que la page s'interdit.
+ */
+const POLICES = [
+  ["@fontsource/ibm-plex-sans", "ibm-plex-sans-latin-400-normal.woff2"],
+  ["@fontsource/ibm-plex-sans", "ibm-plex-sans-latin-600-normal.woff2"],
+  ["@fontsource/ibm-plex-mono", "ibm-plex-mono-latin-400-normal.woff2"],
+  ["@fontsource/ibm-plex-mono", "ibm-plex-mono-latin-600-normal.woff2"],
+];
+
+async function copierPolices() {
+  const destination = path.join(SORTIE, "vendeur");
+  await mkdir(destination, { recursive: true });
+
+  for (const [paquet, fichier] of POLICES) {
+    const source = path.join(path.dirname(require.resolve(`${paquet}/package.json`)), "files", fichier);
+    await copyFile(source, path.join(destination, fichier));
+  }
+  console.error(`Polices : ${POLICES.length} fichiers copiés`);
+}
+
 async function copierMaplibre() {
   const source = path.dirname(require.resolve("maplibre-gl/dist/maplibre-gl.css"));
   const destination = path.join(SORTIE, "vendeur");
@@ -134,4 +164,5 @@ async function preparerFond() {
 }
 
 await copierMaplibre();
+await copierPolices();
 await preparerFond();
