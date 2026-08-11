@@ -69,9 +69,9 @@ jobs:
           # passage, le dossier est entièrement nouveau — la comparaison ne
           # voyait donc aucun changement et les données restaient sur place,
           # produites mais jamais déposées.
-          git add -A public/donnees
+          git add -A public/piraterie/donnees
 
-          if git diff --cached --quiet -- public/donnees; then
+          if git diff --cached --quiet -- public/piraterie/donnees; then
             echo "Données inchangées, aucun commit."
             exit 0
           fi
