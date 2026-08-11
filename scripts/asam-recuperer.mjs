@@ -315,8 +315,8 @@ const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
  * Les règles sont appliquées dans l'ordre, du plus grave au moins grave :
  * une attaque qui tue et vole est comptée parmi les morts.
  *
- * Relevé sur les 8 897 récits : 223 morts, 2 324 violences ou enlèvements,
- * 4 763 abordages avec vol, 1 581 tentatives ou approches. Six incidents
+ * Relevé sur les 8 897 récits : 219 morts, 2 326 violences ou enlèvements,
+ * 4 764 abordages avec vol, 1 582 tentatives ou approches. Six incidents
  * n'ont aucun récit et ne sont pas classés.
  */
 /*
@@ -328,9 +328,13 @@ const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
  *
  *   · « following the activation of the DEAD MAN alarm » — un dispositif de
  *     sécurité qui détecte l'immobilité d'un homme de quart ;
- *   · « the towed DEAD SHIP » — un navire sans propulsion ;
+ *   · « the towed DEAD SHIP », « the DEAD VESSEL DAWN 1 » — un navire sans
+ *     propulsion ;
  *   · « hurling lead weights, anchors, trash, DEAD FISH » — des poissons ;
- *   · « a small craft STOPPED DEAD ahead » — une manœuvre ;
+ *   · « a small craft STOPPED DEAD ahead », « observed DEAD AHEAD » — un
+ *     relèvement, une manœuvre ;
+ *   · « repeated three times before the line WENT DEAD » — une liaison radio
+ *     qui se coupe, au moment précis où le navire est pris ;
  *   · « they THREATENED TO KILL him if he failed to cooperate » — une menace,
  *     et le propre d'une menace est de ne pas avoir été exécutée.
  *
@@ -341,9 +345,12 @@ const arrondir = (nombre) => Math.round(nombre * 1e4) / 1e4;
 const LEURRES = new RegExp(
   [
     // « dead » qui ne parle pas d'un mort
-    "dead[- ]?(?:man|ship|fish|slow|weight|reckoning|end)",
+    "dead[- ]?(?:man|ship|vessel|boat|craft|fish|slow|weight|reckoning|end)",
+    "dead (?:ahead|astern|calm)",
     "dead in the water",
     "stopped dead",
+    "(?:line|lines|communications?|contact|radio|signal|call)[^.]{0,20}went dead",
+    "went dead",
     "\\bdeadweight\\b",
     // menaces et tentatives : personne n'est mort
     "threaten(?:ed|ing)?[^.]{0,30}\\bkill\\b",
