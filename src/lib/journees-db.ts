@@ -1,7 +1,12 @@
-import { uid, supabaseAdmin } from "./supabase";
+import { USER_ID, uid, supabaseAdmin } from "./supabase";
 import { ecrireJour } from "./db";
 import { lireSentinelle, majSentinelle } from "./sentinelle";
-import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
+import {
+  JOURNEES_DEFAUT,
+  JOURNEE_VIERGE,
+  bornerJournees,
+  type JourneesConfig,
+} from "./journees";
 
 /**
  * L'accès base des journées types, côté serveur uniquement.
@@ -16,7 +21,18 @@ export async function lireJournees(): Promise<JourneesConfig> {
   const journees = (await lireSentinelle()).journees as
     | Partial<JourneesConfig>
     | undefined;
-  if (!journees || typeof journees !== "object") return JOURNEES_DEFAUT;
+  /*
+   * Rien d'enregistré : le programme de Twaylo chez Twaylo, un modèle vide
+   * ailleurs.
+   *
+   * Sans cette distinction, chaque OS créé s'ouvrait sur « 07:00 Réveil +
+   * sport », « 08:00 Script les shorts du jour », « 17:00 Passage Momentum » —
+   * la journée d'un YouTubeur, servie à un étudiant en droit. C'est ensuite le
+   * sas qui écrit une vraie journée à partir des réponses données.
+   */
+  if (!journees || typeof journees !== "object") {
+    return (await uid()) === USER_ID ? JOURNEES_DEFAUT : JOURNEE_VIERGE;
+  }
 
   /*
    * Plus aucune migration ici, volontairement.

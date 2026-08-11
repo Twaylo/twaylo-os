@@ -3,8 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { TABS, useOs, type Tab } from "@/lib/os-context";
-import { AMBIANCES, CUSTOM_DEFAUT, ordonnerOnglets, type AmbianceId } from "@/lib/custom";
+import { useOs } from "@/lib/os-context";
+import { AMBIANCES, CUSTOM_DEFAUT, type AmbianceId } from "@/lib/custom";
+import {
+  BLOCS,
+  MODULES,
+  MODULES_COEUR,
+  tousLesBlocs,
+  tousLesModules,
+} from "@/lib/modules";
 
 /**
  * PERSONNALISER — l'OS aux couleurs de Twaylo.
@@ -15,7 +22,7 @@ import { AMBIANCES, CUSTOM_DEFAUT, ordonnerOnglets, type AmbianceId } from "@/li
  * (avatar → Personnaliser l'OS) pour être réglable depuis n'importe où.
  */
 export function Personnaliser({ onClose }: { onClose: () => void }) {
-  const { custom, majCustom, data, demoMode } = useOs();
+  const { custom, majCustom, identite, demoMode } = useOs();
 
   // Fermer sur Échap : un panneau qu'on ne sait pas fermer est une impasse.
   useEffect(() => {
@@ -38,26 +45,43 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
     minuteur.current = setTimeout(() => majCustom(suivant), 450);
   }
 
-  const ordonnes = ordonnerOnglets(TABS, custom.ordreOnglets);
-  const caches = new Set(custom.ongletsCaches);
+  /*
+   * Une liste vide veut dire « tout », pas « rien ».
+   *
+   * C'est ce qui garde l'OS historique intact : personne n'a jamais réglé ses
+   * modules, la liste enregistrée est donc vide, et l'OS complet s'affiche.
+   * Dès le premier décochage, la liste devient explicite et ne bouge plus
+   * toute seule — un module ajouté par une version future ne s'invite pas.
+   */
+  const modules = custom.modules.length > 0 ? custom.modules : tousLesModules();
+  const blocs = custom.blocs.length > 0 ? custom.blocs : tousLesBlocs();
 
-  function basculerOnglet(t: Tab) {
-    if (t === "Accueil") return;
-    majCustom({
-      ongletsCaches: caches.has(t)
-        ? custom.ongletsCaches.filter((o) => o !== t)
-        : [...custom.ongletsCaches, t],
-    });
+  /** Coche/décoche en gardant l'ordre du catalogue pour ce qu'on rajoute. */
+  function basculer(
+    liste: string[],
+    id: string,
+    catalogue: readonly string[],
+    ecrire: (v: string[]) => void,
+  ) {
+    if (liste.includes(id)) {
+      ecrire(liste.filter((x) => x !== id));
+      return;
+    }
+    // Réinstallé À SA PLACE, pas à la fin : on retrouve l'OS qu'on connaissait.
+    const rang = new Map(catalogue.map((x, i) => [x, i]));
+    ecrire([...liste, id].sort((a, b) => (rang.get(a) ?? 0) - (rang.get(b) ?? 0)));
   }
 
-  function deplacerOnglet(t: Tab, sens: -1 | 1) {
-    const i = ordonnes.indexOf(t);
+  function deplacer(liste: string[], id: string, sens: -1 | 1, ecrire: (v: string[]) => void) {
+    const i = liste.indexOf(id);
     const j = i + sens;
-    if (i < 0 || j < 0 || j >= ordonnes.length) return;
-    const suivant = [...ordonnes];
+    if (i < 0 || j < 0 || j >= liste.length) return;
+    const suivant = [...liste];
     [suivant[i], suivant[j]] = [suivant[j], suivant[i]];
-    majCustom({ ordreOnglets: suivant });
+    ecrire(suivant);
   }
+
+  const modulesInstalles = new Set(modules);
 
   /*
    * Le panneau est porté dans <body>, pas là où il est écrit.
@@ -160,80 +184,68 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
             </div>
           </section>
 
-          {/* ---------------- Onglets ---------------- */}
+          {/* ---------------- Modules ---------------- */}
           <section>
-            <div className="eyebrow mb-[8px]" style={{ color: "var(--color-amb-soft)" }}>
+            <div className="eyebrow mb-[4px]" style={{ color: "var(--color-amb-soft)" }}>
               <span className="eyebrow-dot" style={{ background: "var(--color-amb)" }} />
-              ONGLETS — LESQUELS, DANS QUEL ORDRE
+              MODULES — LES ONGLETS DE TON OS
             </div>
-            <div className="flex flex-col gap-[5px]">
-              {ordonnes.map((t, i) => {
-                const cache = caches.has(t);
-                const fixe = t === "Accueil";
-                return (
-                  <div
-                    key={t}
-                    className="flex items-center gap-[9px] rounded-[10px] px-[10px] py-[6px]"
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      opacity: cache ? 0.45 : 1,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => basculerOnglet(t)}
-                      disabled={fixe}
-                      aria-pressed={!cache}
-                      title={
-                        fixe
-                          ? "L'accueil reste toujours visible"
-                          : cache
-                            ? `Réafficher ${t}`
-                            : `Masquer ${t}`
-                      }
-                      className="flex h-[18px] w-[18px] flex-none cursor-pointer items-center justify-center rounded-[6px] text-[11px] font-black text-[#07121d] transition-all disabled:cursor-not-allowed"
-                      style={{
-                        background: cache ? "transparent" : "var(--color-ver)",
-                        border: `2px solid ${cache ? "rgba(255,255,255,0.25)" : "var(--color-ver)"}`,
-                      }}
-                    >
-                      {!cache && "✓"}
-                    </button>
-                    <span className="flex-1 text-[12.5px] font-extrabold">
-                      {t}
-                      {fixe && (
-                        <span className="ml-[7px] text-[9px] font-black tracking-[0.08em] text-white/30">
-                          TOUJOURS VISIBLE
-                        </span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => deplacerOnglet(t, -1)}
-                      disabled={i === 0}
-                      title={`Monter ${t}`}
-                      aria-label={`Monter ${t}`}
-                      className="cursor-pointer rounded-[6px] px-[7px] text-[11px] font-black text-white/40 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-20"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deplacerOnglet(t, 1)}
-                      disabled={i === ordonnes.length - 1}
-                      title={`Descendre ${t}`}
-                      aria-label={`Descendre ${t}`}
-                      className="cursor-pointer rounded-[6px] px-[7px] text-[11px] font-black text-white/40 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-20"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                );
-              })}
+            <p className="mb-[8px] text-[10.5px] leading-[1.4] text-white/35">
+              Installe ce qui te sert, retire le reste. Rien n&apos;est perdu en retirant
+              un module : ses données t&apos;attendent si tu le réinstalles.
+            </p>
+            <Liste
+              catalogue={MODULES.map((m) => ({
+                id: m.id,
+                titre: m.id,
+                emoji: m.emoji,
+                description: m.description,
+                fixe: MODULES_COEUR.includes(m.id),
+              }))}
+              choisis={modules}
+              onBasculer={(id) =>
+                basculer(modules, id, tousLesModules(), (v) => majCustom({ modules: v }))
+              }
+              onDeplacer={(id, sens) =>
+                deplacer(modules, id, sens, (v) => majCustom({ modules: v }))
+              }
+            />
+          </section>
+
+          {/* ---------------- Blocs de l'accueil ---------------- */}
+          <section>
+            <div className="eyebrow mb-[4px]" style={{ color: "var(--color-ver-soft)" }}>
+              <span className="eyebrow-dot" style={{ background: "var(--color-ver)" }} />
+              BLOCS DE L&apos;ACCUEIL
             </div>
+            <p className="mb-[8px] text-[10.5px] leading-[1.4] text-white/35">
+              Ce que tu veux voir en ouvrant l&apos;OS, et dans quel ordre. Le premier de
+              la liste est le premier à l&apos;écran.
+            </p>
+            <Liste
+              catalogue={BLOCS.map((b) => ({
+                id: b.id,
+                titre: b.titre,
+                emoji: b.emoji,
+                description: b.description,
+                /*
+                 * Un bloc dont le module manque reste cochable, mais on le dit.
+                 * Le masquer ferait croire qu'il n'existe pas ; le laisser muet
+                 * ferait croire à un bug quand il n'apparaît pas à l'accueil.
+                 */
+                note:
+                  b.module && !modulesInstalles.has(b.module)
+                    ? `Demande le module ${b.module}`
+                    : undefined,
+              }))}
+              choisis={blocs}
+              onBasculer={(id) =>
+                basculer(blocs, id, tousLesBlocs(), (v) => majCustom({ blocs: v }))
+              }
+              onDeplacer={(id, sens) =>
+                deplacer(blocs, id, sens, (v) => majCustom({ blocs: v }))
+              }
+            />
           </section>
 
           {/* ---------------- Identité ---------------- */}
@@ -250,7 +262,7 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
                 <input
                   value={ident.nom}
                   onChange={(e) => majIdent({ nom: e.target.value })}
-                  placeholder={data.operator.name}
+                  placeholder={identite.nom}
                   className="rounded-[9px] px-[10px] py-[7px] text-[13px] font-bold text-white outline-none transition-colors focus:border-white/25"
                   style={{
                     background: "rgba(255,255,255,0.04)",
@@ -265,7 +277,7 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
                 <input
                   value={ident.role}
                   onChange={(e) => majIdent({ role: e.target.value })}
-                  placeholder={data.operator.role}
+                  placeholder={identite.role || "Ton rôle"}
                   className="rounded-[9px] px-[10px] py-[7px] text-[13px] font-bold text-white outline-none transition-colors focus:border-white/25"
                   style={{
                     background: "rgba(255,255,255,0.04)",
@@ -304,5 +316,142 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
       </div>
     </div>,
     document.body,
+  );
+}
+
+type Entree = {
+  id: string;
+  titre: string;
+  emoji: string;
+  description: string;
+  /** Ne se retire pas : sans lui, plus d'OS. */
+  fixe?: boolean;
+  /** Une réserve à afficher — par exemple un module manquant. */
+  note?: string;
+};
+
+/**
+ * La liste installée / disponible, commune aux modules et aux blocs.
+ *
+ * Deux zones, et l'ordre entre elles n'est pas cosmétique : ce qui est
+ * installé se range à la main (↑↓), ce qui ne l'est pas n'a pas d'ordre — le
+ * mélanger dans une seule liste donnait des flèches qui déplacent des lignes
+ * invisibles à l'écran. La zone du bas est un catalogue, pas un classement.
+ */
+function Liste({
+  catalogue,
+  choisis,
+  onBasculer,
+  onDeplacer,
+}: {
+  catalogue: Entree[];
+  choisis: string[];
+  onBasculer: (id: string) => void;
+  onDeplacer: (id: string, sens: -1 | 1) => void;
+}) {
+  const par = new Map(catalogue.map((e) => [e.id, e]));
+  const installes = choisis.map((id) => par.get(id)).filter((e): e is Entree => Boolean(e));
+  const dispo = catalogue.filter((e) => !choisis.includes(e.id));
+
+  return (
+    <>
+      <div className="flex flex-col gap-[5px]">
+        {installes.map((e, i) => (
+          <div
+            key={e.id}
+            className="flex items-center gap-[9px] rounded-[10px] px-[10px] py-[7px]"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => onBasculer(e.id)}
+              disabled={e.fixe}
+              aria-pressed
+              title={e.fixe ? "Toujours installé" : `Retirer ${e.titre}`}
+              className="flex h-[20px] w-[20px] flex-none cursor-pointer items-center justify-center rounded-[6px] text-[11px] font-black text-[#07121d] transition-all disabled:cursor-not-allowed disabled:opacity-45"
+              style={{ background: "var(--color-ver)", border: "2px solid var(--color-ver)" }}
+            >
+              ✓
+            </button>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] font-extrabold">
+                {e.emoji} {e.titre}
+                {e.fixe && (
+                  <span className="ml-[7px] text-[9px] font-black tracking-[0.08em] text-white/30">
+                    TOUJOURS LÀ
+                  </span>
+                )}
+              </span>
+              <span className="block truncate text-[10.5px] leading-[1.35] text-white/35">
+                {e.note ?? e.description}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onDeplacer(e.id, -1)}
+              disabled={i === 0}
+              title={`Monter ${e.titre}`}
+              aria-label={`Monter ${e.titre}`}
+              className="min-h-[30px] cursor-pointer rounded-[6px] px-[8px] text-[11px] font-black text-white/40 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-20"
+              style={{ background: "rgba(255,255,255,0.05)" }}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              onClick={() => onDeplacer(e.id, 1)}
+              disabled={i === installes.length - 1}
+              title={`Descendre ${e.titre}`}
+              aria-label={`Descendre ${e.titre}`}
+              className="min-h-[30px] cursor-pointer rounded-[6px] px-[8px] text-[11px] font-black text-white/40 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-20"
+              style={{ background: "rgba(255,255,255,0.05)" }}
+            >
+              ↓
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {dispo.length > 0 && (
+        <>
+          <div className="mt-[10px] text-[9.5px] font-black tracking-[0.1em] text-white/25">
+            À AJOUTER
+          </div>
+          <div className="mt-[5px] flex flex-col gap-[4px]">
+            {dispo.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => onBasculer(e.id)}
+                title={`Ajouter ${e.titre}`}
+                className="flex cursor-pointer items-center gap-[9px] rounded-[10px] px-[10px] py-[7px] text-left transition-all hover:brightness-125"
+                style={{
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px dashed rgba(255,255,255,0.11)",
+                }}
+              >
+                <span
+                  className="flex h-[20px] w-[20px] flex-none items-center justify-center rounded-[6px] text-[12px] font-black text-white/40"
+                  style={{ border: "2px solid rgba(255,255,255,0.2)" }}
+                >
+                  +
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-extrabold text-white/60">
+                    {e.emoji} {e.titre}
+                  </span>
+                  <span className="block truncate text-[10.5px] leading-[1.35] text-white/30">
+                    {e.note ?? e.description}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }

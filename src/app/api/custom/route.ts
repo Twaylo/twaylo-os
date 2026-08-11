@@ -1,18 +1,38 @@
 import { NextResponse } from "next/server";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { USER_ID, isSupabaseConfigured, uid } from "@/lib/supabase";
 import { ecrireCustom, lireCustom } from "@/lib/custom-db";
 import { CUSTOM_DEFAUT, bornerCustom, type CustomConfig } from "@/lib/custom";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Les réglages de personnalisation — ambiance, onglets, identité. */
+/**
+ * Les réglages de personnalisation — ambiance, modules, blocs, identité.
+ *
+ * La réponse porte aussi QUI est connecté. C'est ce qui permet à l'écran de
+ * savoir s'il montre l'OS historique (dont l'identité est écrite en dur dans
+ * le code) ou celui de quelqu'un d'autre. Rien de secret n'en sort : le nom du
+ * compte est celui que la personne a elle-même choisi en s'inscrivant.
+ */
 export async function GET() {
+  const compte = await uid();
+  const proprietaire = compte === USER_ID;
+
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ connecte: false, custom: CUSTOM_DEFAUT });
+    return NextResponse.json({
+      connecte: false,
+      custom: CUSTOM_DEFAUT,
+      compte,
+      proprietaire,
+    });
   }
   try {
-    return NextResponse.json({ connecte: true, custom: await lireCustom() });
+    return NextResponse.json({
+      connecte: true,
+      custom: await lireCustom(),
+      compte,
+      proprietaire,
+    });
   } catch (err) {
     console.error("[custom] lecture impossible :", err);
     return NextResponse.json({ error: "Lecture impossible." }, { status: 500 });

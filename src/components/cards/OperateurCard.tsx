@@ -6,7 +6,7 @@ import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
 export function OperateurCard() {
-  const { data, demoMode } = useOs();
+  const { data, demoMode, identite } = useOs();
   const { uneChose, setUneChose } = useSaisie();
   /*
    * La série vient de la couche progression, pas de `data.operator`.
@@ -18,6 +18,9 @@ export function OperateurCard() {
    */
   const { serie, pret } = useProgression();
   const op = data.operator;
+  // Le nom et le rôle viennent de l'identité résolue, pas de la constante :
+  // `REAL_DATA.operator` décrit Twaylo, et l'OS de quelqu'un d'autre affichait
+  // son nom à lui.
   const jours = !demoMode && pret ? serie : op.streakDays;
 
   return (
@@ -32,12 +35,12 @@ export function OperateurCard() {
           style={{ background: "linear-gradient(135deg,#ff3d8b,#ffc63d)" }}
         >
           <div className="flex h-full w-full items-center justify-center rounded-[13px] bg-[#0d1a27] text-[21px] font-black">
-            {op.name.charAt(0).toUpperCase()}
+            {identite.nom.charAt(0).toUpperCase()}
           </div>
         </div>
         <div>
-          <div className="text-[18px] font-black">{op.name}</div>
-          <div className="text-[11.5px] text-white/50">{op.role}</div>
+          <div className="text-[18px] font-black">{identite.nom}</div>
+          <div className="text-[11.5px] text-white/50">{identite.role}</div>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 
 import { CATEGORIES_BLOC } from "@/lib/journees";
-import { MAX, nettoyerPlan, planDeSecours, planUtilisable } from "@/lib/sas-plan";
+import { MAX, espaceDuProfil, nettoyerPlan, planDeSecours, planUtilisable } from "@/lib/sas-plan";
 import { reponsesValides, resumerReponses } from "@/lib/sas";
 import { adresse, souslaLimite } from "@/lib/limite";
 
@@ -112,7 +112,18 @@ export async function POST(req: Request) {
     const fin = texte.lastIndexOf("}");
     if (debut === -1 || fin <= debut) throw new Error("réponse sans objet JSON");
 
-    const plan = nettoyerPlan(JSON.parse(texte.slice(debut, fin + 1)));
+    /*
+     * La FORME de l'OS ne vient pas du modèle, elle vient du catalogue.
+     *
+     * On ne demande pas au modèle quels onglets installer : il inventerait
+     * des noms qui n'existent pas, et le rail se retrouverait vide une fois
+     * sur dix. Le profil décide, l'écran suivant laisse tout décocher.
+     */
+    const plan = {
+      ...nettoyerPlan(JSON.parse(texte.slice(debut, fin + 1))),
+      profil: reponses.profil,
+      espace: espaceDuProfil(reponses.profil),
+    };
     if (!planUtilisable(plan)) throw new Error("plan vide après nettoyage");
 
     return NextResponse.json({ plan });

@@ -62,6 +62,17 @@ export type JourneesConfig = {
  * Ce sont ses immuables : ils reviennent chaque jour tant qu'il ne les
  * change pas lui-même.
  */
+/**
+ * Le point de départ d'un OS qui n'est pas celui de Twaylo : un modèle, zéro
+ * bloc. La carte affiche alors « Passe en ✎ pour construire ta journée », ce
+ * qui est exactement la bonne invitation le premier matin.
+ */
+export const JOURNEE_VIERGE: JourneesConfig = {
+  active: "ma-journee",
+  liste: [{ id: "ma-journee", nom: "Ma journée", blocs: [] }],
+};
+
+/** Les journées types de Twaylo — l'OS historique, et le jeu de démonstration. */
 export const JOURNEES_DEFAUT: JourneesConfig = {
   active: "maison",
   liste: [
@@ -139,7 +150,16 @@ export function bornerJournees(brut: Partial<JourneesConfig> | null | undefined)
     }))
     .filter((j) => j.id && j.nom);
 
-  if (liste.length === 0) return JOURNEES_DEFAUT;
+  /*
+   * Une configuration vide donne une journée VIERGE, pas celle de Twaylo.
+   *
+   * Cette ligne renvoyait `JOURNEES_DEFAUT` — les sept blocs de Twaylo, heure
+   * par heure. Deux conséquences : quelqu'un qui supprimait ses journées types
+   * héritait de celles d'un inconnu, et un OS créé par le sas s'ouvrait sur un
+   * programme qui n'était pas le sien. Un modèle vide qu'on remplit soi-même
+   * est toujours préférable au programme de quelqu'un d'autre.
+   */
+  if (liste.length === 0) return JOURNEE_VIERGE;
 
   const active = liste.some((j) => j.id === b.active) ? String(b.active) : liste[0].id;
   return { liste, active };

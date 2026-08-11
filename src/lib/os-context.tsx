@@ -29,10 +29,12 @@ import { REAL_DATA } from "./data-real";
 import {
   AMBIANCES,
   CUSTOM_DEFAUT,
+  blocsActifs,
   bornerCustom,
-  ordonnerOnglets,
+  modulesActifs,
   type CustomConfig,
 } from "./custom";
+import { TABS, type Tab } from "./modules";
 import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
 import {
   KEYS,
@@ -67,23 +69,15 @@ import type {
 } from "./types";
 import { niveauDepuisUrgence } from "./types";
 
-export const TABS = [
-  "Accueil",
-  "Brain",
-  "Bilan",
-  "Journée type",
-  "Contacts",
-  "Sponsors",
-  "Contenu",
-  "Revenus",
-  "Journal",
-  "Objectifs",
-  "Skill",
-  "Revue",
-  "Oubliés",
-] as const;
-
-export type Tab = (typeof TABS)[number];
+/*
+ * Le catalogue vit dans `modules.ts`, pas ici.
+ *
+ * Les onglets étaient une constante de ce fichier : tout le monde recevait
+ * exactement les treize onglets de Twaylo. Ils sont devenus un catalogue dont
+ * chaque OS installe ce qui le concerne. On les réexporte pour ne pas casser
+ * les quelque quarante fichiers qui les importent d'ici.
+ */
+export { TABS, type Tab };
 
 type OsState = {
   activeTab: Tab;
@@ -93,11 +87,26 @@ type OsState = {
   demoMode: boolean;
   toggleDemo: () => void;
 
-  /** Les réglages de personnalisation — ambiance, onglets, identité. */
+  /** Les réglages de personnalisation — ambiance, modules, blocs, identité. */
   custom: CustomConfig;
   majCustom: (patch: Partial<CustomConfig>) => void;
-  /** Les onglets du rail : dans l'ordre choisi, sans les masqués. */
+  /** Les onglets du rail : les modules installés, dans l'ordre choisi. */
   ongletsVisibles: Tab[];
+  /** Les blocs de l'accueil, dans l'ordre, sans ceux dont le module manque. */
+  blocsAccueil: string[];
+
+  /** L'identifiant du compte connecté, ou null tant que la base n'a pas répondu. */
+  compte: string | null;
+  /** Vrai si c'est l'OS historique — celui dont les données d'origine sont écrites en dur. */
+  proprietaire: boolean;
+  /**
+   * Le nom et le rôle À AFFICHER.
+   *
+   * Ils ne viennent plus de `data.operator` sans condition : cette constante
+   * décrit Twaylo, et l'OS de quelqu'un d'autre disait « Salut Twaylo » tant
+   * qu'il n'avait pas rempli le champ Nom lui-même.
+   */
+  identite: { nom: string; role: string; statut: string };
 
   /**
    * Les journées types — les immuables de Twaylo. Le modèle ne se remet
@@ -348,6 +357,23 @@ type GesteProvisoire = {
   ordre?: string[];
 };
 
+/**
+ * « marie-dupont » → « Marie Dupont ».
+ *
+ * Le nom de compte est un identifiant technique (minuscules et tirets, imposé
+ * à la création). L'afficher tel quel donnerait « marie-dupont » en gros et en
+ * gras sur l'accueil ; on le rend présentable en attendant que la personne
+ * choisisse son propre nom dans Personnaliser.
+ */
+function joliNom(id: string | null): string {
+  if (!id) return "Mon OS";
+  return id
+    .split("-")
+    .filter(Boolean)
+    .map((mot) => mot.charAt(0).toUpperCase() + mot.slice(1))
+    .join(" ");
+}
+
 export function OsProvider({ children }: { children: ReactNode }) {
   /** Lu depuis des callbacks stables, qui ne doivent pas se recréer à chaque rendu. */
   const demoModeRef = useRef(false);
@@ -355,6 +381,17 @@ export function OsProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<Tab>("Accueil");
   const [demoMode, setDemoMode] = useState(false);
   const [custom, setCustom] = useState<CustomConfig>(CUSTOM_DEFAUT);
+  /**
+   * Qui est connecté, et est-ce l'OS historique.
+   *
+   * Mis en cache dans le navigateur comme les réglages : sans ça, le premier
+   * dixième de seconde de chaque chargement affichait l'identité d'origine —
+   * un nouveau compte voyait « Twaylo » clignoter avant son propre nom.
+   */
+  const [compte, setCompte] = useState<{ id: string | null; proprietaire: boolean }>({
+    id: null,
+    proprietaire: false,
+  });
   /** Vrai dès que Twaylo a touché un réglage : la réponse serveur ne l'écrase plus. */
   const customTouche = useRef(false);
   const customRef = useRef<CustomConfig>(CUSTOM_DEFAUT);
@@ -692,6 +729,8 @@ export function OsProvider({ children }: { children: ReactNode }) {
     // L'ambiance et les onglets se repeignent AVANT la première image, même
     // en démo : filmer l'OS doit montrer l'OS tel que Twaylo l'a réglé.
     setCustom(bornerCustom(readJSON<CustomConfig>("twaylo-custom", CUSTOM_DEFAUT)));
+    const memo = readJSON<{ id: string; proprietaire: boolean } | null>("twaylo-compte", null);
+    if (memo?.id) setCompte({ id: memo.id, proprietaire: Boolean(memo.proprietaire) });
 
     if (readJSON<string>(KEYS.demo, "0") === "1") {
       // En démo on n'ouvre jamais le stockage réel.
@@ -723,12 +762,39 @@ export function OsProvider({ children }: { children: ReactNode }) {
     let annule = false;
     void fetch("/api/custom")
       .then((r) => r.json())
-      .then((d: { custom?: Partial<CustomConfig> }) => {
-        if (annule || customTouche.current || !d?.custom) return;
-        const propre = bornerCustom(d.custom);
-        setCustom(propre);
-        writeJSON("twaylo-custom", propre);
-      })
+      .then(
+        (d: {
+          connecte?: boolean;
+          custom?: Partial<CustomConfig>;
+          compte?: string;
+          proprietaire?: boolean;
+        }) => {
+          if (annule) return;
+          /*
+           * Le compte s'applique même si les réglages ont déjà été touchés :
+           * il ne se règle pas, il se constate. Les réglages, eux, gardent
+           * leur garde — une modification faite pendant la lecture ne doit
+           * pas être écrasée par la réponse partie avant elle.
+           */
+          if (typeof d?.compte === "string" && d.compte) {
+            const q = { id: d.compte, proprietaire: Boolean(d.proprietaire) };
+            setCompte(q);
+            writeJSON("twaylo-compte", q);
+          }
+          /*
+           * Sans base, on garde ce que le navigateur avait.
+           *
+           * La route répond alors `connecte: false` et des réglages VIDES —
+           * appliqués tels quels, ils effaçaient à chaque rechargement les
+           * modules et les blocs choisis. Une réponse qui dit « je n'ai rien
+           * lu » ne doit pas écraser ce qu'on a sous la main.
+           */
+          if (customTouche.current || !d?.custom || d.connecte === false) return;
+          const propre = bornerCustom(d.custom);
+          setCustom(propre);
+          writeJSON("twaylo-custom", propre);
+        },
+      )
       .catch((err) => console.error("[custom] chargement impossible :", err));
     return () => {
       annule = true;
@@ -747,12 +813,46 @@ export function OsProvider({ children }: { children: ReactNode }) {
     amb.halos.forEach((h, i) => racine.setProperty(`--halo-${i + 1}`, h));
   }, [custom.ambiance]);
 
-  const ongletsVisibles = useMemo<Tab[]>(() => {
-    const caches = new Set(custom.ongletsCaches);
-    return ordonnerOnglets(TABS, custom.ordreOnglets).filter(
-      (t) => t === "Accueil" || !caches.has(t),
-    );
-  }, [custom.ongletsCaches, custom.ordreOnglets]);
+  const ongletsVisibles = useMemo<Tab[]>(() => modulesActifs(custom), [custom]);
+
+  /*
+   * Les blocs de l'accueil, filtrés par les modules réellement installés.
+   *
+   * Le filtre est ici plutôt que dans chaque carte : une carte n'a pas à
+   * savoir de quel onglet elle dépend, et l'accueil n'a pas à afficher un
+   * pipeline de contenu à quelqu'un qui n'a pas l'onglet Contenu.
+   */
+  const blocsAccueil = useMemo<string[]>(
+    () => blocsActifs(custom, ongletsVisibles),
+    [custom, ongletsVisibles],
+  );
+
+  /*
+   * L'identité affichée — la ligne de séparation entre le produit et l'OS
+   * historique.
+   *
+   * `REAL_DATA.operator` décrit Twaylo : son nom, « YouTubeur · Explorateur »,
+   * « En lancement ». Servi tel quel à tout le monde, il accueillait chaque
+   * nouveau compte par « Salut Twaylo » — le genre de détail qui fait refermer
+   * l'application. Le nom choisi passe devant ; sinon on prend celui du
+   * compte ; l'identité d'origine ne revient que chez son propriétaire (et en
+   * démo, qui doit rester le personnage de démonstration).
+   */
+  const identite = useMemo(() => {
+    if (demoMode) {
+      return {
+        nom: DEMO_DATA.operator.name,
+        role: DEMO_DATA.operator.role,
+        statut: DEMO_DATA.operator.status,
+      };
+    }
+    const origine = compte.proprietaire ? REAL_DATA.operator : null;
+    return {
+      nom: custom.nom || origine?.name || joliNom(compte.id),
+      role: custom.role || origine?.role || "",
+      statut: origine?.status ?? "",
+    };
+  }, [demoMode, custom.nom, custom.role, compte]);
 
   // Masquer l'onglet où l'on se trouve ne doit pas laisser un écran orphelin.
   useEffect(() => {
@@ -2413,6 +2513,10 @@ export function OsProvider({ children }: { children: ReactNode }) {
       custom,
       majCustom,
       ongletsVisibles,
+      blocsAccueil,
+      compte: compte.id,
+      proprietaire: compte.proprietaire,
+      identite,
       journees,
       majJournees,
       blocsFaits,
@@ -2477,6 +2581,9 @@ export function OsProvider({ children }: { children: ReactNode }) {
       custom,
       majCustom,
       ongletsVisibles,
+      blocsAccueil,
+      compte,
+      identite,
       journees,
       majJournees,
       blocsFaits,

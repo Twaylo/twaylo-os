@@ -19,7 +19,7 @@ import { Panel } from "@/components/Panel";
  * Seule carte à porter le dégradé signature en accent.
  */
 export function CaptureBar() {
-  const { addCapture, capturing, captures, data } = useOs();
+  const { addCapture, capturing, captures, identite } = useOs();
   // « La chose du jour » change à la frappe : elle vit dans le contexte de saisie.
   const { uneChose, setUneChose } = useSaisie();
   /*
@@ -46,7 +46,7 @@ export function CaptureBar() {
     >
       <div className="flex-none">
         <h1 className="text-[21px] font-black tracking-[-0.02em]">
-          Salut {data.operator.name}
+          Salut {identite.nom}
         </h1>
         <div className="mt-[3px] flex items-center gap-[7px] text-[11px] text-white/45">
           <span
