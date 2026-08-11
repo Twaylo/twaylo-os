@@ -1,13 +1,23 @@
 /**
  * Tway'tools — l'habillage commun de la bibliothèque et de sa porte.
  *
- * L'idée tient en une phrase : une MALLETTE D'INSTRUMENTS, pas une page
- * d'accueil. D'où le catalogue numéroté, les filets d'un pixel, les
- * capitales espacées en monospace, et une seule couleur — le jaune ne sert
- * qu'à signaler, jamais à décorer. Tout le reste est du gris sur du noir.
+ * La première version ressemblait à un poste de commandement : noir absolu,
+ * quadrillage de radar, capitales espacées, jaune d'alarme. C'était du
+ * militaire, et ce n'est pas le sujet — le sujet, c'est le MONDE. On regarde
+ * la planète, pas un écran de veille tactique.
  *
- * Les polices sont celles que la carte embarque déjà : quelqu'un qui vient de
- * l'outil ne retélécharge rien, et l'ensemble a le même grain typographique.
+ * D'où ce qui change ici :
+ *   · le fond passe du noir au bleu profond, celui d'un océan de nuit vu de
+ *     haut, avec deux halos très diffus — un ambre, un turquoise — plutôt
+ *     qu'une grille ;
+ *   · l'accent quitte le jaune d'alerte pour un ambre chaud, doublé d'un
+ *     turquoise ; ensemble ils disent « planisphère », pas « alerte » ;
+ *   · les angles s'arrondissent, les filets s'épaississent en surfaces, les
+ *     capitales monospace ne servent plus qu'aux tout petits repères ;
+ *   · l'air circule : plus d'espace entre les blocs, des lignes plus larges.
+ *
+ * Les polices restent celles que la carte embarque déjà : rien de plus à
+ * télécharger pour qui vient de l'outil.
  */
 
 @font-face {
@@ -28,25 +38,27 @@
   font-weight: 400;
   font-display: swap;
 }
-@font-face {
-  font-family: "Plex Mono";
-  src: url("/piraterie/vendeur/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
-  font-weight: 600;
-  font-display: swap;
-}
 
 :root {
-  --noir: #05090f;
-  --nuit: #0a1018;
-  --filet: #1a2430;
-  --filet-vif: #2b3949;
-  --texte: #eef3f8;
-  --doux: #93a5b6;
-  --faible: #5f6f7e;
-  --jaune: #ffd60a;
-  --rouge: #ff2d4d;
-  --r: 3px;
-  --large: 1180px;
+  --fond: #0c1524;
+  --fond-bas: #0a111d;
+  --surface: #141f33;
+  --surface-haut: #1b2942;
+  --bord: #22314d;
+  --bord-doux: #1a2740;
+
+  --texte: #eef3fa;
+  --doux: #a3b5cd;
+  --faible: #6d81a0;
+
+  --ambre: #ffc266;
+  --ambre-vif: #ffb03a;
+  --turquoise: #59d3c4;
+  --corail: #ff7a6b;
+
+  --r: 14px;
+  --r-petit: 10px;
+  --large: 1120px;
 }
 
 * {
@@ -59,19 +71,21 @@ html {
 
 body {
   margin: 0;
-  background: var(--noir);
+  background: var(--fond);
   color: var(--texte);
-  font: 400 16px/1.6 "Plex Sans", system-ui, -apple-system, sans-serif;
+  font: 400 16.5px/1.7 "Plex Sans", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
   position: relative;
+  overflow-x: hidden;
 }
 
 /*
- * Le halo et le quadrillage : très en dessous du seuil de perception, et
- * c'est le but. Ce qu'on cherche n'est pas un décor mais une texture — la
- * différence entre un fond noir plat, qui fait « page vide », et une surface,
- * qui fait « instrument ». `fixed` pour qu'ils ne défilent pas avec le texte.
+ * Deux halos très diffus, et rien d'autre.
+ *
+ * L'ancienne grille faisait « écran de radar ». Ces deux nappes de couleur
+ * font « atmosphère vue de loin » : c'est la même fonction — donner une
+ * matière au fond plutôt qu'un aplat mort — pour une tout autre intention.
  */
 body::before {
   content: "";
@@ -79,10 +93,9 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(80rem 40rem at 50% -10%, rgba(255, 214, 10, 0.07), transparent 65%),
-    linear-gradient(var(--filet) 1px, transparent 1px) 0 0 / 100% 88px,
-    linear-gradient(90deg, var(--filet) 1px, transparent 1px) 0 0 / 88px 100%;
-  opacity: 0.32;
+    radial-gradient(70rem 34rem at 12% -8%, rgba(255, 194, 102, 0.13), transparent 62%),
+    radial-gradient(58rem 30rem at 96% 8%, rgba(89, 211, 196, 0.1), transparent 60%),
+    linear-gradient(180deg, transparent 40%, var(--fond-bas) 100%);
   z-index: 0;
 }
 
@@ -91,14 +104,14 @@ body::before {
   z-index: 1;
   max-width: var(--large);
   margin: 0 auto;
-  padding: 0 22px;
+  padding: 0 24px;
 }
 
-/* ── Micro-étiquettes ─────────────────────────────────────────────────── */
+/* ── Repères ──────────────────────────────────────────────────────────── */
 
 .etiquette {
-  font: 600 11px/1 "Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.2em;
+  font: 400 11.5px/1 "Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faible);
 }
@@ -106,131 +119,149 @@ body::before {
 .marque {
   display: inline-flex;
   align-items: baseline;
-  gap: 9px;
+  gap: 10px;
   text-decoration: none;
 }
 .marque-nom {
-  font: 600 15px/1 "Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--jaune);
+  font: 600 19px/1 "Plex Sans", sans-serif;
+  letter-spacing: -0.015em;
+  color: var(--texte);
+}
+.marque-nom b {
+  color: var(--ambre);
+  font-weight: 600;
 }
 .marque-suite {
-  font: 400 11px/1 "Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font: 400 12.5px/1 "Plex Sans", sans-serif;
   color: var(--faible);
 }
-
-/* ── En-tête ──────────────────────────────────────────────────────────── */
 
 .tete {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 26px 0 0;
+  padding: 30px 0 0;
 }
 
 /* ── Hauteur de page ──────────────────────────────────────────────────── */
 
 .titre {
-  margin: 54px 0 0;
-  font: 600 clamp(38px, 8vw, 68px) / 1.02 "Plex Sans", sans-serif;
-  letter-spacing: -0.035em;
+  margin: 64px 0 0;
+  font: 600 clamp(36px, 7vw, 62px) / 1.1 "Plex Sans", sans-serif;
+  letter-spacing: -0.03em;
 }
 .titre em {
   font-style: normal;
-  color: var(--jaune);
+  background: linear-gradient(96deg, var(--ambre) 12%, var(--turquoise) 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .chapeau {
-  margin: 20px 0 0;
-  max-width: 54ch;
-  font-size: 17px;
+  margin: 22px 0 0;
+  max-width: 58ch;
+  font-size: 17.5px;
   color: var(--doux);
-}
-
-.filet {
-  height: 1px;
-  background: var(--filet);
-  border: 0;
-  margin: 46px 0 0;
 }
 
 /* ── Le catalogue ─────────────────────────────────────────────────────── */
 
 .catalogue {
   list-style: none;
-  margin: 0;
+  margin: 58px 0 0;
   padding: 0;
+  display: grid;
+  gap: 18px;
 }
 
+/*
+ * Des cartes posées, plus des lignes de tableau.
+ *
+ * La version en lignes séparées par des filets lisait comme un inventaire.
+ * Une surface avec ses coins arrondis lit comme un objet qu'on prend en
+ * main — c'est ce qu'on veut : une collection, pas un registre.
+ */
+/*
+ * Trois colonnes, une par enfant : le numéro, le contenu, l'état.
+ *
+ * Écrit ici et pas en `1fr auto` : avec deux colonnes pour trois enfants, la
+ * pastille « En ligne » retombait à la ligne sous le numéro et laissait un
+ * grand vide au milieu de la carte.
+ */
 .outil {
   position: relative;
   display: grid;
-  grid-template-columns: 62px 1fr auto;
-  gap: 22px;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px 22px;
   align-items: start;
-  padding: 30px 0;
-  border-bottom: 1px solid var(--filet);
+  padding: 26px 28px;
+  border: 1px solid var(--bord-doux);
+  border-radius: var(--r);
+  background: linear-gradient(158deg, var(--surface), var(--fond-bas));
   text-decoration: none;
   color: inherit;
-  transition: background 0.16s ease;
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1),
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
 }
-.outil::before {
-  /* La bande jaune qui s'allume au survol : elle déborde la gouttière pour
-     que la ligne entière paraisse s'activer, sans décaler le texte. */
-  content: "";
-  position: absolute;
-  left: -22px;
-  top: 0;
-  bottom: -1px;
-  width: 2px;
-  background: var(--jaune);
-  transform: scaleY(0);
-  transform-origin: top;
-  transition: transform 0.2s ease;
-}
-.outil:hover,
-.outil:focus-visible {
-  background: linear-gradient(90deg, rgba(255, 214, 10, 0.045), transparent 42%);
+a.outil:hover,
+a.outil:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(255, 194, 102, 0.42);
+  box-shadow: 0 18px 44px -26px rgba(255, 194, 102, 0.55);
   outline: none;
 }
-.outil:hover::before,
-.outil:focus-visible::before {
-  transform: scaleY(1);
+.outil[aria-disabled="true"] {
+  opacity: 0.62;
 }
 
 .outil-num {
-  font: 400 13px/1.5 "Plex Mono", ui-monospace, monospace;
+  font: 400 12px/1.6 "Plex Mono", ui-monospace, monospace;
   color: var(--faible);
-  padding-top: 5px;
+  padding-top: 8px;
 }
-
 .outil-nom {
   margin: 0;
-  font: 600 clamp(22px, 3.4vw, 30px) / 1.15 "Plex Sans", sans-serif;
+  font: 600 clamp(23px, 3.2vw, 31px) / 1.15 "Plex Sans", sans-serif;
   letter-spacing: -0.02em;
 }
+
+/* Sur un téléphone, la pastille passe sous le texte plutôt que de le
+   comprimer sur trois mots de large. */
+@media (max-width: 620px) {
+  .outil {
+    grid-template-columns: auto 1fr;
+    padding: 22px;
+  }
+  .outil .etat {
+    grid-column: 2;
+  }
+}
 .outil-dit {
-  margin: 9px 0 0;
-  max-width: 58ch;
+  margin: 12px 0 0;
+  max-width: 60ch;
   color: var(--doux);
-  font-size: 15.5px;
+  font-size: 16px;
 }
 
 .faits {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px 20px;
-  margin: 16px 0 0;
+  gap: 9px;
+  margin: 20px 0 0;
   padding: 0;
   list-style: none;
 }
 .faits li {
-  font: 400 12.5px/1 "Plex Mono", ui-monospace, monospace;
-  color: var(--faible);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--bord-doux);
+  font-size: 13px;
+  color: var(--doux);
 }
 .faits b {
   color: var(--texte);
@@ -240,89 +271,94 @@ body::before {
 .etat {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
-  border: 1px solid var(--filet-vif);
-  border-radius: var(--r);
-  font: 600 10.5px/1 "Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--bord);
+  font-size: 13px;
   color: var(--doux);
   white-space: nowrap;
-  margin-top: 5px;
 }
 .etat i {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--faible);
 }
 .etat[data-vif] {
-  color: var(--jaune);
-  border-color: rgba(255, 214, 10, 0.34);
+  color: #0c1524;
+  background: linear-gradient(96deg, var(--ambre), var(--ambre-vif));
+  border-color: transparent;
+  font-weight: 600;
 }
 .etat[data-vif] i {
-  background: var(--jaune);
-  box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.16);
+  background: rgba(12, 21, 36, 0.55);
 }
 
-/* ── Formulaire de la porte ───────────────────────────────────────────── */
+/* ── La porte ─────────────────────────────────────────────────────────── */
 
 .porte {
   display: grid;
-  gap: 0;
+  gap: 40px;
   grid-template-columns: 1fr;
   align-items: center;
-  min-height: 100dvh;
-  padding: 0 0 40px;
+  min-height: 78dvh;
+  padding: 30px 0 50px;
 }
-@media (min-width: 900px) {
+@media (min-width: 920px) {
   .porte {
-    grid-template-columns: 1.05fr 0.95fr;
-    gap: 70px;
+    grid-template-columns: 1.06fr 0.94fr;
+    gap: 76px;
   }
 }
 
 .boite {
-  border: 1px solid var(--filet);
-  border-radius: 6px;
-  background: linear-gradient(var(--nuit), #070d14);
-  padding: 30px;
+  border: 1px solid var(--bord-doux);
+  border-radius: 18px;
+  background: linear-gradient(158deg, var(--surface-haut), var(--surface));
+  padding: 32px;
+  box-shadow: 0 30px 70px -50px rgba(0, 0, 0, 0.9);
 }
 
 .champ {
   width: 100%;
   margin: 0;
-  padding: 15px 16px;
-  background: #060b11;
-  border: 1px solid var(--filet-vif);
-  border-radius: var(--r);
+  padding: 16px 17px;
+  background: rgba(8, 14, 24, 0.62);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-petit);
   color: var(--texte);
   font: 400 16px/1.2 "Plex Sans", sans-serif;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .champ::placeholder {
   color: var(--faible);
 }
 .champ:focus {
   outline: none;
-  border-color: rgba(255, 214, 10, 0.55);
+  border-color: rgba(255, 194, 102, 0.65);
+  box-shadow: 0 0 0 4px rgba(255, 194, 102, 0.12);
 }
 
 .bouton {
   width: 100%;
   margin: 12px 0 0;
-  padding: 15px 18px;
+  padding: 16px 18px;
   border: 0;
-  border-radius: var(--r);
-  background: var(--jaune);
-  color: var(--noir);
-  font: 600 15px/1 "Plex Sans", sans-serif;
+  border-radius: var(--r-petit);
+  background: linear-gradient(96deg, var(--ambre), var(--ambre-vif));
+  color: #0c1524;
+  font: 600 15.5px/1 "Plex Sans", sans-serif;
   cursor: pointer;
-  transition: filter 0.15s ease;
+  transition:
+    filter 0.16s ease,
+    transform 0.16s ease;
 }
 .bouton:hover:not(:disabled) {
-  filter: brightness(1.09);
+  filter: brightness(1.06);
+  transform: translateY(-1px);
 }
 .bouton:disabled {
   opacity: 0.45;
@@ -330,9 +366,9 @@ body::before {
 }
 
 .mention {
-  margin: 16px 0 0;
-  font-size: 12.5px;
-  line-height: 1.55;
+  margin: 18px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
   color: var(--faible);
 }
 .mention a {
@@ -340,27 +376,27 @@ body::before {
 }
 
 .message {
-  margin: 14px 0 0;
-  padding: 12px 14px;
-  border-radius: var(--r);
-  font-size: 14px;
-  line-height: 1.5;
-  border: 1px solid var(--filet-vif);
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border-radius: var(--r-petit);
+  font-size: 14.5px;
+  line-height: 1.55;
+  border: 1px solid var(--bord);
   color: var(--doux);
 }
 .message[data-ton="bien"] {
-  border-color: rgba(255, 214, 10, 0.4);
-  background: rgba(255, 214, 10, 0.07);
+  border-color: rgba(89, 211, 196, 0.42);
+  background: rgba(89, 211, 196, 0.09);
   color: var(--texte);
 }
 .message[data-ton="mal"] {
-  border-color: rgba(255, 45, 77, 0.42);
-  background: rgba(255, 45, 77, 0.07);
-  color: #ffc4cd;
+  border-color: rgba(255, 122, 107, 0.45);
+  background: rgba(255, 122, 107, 0.08);
+  color: #ffd2cc;
 }
 
-/* Le champ-piège : invisible pour l'œil ET pour le lecteur d'écran, mais
-   bien présent dans le formulaire — c'est tout l'intérêt. */
+/* Invisible pour l'œil ET pour le lecteur d'écran — mais bien dans le
+   formulaire, ce qui est tout l'intérêt. */
 .piege {
   position: absolute;
   left: -9999px;
@@ -374,12 +410,12 @@ body::before {
 .pied {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 22px;
+  gap: 12px 24px;
   align-items: center;
-  padding: 34px 0 46px;
-  margin-top: 40px;
-  border-top: 1px solid var(--filet);
-  font: 400 12.5px/1.5 "Plex Mono", ui-monospace, monospace;
+  padding: 32px 0 48px;
+  margin-top: 60px;
+  border-top: 1px solid var(--bord-doux);
+  font-size: 13.5px;
   color: var(--faible);
 }
 .pied a {
@@ -387,13 +423,13 @@ body::before {
   text-decoration: none;
 }
 .pied a:hover {
-  color: var(--jaune);
+  color: var(--ambre);
 }
 
 /* ── Accessibilité ────────────────────────────────────────────────────── */
 
 :focus-visible {
-  outline: 2px solid var(--jaune);
+  outline: 2px solid var(--ambre);
   outline-offset: 3px;
 }
 

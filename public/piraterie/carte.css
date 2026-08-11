@@ -1,21 +1,31 @@
 /*
  * Carte des attaques de pirates — habillage.
  *
- * Parti pris : un instrument de lecture, pas une application. Ce qui le
- * porte, dans l'ordre :
+ * Parti pris : on regarde LE MONDE. Pas un écran de veille tactique.
  *
- *   · IBM Plex, dessinée pour la documentation technique. Le monospace tient
- *     les libellés et les chiffres, le sans tient le texte qui se lit. Deux
- *     familles, quatre graisses, servies depuis notre domaine.
- *   · Des angles nets — 2 à 4 px, jamais de galet. Les coins très arrondis
- *     disent « application grand public » ; ici on veut une planche.
- *   · Des libellés en capitales espacées, comme les intitulés d'une carte
- *     marine.
- *   · Des filets d'un pixel plutôt que des ombres portées, et des aplats
- *     opaques plutôt que des dégradés.
+ * La première version tenait du poste de commandement — noir absolu, jaune
+ * d'alarme, angles coupés au couteau, capitales espacées partout. C'était
+ * juste sur le fond (des attaques, des morts) et faux sur le ton : le sujet
+ * de cette carte, ce sont des routes maritimes, des détroits, une géographie
+ * — pas une alerte. On veut qu'on s'y promène, pas qu'on s'y mette au
+ * garde-à-vous.
  *
- * Aucune police n'est appelée chez un tiers : les quatre fichiers sont
- * copiés dans `vendeur/` à la construction.
+ * D'où la gamme :
+ *
+ *   · un bleu de nuit océanique plutôt que du noir, le même que celui des
+ *     Tway'tools : la bibliothèque et l'outil se ressemblent enfin ;
+ *   · un ambre chaud à la place du jaune d'alerte pour la flotte, et une
+ *     échelle de gravité qui va de l'ambre au corail — une nuance de carte,
+ *     pas un code de menace ;
+ *   · des angles adoucis (10 px) : on tient un objet, pas une planche ;
+ *   · les capitales espacées ne servent plus qu'aux tout petits repères, là
+ *     où elles aident vraiment à distinguer un intitulé d'une valeur ;
+ *   · le turquoise de l'anneau de focus, plutôt qu'un bleu système.
+ *
+ * Ce qui ne change pas : IBM Plex — dessinée pour la documentation
+ * technique, elle tient les chiffres alignés — et le fait qu'aucune police
+ * n'est appelée chez un tiers. Les quatre fichiers sont copiés dans
+ * `vendeur/` à la construction.
  */
 
 @font-face {
@@ -44,33 +54,44 @@
 }
 
 :root {
-  --fond: #05090f;
-  --fond-panneau: #0a1119;
-  --fond-panneau-haut: #0e1721;
-  --bord: #1a2734;
-  --bord-net: #2a3b4c;
+  /* Le bleu de nuit des Tway'tools : même maison, même lumière. */
+  --fond: #0b1420;
+  --fond-panneau: #141f33;
+  --fond-panneau-haut: #1b2942;
+  --bord: #22314d;
+  --bord-net: #33456a;
 
-  --texte: #e6edf4;
-  --texte-doux: #8fa2b4;
-  --texte-faible: #5d7085;
+  --texte: #eef3fa;
+  --texte-doux: #a3b5cd;
+  --texte-faible: #6d81a0;
 
   /*
-   * Le jaune de la flotte. Un seul ton pour tous les bateaux : c'est la
-   * densité qu'on regarde d'abord, pas le détail de chacun.
+   * L'ambre de la flotte. Un seul ton pour tous les bateaux : c'est la
+   * densité qu'on regarde d'abord, pas le détail de chacun. Chaud plutôt que
+   * criard — sur une mer bleu nuit, il éclaire au lieu d'alerter.
    */
-  --jaune: #ffd60a;
-  --jaune-sombre: #b8990a;
+  --ambre: #ffc266;
+  --ambre-sombre: #c9873a;
+  --turquoise: #59d3c4;
 
-  /* L'échelle de gravité, réservée au mode « colorer par gravité ». */
-  --feu-1: #ffd60a;
-  --feu-2: #ff9e1b;
-  --feu-3: #ff5c2b;
-  --feu-4: #ff2d4d;
+  /*
+   * L'échelle de gravité, réservée au mode « colorer par gravité ».
+   *
+   * Une progression continue de l'ambre au corail, comme une légende de
+   * carte. L'ancienne allait du jaune fluo au rouge vif et se lisait comme
+   * un niveau d'alerte : on comprenait « danger » avant d'avoir compris
+   * « morts ».
+   */
+  --feu-1: #ffd98e;
+  --feu-2: #ffb35c;
+  --feu-3: #ff8a5b;
+  --feu-4: #f2545b;
 
-  --focus: #4da3ff;
+  --focus: #59d3c4;
 
-  /* Angles nets : une planche, pas un galet. */
-  --r: 3px;
+  /* Des angles tenus : un objet qu'on prend en main. */
+  --r: 10px;
+  --r-petit: 7px;
 
   --marge-basse: env(safe-area-inset-bottom, 0px);
   --marge-haute: env(safe-area-inset-top, 0px);
@@ -190,7 +211,7 @@ body {
  */
 .maplibregl-ctrl-attrib,
 .maplibregl-ctrl-attrib.maplibregl-compact {
-  background: rgba(10, 17, 25, 0.88) !important;
+  background: rgba(20, 31, 51, 0.9) !important;
   border: 1px solid var(--bord);
   border-radius: var(--r);
   color: var(--texte-faible);
@@ -205,7 +226,7 @@ body {
   filter: invert(1) brightness(0.8);
 }
 .maplibregl-ctrl-scale {
-  background: rgba(10, 17, 25, 0.88);
+  background: rgba(20, 31, 51, 0.9);
   border-color: var(--bord-net);
   border-top: 0;
   border-radius: 0 0 var(--r) var(--r);
@@ -235,7 +256,7 @@ body {
 .encart-corps {
   width: 268px;
   padding: 11px 13px 12px;
-  background: rgba(13, 24, 35, 0.97);
+  background: rgba(20, 31, 51, 0.97);
   border: 1px solid var(--bord-net);
   border-radius: var(--r);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
@@ -306,7 +327,7 @@ body {
   border-top: 1px solid var(--bord);
   font-size: 12.5px;
   line-height: 1.45;
-  color: #c4d0da;
+  color: #d5e0ee;
 }
 .encart-extrait[data-attente] {
   color: var(--texte-faible);
@@ -318,7 +339,7 @@ body {
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: #1a0c00;
+  color: #0b1420;
   background: var(--feu-1);
   border: 0;
   border-radius: var(--r);
@@ -379,23 +400,23 @@ body {
   flex: 1;
   min-width: 0;
 }
+/*
+ * « Pirats Attack ! » — écrit comme un nom, pas comme un sigle.
+ *
+ * Il était en monospace, en capitales, à 0,26 em d'écartement : la forme
+ * d'un indicatif d'unité. Le titre porte un point d'exclamation ; le
+ * composer en télex le contredisait mot pour mot.
+ */
 .entete h1 {
-  margin: 0 0 3px;
-  font-family: "Plex Mono", ui-monospace, monospace;
-  font-size: 17px;
+  margin: 0 0 4px;
+  font-family: "Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 21px;
   font-weight: 600;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: var(--jaune);
-}
-/* Le filet sous le titre : un trait de planche, pas une décoration. */
-.entete h1::after {
-  content: "";
-  display: block;
-  width: 46px;
-  height: 2px;
-  margin-top: 6px;
-  background: var(--jaune);
+  letter-spacing: -0.015em;
+  background: linear-gradient(96deg, var(--ambre) 10%, var(--turquoise) 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .entete-phrase {
   margin: 2px 0 0;
@@ -425,17 +446,17 @@ body {
   border-radius: var(--r);
   cursor: pointer;
 }
+/* Des boutons qui se lisent, pas des touches de pupitre : minuscules,
+   Plex Sans, un peu plus d'air. */
 .bouton {
-  padding: 8px 12px;
-  font-family: "Plex Mono", ui-monospace, monospace;
-  font-size: 11px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  padding: 9px 14px;
+  font-size: 13px;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 .bouton:hover,
 .bouton-icone:hover {
-  background: #16273a;
+  background: #22314d;
 }
 .bouton-icone {
   flex: none;
@@ -462,7 +483,7 @@ body {
   padding: 0 5px;
   border-radius: var(--r);
   background: var(--feu-2);
-  color: #1a0c00;
+  color: #0b1420;
   font-size: 11px;
   font-weight: 800;
 }
@@ -548,11 +569,9 @@ body {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 0 8px;
-  font-family: "Plex Mono", ui-monospace, monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  padding: 10px 0 9px;
+  font-size: 12px;
+  letter-spacing: 0;
   color: var(--texte-faible);
   background: none;
   border: 0;
@@ -591,24 +610,21 @@ body {
   align-items: baseline;
   gap: 7px;
   margin: 0 0 4px;
-  font-family: "Plex Mono", ui-monospace, monospace;
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.13em;
-  color: var(--texte-faible);
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--texte-doux);
 }
 .compteur strong {
-  font-family: "Plex Mono", ui-monospace, monospace;
-  color: var(--jaune);
-  font-size: 20px;
+  color: var(--ambre);
+  font-size: 24px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
 .stats {
   margin: -2px 0 8px;
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--texte-faible);
 }
 
@@ -683,16 +699,16 @@ body {
 .temps-histogramme span {
   flex: 1;
   min-width: 1px;
-  background: #24333f;
+  background: #2a3a56;
   transition: background-color 0.12s linear;
 }
 /* Dans la fenêtre retenue : la barre s'allume. Le reste reste lisible, en
    sourdine — on doit continuer à voir ce qu'on a écarté. */
 .temps-histogramme span[data-dedans] {
-  background: var(--jaune);
+  background: var(--ambre);
 }
 .temps-histogramme span[data-vide] {
-  background: #16212b;
+  background: #1a2740;
 }
 /* Le rail et la portion sélectionnée sont purement décoratifs : ce sont les
    deux `input` au-dessus qui portent la valeur, le nom et le clavier. */
@@ -710,7 +726,7 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--jaune);
+  background: var(--ambre);
 }
 
 .curseur {
@@ -735,8 +751,8 @@ body {
   width: 12px;
   height: 20px;
   border-radius: 1px;
-  background: var(--jaune);
-  border: 1px solid #05090f;
+  background: var(--ambre);
+  border: 1px solid #0b1420;
   cursor: ew-resize;
 }
 .curseur::-moz-range-thumb {
@@ -744,8 +760,8 @@ body {
   width: 10px;
   height: 18px;
   border-radius: 1px;
-  background: var(--jaune);
-  border: 1px solid #05090f;
+  background: var(--ambre);
+  border: 1px solid #0b1420;
   cursor: ew-resize;
 }
 .curseur::-webkit-slider-runnable-track,
@@ -851,9 +867,9 @@ body {
 /* Sélectionné : le fond reste sombre et c'est le liseré jaune qui parle.
    Un aplat vif sur cinq jetons transformerait la légende en guirlande. */
 .jeton[aria-pressed="true"] {
-  color: var(--jaune);
-  background: rgba(255, 214, 10, 0.1);
-  border-color: var(--jaune);
+  color: var(--ambre);
+  background: rgba(255, 194, 102, 0.12);
+  border-color: var(--ambre);
 }
 .jeton-compte {
   margin-left: 5px;
@@ -977,7 +993,7 @@ body {
   margin: 0;
   font-size: 14px;
   line-height: 1.55;
-  color: #d3dde6;
+  color: #dce6f3;
   white-space: pre-line;
 }
 .fiche-source {
@@ -1136,8 +1152,8 @@ body {
   border-left: 1px solid var(--bord);
 }
 .langues button[aria-pressed="true"] {
-  color: #05090f;
-  background: var(--jaune);
+  color: #0b1420;
+  background: var(--ambre);
 }
 
 .rangee-gravite {
@@ -1152,15 +1168,13 @@ body {
 }
 
 /* La bascule de couleur : un carré de nuancier, pas un interrupteur. Elle
-   n'allume rien tant qu'on ne la demande pas — la flotte est jaune par
-   défaut, parce que la densité passe avant le détail. */
+   n'allume rien tant qu'on ne la demande pas — la flotte est d'un seul ambre
+   par défaut, parce que la densité passe avant le détail. */
 .bascule {
   flex: none;
-  font-family: "Plex Mono", ui-monospace, monospace;
-  font-size: 10px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  padding: 5px 8px;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  padding: 6px 11px;
   color: var(--texte-faible);
   background: transparent;
   border: 1px solid var(--bord);
@@ -1168,9 +1182,9 @@ body {
   cursor: pointer;
 }
 .bascule[aria-pressed="true"] {
-  color: var(--jaune);
-  border-color: var(--jaune);
-  background: rgba(255, 214, 10, 0.1);
+  color: var(--ambre);
+  border-color: var(--ambre);
+  background: rgba(255, 194, 102, 0.12);
 }
 
 /* ══ Ajustements de la nouvelle grammaire ════════════════════════════════ */
@@ -1220,8 +1234,8 @@ body {
 /* Le bouton de l'encart reprend le jaune de la flotte : c'est le même
    objet qu'on suit, du navire cliqué jusqu'à son récit. */
 .encart-bouton {
-  background: var(--jaune);
-  color: #05090f;
+  background: var(--ambre);
+  color: #0b1420;
   font-family: "Plex Mono", ui-monospace, monospace;
   font-size: 10.5px;
   letter-spacing: 0.1em;
@@ -1237,27 +1251,27 @@ body {
 }
 
 .attente-barre span {
-  background: var(--jaune);
+  background: var(--ambre);
 }
 .lien-video {
-  color: var(--jaune) !important;
-  border-bottom-color: rgba(255, 214, 10, 0.4) !important;
+  color: var(--ambre) !important;
+  border-bottom-color: rgba(255, 194, 102, 0.45) !important;
 }
 .pastille {
-  background: var(--jaune);
-  color: #05090f;
+  background: var(--ambre);
+  color: #0b1420;
   border-radius: 1px;
   font-family: "Plex Mono", ui-monospace, monospace;
 }
 .icone-lecture {
-  border-left-color: var(--jaune);
+  border-left-color: var(--ambre);
 }
 .bouton-lecture[data-joue] .icone-lecture {
   background: linear-gradient(
     90deg,
-    var(--jaune) 0 4px,
+    var(--ambre) 0 4px,
     transparent 4px 8px,
-    var(--jaune) 8px 12px
+    var(--ambre) 8px 12px
   );
 }
 .bouton-lecture {
@@ -1278,7 +1292,7 @@ body {
 /* Couleur allumée par un filtre plutôt que par le bouton : le bouton le
    montre, en retenue — c'est un état constaté, pas un réglage choisi. */
 .bascule[data-auto] {
-  color: var(--jaune);
+  color: var(--ambre);
   border-color: var(--bord-net);
 }
 
@@ -1302,6 +1316,6 @@ body {
   border-color: var(--bord-net);
 }
 .fiche-original[aria-pressed="true"] {
-  color: var(--jaune);
-  border-color: var(--jaune);
+  color: var(--ambre);
+  border-color: var(--ambre);
 }

@@ -23,7 +23,7 @@ import {
   Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
-import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=7";
+import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=8";
 
 const CHEMIN = "/piraterie";
 const $ = (id) => document.getElementById(id);
@@ -159,13 +159,21 @@ function categoriser(libelle, regles) {
  * détail de chaque coque.
  */
 const GRAVITE = [
-  { code: 3, couleur: "#ff2d4d" },
-  { code: 2, couleur: "#ff5c2b" },
-  { code: 1, couleur: "#ff9e1b" },
-  { code: 0, couleur: "#ffd60a" },
-  { code: -1, couleur: "#6b7c8c" },
+  { code: 3, couleur: "#f2545b" },
+  { code: 2, couleur: "#ff8a5b" },
+  { code: 1, couleur: "#ffb35c" },
+  { code: 0, couleur: "#ffd98e" },
+  { code: -1, couleur: "#7a8fa6" },
 ];
-const JAUNE = "#ffd60a";
+/*
+ * L'ambre de la flotte au repos.
+ *
+ * Ces cinq valeurs doublent celles de `carte.css` (--ambre, --feu-1..4) :
+ * MapLibre peint dans un canevas WebGL, où aucune variable CSS n'entre. Les
+ * changer ici sans les changer là-bas, ou l'inverse, ferait diverger la
+ * légende de la flotte qu'elle décrit.
+ */
+const AMBRE = "#ffc266";
 
 const nomGravite = (code, court = false) =>
   (mots.gravites[String(code)] ?? mots.gravites["-1"])[court ? 1 : 0];
@@ -368,14 +376,14 @@ const STYLE = {
   version: 8,
   sources: { monde: { type: "geojson", data: monde } },
   layers: [
-    { id: "mer", type: "background", paint: { "background-color": "#05090f" } },
-    { id: "terres", type: "fill", source: "monde", paint: { "fill-color": "#0d1620" } },
+    { id: "mer", type: "background", paint: { "background-color": "#0b1420" } },
+    { id: "terres", type: "fill", source: "monde", paint: { "fill-color": "#16233a" } },
     {
       id: "cotes",
       type: "line",
       source: "monde",
       paint: {
-        "line-color": "#1e2e3d",
+        "line-color": "#2c405e",
         // Le trait s'affine quand on s'éloigne : à l'échelle du monde, une
         // ligne d'un pixel partout transforme les archipels en pâtés.
         "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.35, 4, 0.7, 9, 1.1],
@@ -473,7 +481,7 @@ for (const niveau of GRAVITE) {
   const { donnees, echelle } = dessinerNavire(niveau.couleur);
   carteGL.addImage(`navire${niveau.code}`, donnees, { pixelRatio: echelle });
 }
-const uni = dessinerNavire(JAUNE);
+const uni = dessinerNavire(AMBRE);
 carteGL.addImage("navire-uni", uni.donnees, { pixelRatio: uni.echelle });
 
 carteGL.addLayer({

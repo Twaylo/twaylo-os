@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Accès — Tway'tools</title>
-    <meta name="description" content="Une adresse, une confirmation, et les instruments s'ouvrent." />
-    <meta name="theme-color" content="#05090f" />
+    <meta name="description" content="Une adresse, une confirmation, et les outils s'ouvrent." />
+    <meta name="theme-color" content="#0c1524" />
     <!-- Une page de saisie n'a rien à faire dans un moteur de recherche. -->
     <meta name="robots" content="noindex" />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
           href="/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2" />
-    <link rel="stylesheet" href="/tway-tools/tway.css?v=1" />
+    <link rel="stylesheet" href="/tway-tools/tway.css?v=2" />
   </head>
 
   <body>
@@ -26,11 +26,12 @@
 
       <div class="porte">
         <section>
-          <p class="etiquette" style="margin: 46px 0 14px" id="etiquette-outil">Instrument 01</p>
+          <p class="etiquette" style="margin: 46px 0 14px" id="etiquette-outil">Outil 01</p>
           <h1 class="titre" style="margin: 0" id="titre-outil">Pirats&nbsp;Attack&nbsp;!</h1>
           <p class="chapeau" id="dit-outil">
             8 885 attaques contre des navires, de 1978 à 2023, situées une par une sur une
-            carte du monde. Les faits viennent de l'agence géospatiale américaine.
+            carte du monde. Malacca, Aden, le delta du Niger : les routes du commerce
+            mondial vues par ceux qui les guettent.
           </p>
 
           <ul class="faits" style="margin-top: 26px">
@@ -42,7 +43,7 @@
 
         <section>
           <div class="boite">
-            <p class="etiquette" style="margin: 0 0 16px">Ouvrir les instruments</p>
+            <p class="etiquette" style="margin: 0 0 16px">Ouvrir les outils</p>
 
             <form id="formulaire" novalidate>
               <label class="lecteur-ecran" for="email">Ton adresse e-mail</label>
@@ -80,7 +81,7 @@
           </div>
 
           <p class="mention" style="text-align: center">
-            <a href="/tway-tools">← Voir tous les instruments</a>
+            <a href="/tway-tools">← Voir tous les outils</a>
           </p>
         </section>
       </div>
@@ -96,9 +97,9 @@
        */
       const OUTILS = {
         "pirats-attack": {
-          num: "Instrument 01",
+          num: "Outil 01",
           nom: "Pirats Attack !",
-          dit: "8 885 attaques contre des navires, de 1978 à 2023, situées une par une sur une carte du monde. Les faits viennent de l'agence géospatiale américaine.",
+          dit: "8 885 attaques contre des navires, de 1978 à 2023, situées une par une sur une carte du monde. Malacca, Aden, le delta du Niger : les routes du commerce mondial vues par ceux qui les guettent.",
         },
       };
 
@@ -159,7 +160,7 @@
             formulaire.hidden = true;
             dire(
               "bien",
-              "C'est parti. Ouvre ta boîte mail et clique le lien : les instruments s'ouvrent aussitôt. Regarde aussi les indésirables, ça arrive.",
+              "C'est parti. Ouvre ta boîte mail et clique le lien : les outils s'ouvrent aussitôt. Regarde aussi les indésirables, ça arrive.",
             );
             return;
           }
