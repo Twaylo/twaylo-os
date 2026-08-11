@@ -1374,6 +1374,21 @@ majTemps();
 rafraichirTextesDynamiques();
 appliquer();
 
+/*
+ * Le retour vers la vidéo n'apparaît que s'il mène quelque part.
+ *
+ * Tant que l'adresse est le gabarit, le lien reste masqué : il envoyait
+ * sinon vers « /piraterie/[URL_VIDEO] », une 404 en pleine page pour des
+ * spectateurs arrivés de YouTube. Le test est fait ici, et non à la main
+ * dans le HTML, pour qu'il suffise de coller l'adresse : le bouton se
+ * rallume tout seul, sans qu'on ait à penser à retirer autre chose.
+ */
+{
+  const lienVideo = document.querySelector(".lien-video");
+  const cible = lienVideo?.getAttribute("href") ?? "";
+  if (lienVideo && cible && !cible.includes("URL_VIDEO")) lienVideo.hidden = false;
+}
+
 $("attente").dataset.fini = "";
 setTimeout(() => $("attente").remove(), 400);
 

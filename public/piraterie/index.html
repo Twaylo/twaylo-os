@@ -273,7 +273,16 @@
         <p class="pied">
           <a href="https://msi.nga.mil/Piracy" rel="noreferrer" data-i18n="source">Source : NGA — base ASAM</a>
           <span aria-hidden="true">·</span>
-          <a class="lien-video" href="[URL_VIDEO]" data-i18n="video">▶ Voir le documentaire</a>
+          <!--
+            Le retour vers la vidéo.
+
+            Il reste MASQUÉ tant que l'adresse est le gabarit. Laissé visible,
+            il envoyait vers « /piraterie/[URL_VIDEO] » — une 404 en pleine
+            page, sur le seul site que des spectateurs venus de YouTube vont
+            ouvrir. Mieux vaut un lien absent qu'un lien cassé : le jour où
+            l'adresse est renseignée, le bouton réapparaît tout seul.
+          -->
+          <a class="lien-video" href="[URL_VIDEO]" data-i18n="video" hidden>▶ Voir le documentaire</a>
           <!--
             Le numéro de version, visible.
 
