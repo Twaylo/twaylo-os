@@ -10,6 +10,134 @@
  * pièces d'origine de la NGA. Les traduire, ce serait réécrire la source.
  */
 
+/**
+ * Le pont entre ce qu'on tape en français et ce que la NGA a écrit en anglais.
+ *
+ * Les récits sont traduits par tranches ; l'immense majorité reste donc en
+ * anglais. Sans ce pont, chercher « Somalie » ne trouvait que les 15 récits
+ * déjà traduits, sur 400 qui parlent de la Somalie — et le champ de recherche
+ * proposait précisément « Somalie, otage, tanker… » en exemple. « otage »
+ * rendait 21 résultats sur 529, « pétrolier » 23 sur 2 277.
+ *
+ * On ne traduit pas la requête : on l'ÉLARGIT. Le mot tapé est cherché tel
+ * quel — un francophone qui tape « pirates » doit trouver les deux — et ses
+ * équivalents anglais sont cherchés en plus.
+ *
+ * Les clés sont écrites sans accent : la requête est elle-même dépouillée de
+ * ses accents avant la comparaison, pour que « pétrolier » et « petrolier »
+ * mènent au même endroit.
+ */
+export const EQUIVALENTS = {
+  // Lieux
+  somalie: ["somalia", "somali"],
+  nigeria: ["nigeria"],
+  indonesie: ["indonesia"],
+  malaisie: ["malaysia"],
+  singapour: ["singapore"],
+  philippines: ["philippines"],
+  thailande: ["thailand"],
+  birmanie: ["myanmar", "burma"],
+  vietnam: ["vietnam"],
+  chine: ["china", "chinese"],
+  inde: ["india", "indian"],
+  japon: ["japan"],
+  coree: ["korea", "korean"],
+  taiwan: ["taiwan"],
+  bresil: ["brazil"],
+  colombie: ["colombia"],
+  venezuela: ["venezuela"],
+  mexique: ["mexico"],
+  perou: ["peru"],
+  equateur: ["ecuador"],
+  haiti: ["haiti"],
+  jamaique: ["jamaica"],
+  cameroun: ["cameroon"],
+  benin: ["benin"],
+  togo: ["togo"],
+  ghana: ["ghana"],
+  guinee: ["guinea"],
+  angola: ["angola"],
+  gabon: ["gabon"],
+  congo: ["congo"],
+  tanzanie: ["tanzania"],
+  kenya: ["kenya"],
+  yemen: ["yemen"],
+  oman: ["oman"],
+  irak: ["iraq"],
+  iran: ["iran"],
+  koweit: ["kuwait"],
+  russie: ["russia", "russian"],
+  bangladesh: ["bangladesh"],
+  "sri lanka": ["sri lanka"],
+  "golfe d'aden": ["gulf of aden"],
+  "mer rouge": ["red sea"],
+  "golfe de guinee": ["gulf of guinea"],
+  "detroit de malacca": ["strait of malacca", "malacca"],
+  "delta du niger": ["niger delta"],
+
+  // Navires
+  petrolier: ["tanker"],
+  chimiquier: ["chemical tanker"],
+  gazier: ["lpg", "lng", "gas carrier"],
+  vraquier: ["bulk carrier", "bulk"],
+  "porte-conteneurs": ["container"],
+  conteneur: ["container"],
+  chalutier: ["trawler"],
+  peche: ["fishing"],
+  pecheur: ["fisherman", "fishermen"],
+  remorqueur: ["tug"],
+  barge: ["barge"],
+  voilier: ["yacht", "sailing"],
+  yacht: ["yacht"],
+  cargo: ["cargo"],
+  transbordeur: ["ferry"],
+  ferry: ["ferry"],
+  navire: ["vessel", "ship"],
+  bateau: ["boat", "vessel"],
+  vedette: ["speedboat", "skiff"],
+  canot: ["dinghy", "skiff"],
+
+  // L'incident
+  otage: ["hostage"],
+  enlevement: ["kidnap", "abduct"],
+  enleve: ["kidnap", "abduct"],
+  rancon: ["ransom"],
+  detournement: ["hijack"],
+  detourne: ["hijack"],
+  abordage: ["boarded", "boarding"],
+  aborde: ["boarded"],
+  vol: ["stole", "stolen", "robb", "theft"],
+  vole: ["stole", "stolen", "robb"],
+  pille: ["ransack", "looted"],
+  attaque: ["attack"],
+  arme: ["armed", "weapon"],
+  couteau: ["knife", "knives"],
+  machette: ["machete"],
+  fusil: ["rifle", "gun"],
+  pistolet: ["pistol", "handgun"],
+  mitrailleuse: ["machine gun"],
+  grenade: ["grenade"],
+  roquette: ["rocket", "rpg"],
+  explosif: ["explosive"],
+  tue: ["killed", "killing"],
+  mort: ["dead", "killed", "death"],
+  blesse: ["injured", "wounded"],
+  equipage: ["crew"],
+  capitaine: ["master", "captain"],
+  mecanicien: ["engineer"],
+  marin: ["sailor", "seaman", "crewman"],
+  pirate: ["pirate"],
+  pirates: ["pirates"],
+  mouillage: ["anchorage", "anchored"],
+  quai: ["berth", "berthed"],
+  port: ["port", "harbour", "harbor"],
+  echelle: ["ladder"],
+  coffre: ["safe"],
+  argent: ["cash", "money"],
+  militaire: ["military", "navy", "naval"],
+  garde: ["guard", "security"],
+};
+
 export const TEXTES = {
   fr: {
     langue: "fr-FR",

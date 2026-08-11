@@ -92,7 +92,7 @@
       effet qu'une fois le nouveau service worker installé. Changer l'adresse
       libère immédiatement les navigateurs encore tenus par l'ancien.
     -->
-    <link rel="stylesheet" href="/piraterie/carte.css?v=3" />
+    <link rel="stylesheet" href="/piraterie/carte.css?v=4" />
   </head>
 
   <body>
@@ -273,7 +273,16 @@
         <p class="pied">
           <a href="https://msi.nga.mil/Piracy" rel="noreferrer" data-i18n="source">Source : NGA — base ASAM</a>
           <span aria-hidden="true">·</span>
-          <a class="lien-video" href="[URL_VIDEO]" data-i18n="video">▶ Voir le documentaire</a>
+          <!--
+            Le retour vers la vidéo.
+
+            Il reste MASQUÉ tant que l'adresse est le gabarit. Laissé visible,
+            il envoyait vers « /piraterie/[URL_VIDEO] » — une 404 en pleine
+            page, sur le seul site que des spectateurs venus de YouTube vont
+            ouvrir. Mieux vaut un lien absent qu'un lien cassé : le jour où
+            l'adresse est renseignée, le bouton réapparaît tout seul.
+          -->
+          <a class="lien-video" href="[URL_VIDEO]" data-i18n="video" hidden>▶ Voir le documentaire</a>
           <!--
             Le numéro de version, visible.
 
@@ -282,13 +291,13 @@
             Un téléphone garde parfois l'ancienne, et on cherche alors un
             défaut déjà corrigé. Une mention à lire, et on sait.
           -->
-          <span class="version">v3</span>
+          <span class="version">v4</span>
         </p>
       </div>
     </section>
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js?v=3"></script>
+    <script type="module" src="/piraterie/carte.js?v=4"></script>
   </body>
 </html>

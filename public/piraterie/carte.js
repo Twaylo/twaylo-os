@@ -23,7 +23,7 @@ import {
   Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
-import { TEXTES } from "/piraterie/i18n.js?v=3";
+import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=4";
 
 const CHEMIN = "/piraterie";
 const $ = (id) => document.getElementById(id);
@@ -480,8 +480,36 @@ function majCouleurNavires() {
    Filtrage et rendu
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Les mots à chercher, pour une requête donnée.
+ *
+ * Calculé UNE fois par recherche, jamais par incident : la fonction de
+ * filtrage est appelée 8 897 fois d'affilée, et y refaire ce travail
+ * rendrait chaque frappe perceptible.
+ *
+ * On rend toujours le mot tapé, plus ses équivalents anglais s'il en a. Un
+ * francophone qui cherche « Somalie » doit trouver les 400 récits qui disent
+ * « Somalia », pas seulement les quelques-uns déjà traduits.
+ */
+function termesDeRecherche(recherche) {
+  if (!recherche) return [];
+  const sansAccent = recherche.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const termes = new Set([recherche]);
+  if (sansAccent !== recherche) termes.add(sansAccent);
+  /*
+   * `Object.hasOwn` et non un accès direct : le lexique est un objet
+   * ordinaire, donc il hérite d'`Object.prototype`. Chercher « constructor »
+   * — un mot qu'on peut taper — aurait rendu la fonction `Object`, que la
+   * boucle aurait tenté de parcourir avant de tout arrêter.
+   */
+  if (Object.hasOwn(EQUIVALENTS, sansAccent)) {
+    for (const equivalent of EQUIVALENTS[sansAccent]) termes.add(equivalent);
+  }
+  return [...termes];
+}
+
 /** Tous les filtres sauf le temps : sert aussi à dessiner l'histogramme. */
-function passeSaufTemps(incident, recherche) {
+function passeSaufTemps(incident, recherche, termes) {
   if (etat.zones.size && !etat.zones.has(incident.zone)) return false;
   if (etat.types.size && !etat.types.has(incident.catAgresseur)) return false;
   if (etat.navires.size && !etat.navires.has(incident.catNavire)) return false;
@@ -495,19 +523,20 @@ function passeSaufTemps(incident, recherche) {
     const recit = recitDe(incident.i);
     const ailleurs = `${incident.navire} ${incident.agresseur} ${incident.reference}`;
     const gisement = `${recit.texte} ${recit.vo} ${ailleurs}`.toLowerCase();
-    if (!gisement.includes(recherche)) return false;
+    if (!termes.some((terme) => gisement.includes(terme))) return false;
   }
   return true;
 }
 
 function appliquer() {
   const recherche = etat.recherche.trim().toLowerCase();
+  const termes = termesDeRecherche(recherche);
   visibles = [];
   parAnneeVisible = new Map();
   const formes = [];
 
   for (const incident of base.incidents) {
-    if (!passeSaufTemps(incident, recherche)) continue;
+    if (!passeSaufTemps(incident, recherche, termes)) continue;
 
     // L'histogramme compte AVANT le découpage temporel : il montre ce que les
     // autres filtres laissent sur toute la période, sinon la barre
@@ -1344,6 +1373,21 @@ construireHistogramme();
 majTemps();
 rafraichirTextesDynamiques();
 appliquer();
+
+/*
+ * Le retour vers la vidéo n'apparaît que s'il mène quelque part.
+ *
+ * Tant que l'adresse est le gabarit, le lien reste masqué : il envoyait
+ * sinon vers « /piraterie/[URL_VIDEO] », une 404 en pleine page pour des
+ * spectateurs arrivés de YouTube. Le test est fait ici, et non à la main
+ * dans le HTML, pour qu'il suffise de coller l'adresse : le bouton se
+ * rallume tout seul, sans qu'on ait à penser à retirer autre chose.
+ */
+{
+  const lienVideo = document.querySelector(".lien-video");
+  const cible = lienVideo?.getAttribute("href") ?? "";
+  if (lienVideo && cible && !cible.includes("URL_VIDEO")) lienVideo.hidden = false;
+}
 
 $("attente").dataset.fini = "";
 setTimeout(() => $("attente").remove(), 400);
