@@ -222,6 +222,9 @@ self.addEventListener("fetch", (evt) => {
    * n'a besoin de consulter la carte des attaques dans un tunnel.
    */
   if (url.pathname === "/piraterie" || url.pathname.startsWith("/piraterie/")) return;
+  // Même règle pour la bibliothèque : ce sont des pages publiques, servies
+  // par le CDN, qui n'ont rien à faire dans le cache hors-ligne de l'OS.
+  if (url.pathname === "/tway-tools" || url.pathname.startsWith("/tway-tools/")) return;
 
   /*
    * Les données ne sont jamais mises en cache.

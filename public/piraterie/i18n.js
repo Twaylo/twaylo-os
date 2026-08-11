@@ -143,7 +143,7 @@ export const TEXTES = {
     langue: "fr-FR",
 
     saut: "Aller aux commandes",
-    titre: "Piraterie",
+    titre: "Pirats Attack !",
     phrase: "Chaque marque est une attaque réelle contre un navire.",
     chiffres: "{total} incidents recensés de {debut} à {fin}.",
     carteAria: "Carte mondiale des attaques contre les navires",
@@ -206,6 +206,7 @@ export const TEXTES = {
     sansReference: "sans référence",
 
     source: "Source : NGA — base ASAM",
+    bibliotheque: "← Tway'tools",
     video: "▶ Voir le documentaire",
 
     aproposTitre: "D'où viennent ces données",
@@ -279,7 +280,7 @@ export const TEXTES = {
     langue: "en-GB",
 
     saut: "Skip to controls",
-    titre: "Piracy",
+    titre: "Pirats Attack !",
     phrase: "Every mark is a real attack on a ship.",
     chiffres: "{total} incidents recorded from {debut} to {fin}.",
     carteAria: "World map of attacks on ships",
@@ -342,6 +343,7 @@ export const TEXTES = {
     sansReference: "no reference",
 
     source: "Source: NGA — ASAM database",
+    bibliotheque: "← Tway'tools",
     video: "▶ Watch the documentary",
 
     aproposTitre: "Where this data comes from",

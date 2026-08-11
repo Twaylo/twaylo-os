@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ACCES_COOKIE, accesValide } from "@/lib/acces";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -78,10 +79,16 @@ const CHEMINS_PUBLICS = new Set([
   // elle-même et refuse tout si la variable manque.
   "/api/cron/brief-matin",
   "/api/cron/recap-soir",
-  // La carte de la piraterie, servie à « /piraterie » par une réécriture.
-  // Ses ressources sont ouvertes juste en dessous, par préfixe.
-  "/piraterie",
 ]);
+
+/**
+ * Les Tway'tools : la bibliothèque, sa porte, et l'API qui les sert.
+ *
+ * Tout est ouvert ici — on ne peut pas demander un compte à quelqu'un qui
+ * vient précisément donner son adresse. Les routes qui ÉCRIVENT sont freinées
+ * chez elles, par `lib/limite`.
+ */
+const PREFIXES_OUVERTS = ["/tway-tools", "/api/tools/"];
 
 /**
  * Le site public de la carte des attaques : ouvert en entier, par préfixe.
@@ -100,12 +107,65 @@ const CHEMINS_PUBLICS = new Set([
  */
 const PREFIXE_PUBLIC = "/piraterie/";
 
+/** La page de l'outil elle-même — la seule chose que la porte protège. */
+const PREFIXE_OUTIL = "/piraterie";
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  if (CHEMINS_PUBLICS.has(pathname) || pathname.startsWith(PREFIXE_PUBLIC)) {
+  if (
+    CHEMINS_PUBLICS.has(pathname) ||
+    PREFIXES_OUVERTS.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p))
+  ) {
     return NextResponse.next();
   }
+
+  /*
+   * La porte des Tway'tools.
+   *
+   * Elle ne tient QUE sur la page de l'outil, jamais sur ses données. Deux
+   * raisons, et la seconde compte plus que la première :
+   *
+   *   · les données sont servies par le CDN, en cache pendant vingt-quatre
+   *     heures. Les faire passer par ici, ce serait les faire retraverser le
+   *     serveur à chaque visite — exactement ce qu'on vient d'éviter en les
+   *     découpant en tranches ;
+   *   · ce ne sont pas des secrets. Ce sont les rapports publics d'une agence
+   *     américaine. La porte sert à faire connaître la newsletter à qui vient
+   *     de YouTube, pas à cadenasser des données que la NGA a publiées.
+   *
+   * Qui sait fabriquer une requête peut donc lire le JSON brut. C'est assumé :
+   * le prix d'un vrai verrou serait payé par tous les visiteurs, à chaque
+   * chargement, pour arrêter quelqu'un qui n'a de toute façon pas besoin de
+   * l'outil pour lire un fichier public.
+   */
+  if (pathname === PREFIXE_OUTIL) {
+    /*
+     * La porte ne se ferme QUE si elle peut s'ouvrir.
+     *
+     * Sans clé d'envoi, personne ne recevrait le courriel de confirmation :
+     * fermer quand même reviendrait à condamner l'outil pour tout le monde,
+     * silencieusement, dès le premier déploiement.
+     *
+     * ATTENTION, vérifié à l'exécution : Next fige la valeur de cette
+     * variable AU MOMENT DE LA CONSTRUCTION pour le middleware. Ajouter la
+     * clé sur Vercel ne ferme donc pas la porte tout seul — il faut
+     * redéployer. C'est une bonne chose : la fermeture reste un geste
+     * délibéré, pas un effet de bord d'un réglage.
+     */
+    const secret = process.env.AUTH_SECRET;
+    if (!secret || !process.env.RESEND_API_KEY) return NextResponse.next();
+
+    if (await accesValide(req.cookies.get(ACCES_COOKIE)?.value, secret)) {
+      return NextResponse.next();
+    }
+    const porte = req.nextUrl.clone();
+    porte.pathname = "/tway-tools/acces";
+    porte.search = `?outil=pirats-attack`;
+    return NextResponse.redirect(porte);
+  }
+
+  if (pathname.startsWith(PREFIXE_PUBLIC)) return NextResponse.next();
 
   const secret = process.env.AUTH_SECRET;
 

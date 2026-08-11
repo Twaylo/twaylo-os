@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tway'tools — les outils de Twaylo</title>
+    <meta
+      name="description"
+      content="Des instruments pour regarder le monde en face. Construits à partir de sources officielles, sans donnée inventée."
+    />
+    <meta name="theme-color" content="#05090f" />
+    <meta name="robots" content="index, follow" />
+
+    <meta property="og:title" content="Tway'tools" />
+    <meta property="og:description" content="Les instruments de Twaylo. Données officielles, rien d'inventé." />
+    <meta property="og:type" content="website" />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/piraterie/vendeur/ibm-plex-mono-latin-400-normal.woff2" />
+    <link rel="stylesheet" href="/tway-tools/tway.css?v=1" />
+  </head>
+
+  <body>
+    <div class="enveloppe">
+      <header class="tete">
+        <a class="marque" href="/tway-tools">
+          <span class="marque-nom">Tway'tools</span>
+          <span class="marque-suite">par Twaylo</span>
+        </a>
+        <span class="etiquette" id="compte-outils">01 instrument</span>
+      </header>
+
+      <h1 class="titre">Des instruments pour<br />regarder le monde <em>en face</em>.</h1>
+
+      <p class="chapeau">
+        Chaque outil part d'une source officielle et n'invente rien : ce qui manque à la
+        source reste vide ici. Ils s'ajouteront au fil des enquêtes.
+      </p>
+
+      <!--
+        L'accueil au retour du courriel.
+
+        Trois états possibles, écrits ici plutôt que fabriqués en JavaScript :
+        la page reste lisible si le script ne tourne pas, et le texte est
+        traduisible au même endroit que le reste.
+      -->
+      <div class="message" id="annonce" hidden></div>
+
+      <hr class="filet" />
+
+      <main>
+        <ol class="catalogue">
+          <li>
+            <a class="outil" href="/piraterie">
+              <span class="outil-num">01</span>
+              <span>
+                <h2 class="outil-nom">Pirats Attack&nbsp;!</h2>
+                <p class="outil-dit">
+                  Quarante-cinq ans d'attaques contre des navires, une par une, sur une carte
+                  du monde. Chaque marque est un fait rapporté par l'agence géospatiale
+                  américaine — pas une estimation.
+                </p>
+                <ul class="faits">
+                  <li><b>8 897</b> incidents</li>
+                  <li><b>1978 → 2023</b></li>
+                  <li><b>264</b> attaques mortelles</li>
+                  <li>source&nbsp;: <b>NGA · ASAM</b></li>
+                </ul>
+              </span>
+              <span class="etat" data-vif><i aria-hidden="true"></i>En ligne</span>
+            </a>
+          </li>
+
+          <li>
+            <div class="outil" aria-disabled="true">
+              <span class="outil-num">02</span>
+              <span>
+                <h2 class="outil-nom">À venir</h2>
+                <p class="outil-dit">
+                  Le prochain instrument naîtra de la prochaine enquête. Les inscrits sont
+                  prévenus en premier.
+                </p>
+              </span>
+              <span class="etat"><i aria-hidden="true"></i>En chantier</span>
+            </div>
+          </li>
+        </ol>
+      </main>
+
+      <footer class="pied">
+        <span>Tway'tools — Twaylo</span>
+        <a href="https://www.youtube.com/@twaylo4" rel="noreferrer">YouTube</a>
+        <a href="/tway-tools/acces?outil=pirats-attack" id="lien-acces">Accès</a>
+        <span style="margin-left: auto">Aucun traceur, aucune publicité.</span>
+      </footer>
+    </div>
+
+    <script>
+      /*
+       * Le retour depuis le courriel de confirmation.
+       *
+       * Le lien reçu passe par une route serveur, qui pose le laissez-passer
+       * puis renvoie ici avec un état dans l'adresse. On l'annonce, et on
+       * nettoie l'adresse : rechargée plus tard, la page ne doit pas répéter
+       * « bienvenue » à quelqu'un qui est là depuis longtemps.
+       */
+      const ETATS = {
+        bienvenue: [
+          "bien",
+          "Adresse confirmée. Les Tway'tools te sont ouverts — et tu es inscrit à la newsletter.",
+        ],
+        "lien-perime": [
+          "mal",
+          "Ce lien a déjà servi, ou il a plus de 48 heures. Redemande-en un depuis la page d'accès.",
+        ],
+        indisponible: [
+          "mal",
+          "Quelque chose n'a pas fonctionné de notre côté. Réessaie dans un moment.",
+        ],
+      };
+
+      const etat = new URLSearchParams(location.search).get("etat");
+      if (etat && Object.hasOwn(ETATS, etat)) {
+        const [ton, texte] = ETATS[etat];
+        const boite = document.getElementById("annonce");
+        boite.dataset.ton = ton;
+        boite.textContent = texte;
+        boite.hidden = false;
+        history.replaceState(null, "", location.pathname);
+      }
+    </script>
+  </body>
+</html>

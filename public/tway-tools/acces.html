@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Accès — Tway'tools</title>
+    <meta name="description" content="Une adresse, une confirmation, et les instruments s'ouvrent." />
+    <meta name="theme-color" content="#05090f" />
+    <!-- Une page de saisie n'a rien à faire dans un moteur de recherche. -->
+    <meta name="robots" content="noindex" />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2" />
+    <link rel="stylesheet" href="/tway-tools/tway.css?v=1" />
+  </head>
+
+  <body>
+    <div class="enveloppe">
+      <header class="tete">
+        <a class="marque" href="/tway-tools">
+          <span class="marque-nom">Tway'tools</span>
+          <span class="marque-suite">par Twaylo</span>
+        </a>
+        <span class="etiquette">Accès</span>
+      </header>
+
+      <div class="porte">
+        <section>
+          <p class="etiquette" style="margin: 46px 0 14px" id="etiquette-outil">Instrument 01</p>
+          <h1 class="titre" style="margin: 0" id="titre-outil">Pirats&nbsp;Attack&nbsp;!</h1>
+          <p class="chapeau" id="dit-outil">
+            8 897 attaques contre des navires, de 1978 à 2023, situées une par une sur une
+            carte du monde. Les faits viennent de l'agence géospatiale américaine.
+          </p>
+
+          <ul class="faits" style="margin-top: 26px">
+            <li><b>Une</b> adresse, <b>un</b> clic de confirmation</li>
+            <li>Pas de mot de passe</li>
+            <li>Désinscription en un clic</li>
+          </ul>
+        </section>
+
+        <section>
+          <div class="boite">
+            <p class="etiquette" style="margin: 0 0 16px">Ouvrir les instruments</p>
+
+            <form id="formulaire" novalidate>
+              <label class="lecteur-ecran" for="email">Ton adresse e-mail</label>
+              <input
+                class="champ"
+                id="email"
+                name="email"
+                type="email"
+                inputmode="email"
+                autocomplete="email"
+                placeholder="ton@adresse.fr"
+                required
+              />
+
+              <!--
+                Le champ-piège. Invisible à l'œil ET au lecteur d'écran, mais
+                présent dans le formulaire : un robot le remplit, un humain
+                jamais. Rempli, le serveur fait mine d'accepter et n'écrit rien.
+              -->
+              <div class="piege" aria-hidden="true">
+                <label for="societe">Ne pas remplir</label>
+                <input id="societe" name="societe" type="text" tabindex="-1" autocomplete="off" />
+              </div>
+
+              <button class="bouton" type="submit" id="envoyer">Recevoir mon accès</button>
+            </form>
+
+            <div class="message" id="retour" hidden role="status"></div>
+
+            <p class="mention">
+              Ton adresse rejoint la newsletter de Twaylo — les coulisses des enquêtes et les
+              prochains outils. Rien d'autre n'en est fait : elle n'est ni revendue, ni
+              partagée, et chaque message porte un lien pour partir en un clic.
+            </p>
+          </div>
+
+          <p class="mention" style="text-align: center">
+            <a href="/tway-tools">← Voir tous les instruments</a>
+          </p>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      /*
+       * La porte, côté navigateur.
+       *
+       * Volontairement minuscule : un champ, un envoi, trois réponses
+       * possibles. Le formulaire reste un vrai <form>, donc la touche Entrée
+       * fonctionne et le navigateur propose l'adresse enregistrée.
+       */
+      const OUTILS = {
+        "pirats-attack": {
+          num: "Instrument 01",
+          nom: "Pirats Attack !",
+          dit: "8 897 attaques contre des navires, de 1978 à 2023, situées une par une sur une carte du monde. Les faits viennent de l'agence géospatiale américaine.",
+        },
+      };
+
+      const outil = new URLSearchParams(location.search).get("outil") ?? "pirats-attack";
+      if (Object.hasOwn(OUTILS, outil)) {
+        const o = OUTILS[outil];
+        document.getElementById("etiquette-outil").textContent = o.num;
+        document.getElementById("titre-outil").textContent = o.nom;
+        document.getElementById("dit-outil").textContent = o.dit;
+      }
+
+      const formulaire = document.getElementById("formulaire");
+      const champ = document.getElementById("email");
+      const bouton = document.getElementById("envoyer");
+      const retour = document.getElementById("retour");
+
+      const dire = (ton, texte) => {
+        retour.dataset.ton = ton;
+        retour.textContent = texte;
+        retour.hidden = false;
+      };
+
+      const MESSAGES = {
+        adresse_invalide: "Cette adresse ne ressemble pas à une adresse e-mail.",
+        trop_de_tentatives: "Trop d'essais d'affilée. Reviens dans un quart d'heure.",
+        envoi_indisponible: "L'envoi est momentanément coupé. Réessaie plus tard.",
+        envoi_impossible: "Le message n'a pas pu partir. Réessaie dans un moment.",
+      };
+
+      formulaire.addEventListener("submit", async (evenement) => {
+        evenement.preventDefault();
+        const adresse = champ.value.trim();
+        if (!adresse) return;
+
+        bouton.disabled = true;
+        bouton.textContent = "Envoi…";
+        retour.hidden = true;
+
+        try {
+          const reponse = await fetch("/api/tools/inscription", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              email: adresse,
+              source: outil,
+              langue: (navigator.language || "fr").toLowerCase().startsWith("fr") ? "fr" : "en",
+              piege: document.getElementById("societe").value,
+            }),
+          });
+          const corps = await reponse.json().catch(() => ({}));
+
+          if (reponse.ok) {
+            /*
+             * On dit « regarde ta boîte » sans jamais confirmer que l'adresse
+             * était déjà inscrite : sinon n'importe qui pourrait vérifier si
+             * telle personne figure sur la liste.
+             */
+            formulaire.hidden = true;
+            dire(
+              "bien",
+              "C'est parti. Ouvre ta boîte mail et clique le lien : les instruments s'ouvrent aussitôt. Regarde aussi les indésirables, ça arrive.",
+            );
+            return;
+          }
+
+          dire("mal", MESSAGES[corps.erreur] ?? "Quelque chose n'a pas fonctionné. Réessaie.");
+        } catch {
+          // Jamais de catch muet : sans réseau, il faut le dire.
+          dire("mal", "Pas de réseau, ou le serveur ne répond pas.");
+        } finally {
+          bouton.disabled = false;
+          bouton.textContent = "Recevoir mon accès";
+        }
+      });
+    </script>
+  </body>
+</html>
