@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
-import { useProgression } from "@/lib/progression-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
 import { CheckRow, EmptyState } from "@/components/ui";
@@ -89,23 +88,7 @@ export function TachesCard() {
     todoCloturee,
     tachesPretes,
     demoMode,
-    journees,
-    blocsFaits,
-    basculerBlocFait,
   } = useOs();
-  const { seriesBlocs } = useProgression();
-
-  /*
-   * Les immuables de la journée type, en tête de la carte : ce sont eux qui
-   * structurent le jour. Ils ne passent PAS par la table des tâches — donc
-   * « passer au jour suivant » ne les efface jamais : ils reviennent chaque
-   * matin, vierges, comme des habitudes.
-   */
-  const journeeActive = journees
-    ? (journees.liste.find((j) => j.id === journees.active) ?? journees.liste[0] ?? null)
-    : null;
-  const blocsJour = journeeActive?.blocs ?? [];
-  const blocsCoches = blocsJour.filter((b) => blocsFaits.includes(b.id)).length;
 
   // En démo, la liste est fournie sans passer par la base : rien à attendre.
   const enChargement = !tachesPretes && !demoMode;
@@ -992,50 +975,15 @@ export function TachesCard() {
       </div>
 
       {/*
-        La journée type — cochée ici ou sur sa carte, c'est le même état.
-        APRÈS les niveaux, jamais avant : le focus principal reste la première
-        chose que Twaylo voit en ouvrant sa carte (sa demande explicite).
+        Pas de journée type ici.
+        Elle avait sa propre section en bas de cette carte, en plus de sa carte
+        à elle, juste à côté sur l'accueil : les mêmes sept lignes affichées
+        deux fois sur le même écran. Deux listes identiques, ça ne double pas
+        l'information, ça fait douter de laquelle est la vraie. Elle vit
+        maintenant à un seul endroit — la carte JOURNÉE TYPE — où on peut aussi
+        changer de modèle et la modifier. Cocher là-bas met à jour le même état
+        central, donc rien n'est perdu au passage.
       */}
-      {blocsJour.length > 0 && (
-        <div className="mt-[13px]">
-          <div className="mb-[5px] flex items-baseline justify-between gap-2">
-            <div className="min-w-0">
-              <div
-                className="text-[9px] font-black tracking-[0.12em]"
-                style={{ color: "var(--color-ble-soft)" }}
-              >
-                JOURNÉE TYPE{journeeActive ? ` · ${journeeActive.nom.toUpperCase()}` : ""}
-              </div>
-              <div className="text-[8px] font-bold tracking-[0.08em] text-white/25">
-                IMMUABLES — REVIENNENT CHAQUE MATIN
-              </div>
-            </div>
-            <span
-              className="font-mono text-[10px] font-black"
-              style={{ color: "var(--color-ble-soft)" }}
-            >
-              {blocsCoches}/{blocsJour.length}
-            </span>
-          </div>
-          <div className="flex flex-col gap-[6px]">
-            {blocsJour.map((b) => {
-              // La flamme n'apparaît qu'à partir de trois jours : en dessous,
-              // ce n'est pas encore une série, et le signe se banaliserait.
-              const serie = seriesBlocs[b.id] ?? 0;
-              return (
-                <CheckRow
-                  key={b.id}
-                  label={b.titre || "Sans titre"}
-                  done={blocsFaits.includes(b.id)}
-                  accent="var(--color-ble)"
-                  onToggle={() => basculerBlocFait(b.id)}
-                  meta={serie >= 3 ? `${b.debut} · 🔥${serie}` : b.debut}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Passer au jour suivant : archive la todo, garde les tâches non faites. */}
       <div className="mt-[14px] border-t border-white/10 pt-[11px]">
