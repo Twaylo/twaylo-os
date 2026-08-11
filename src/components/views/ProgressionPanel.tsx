@@ -4,6 +4,7 @@ import { Panel } from "@/components/Panel";
 import { Eyebrow } from "@/components/ui";
 import { useProgression } from "@/lib/progression-context";
 import { localDateKey } from "@/lib/local-date";
+import { FAMILLES } from "@/lib/xp";
 
 /**
  * Les analytiques du jeu : la courbe d'XP, les records, les exploits.
@@ -235,21 +236,46 @@ export function ProgressionPanel() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-3">
-          {[...debloques, ...aVenir].map((e) => (
+        {/*
+          Rangés par famille, pas en une liste de trente.
+          Une liste plate se lit comme un mur : on n'y distingue plus ce qui
+          est à portée de ce qui demande un an. Par famille, chaque bande a son
+          « prochain » visible, et l'ensemble se parcourt en diagonale.
+        */}
+        {(Object.keys(FAMILLES) as (keyof typeof FAMILLES)[]).map((f) => {
+          const dedans = [...debloques, ...aVenir].filter((e) => e.famille === f);
+          if (dedans.length === 0) return null;
+          const pris = dedans.filter((e) => e.debloque).length;
+          return (
+            <div key={f} className="mb-[12px] last:mb-0">
+              <div className="mb-[6px] flex items-baseline justify-between gap-2">
+                <span
+                  className="text-[9.5px] font-black tracking-[0.12em]"
+                  style={{ color: FAMILLES[f].couleur }}
+                >
+                  {FAMILLES[f].nom.toUpperCase()}
+                </span>
+                <span className="flex-none font-mono text-[9.5px] font-bold text-white/25">
+                  {pris}/{dedans.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-3">
+                {dedans.map((e) => (
             <div
               key={e.id}
               className="subpanel flex items-center gap-[10px] px-[11px] py-[9px]"
               style={
                 e.debloque
-                  ? { border: "1px solid rgba(176,107,255,0.35)" }
+                  ? { border: `1px solid ${FAMILLES[e.famille].couleur}59` }
                   : { opacity: 0.55 }
               }
             >
               <span
                 className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[11px] text-[17px]"
                 style={{
-                  background: e.debloque ? "rgba(176,107,255,0.16)" : "rgba(255,255,255,0.04)",
+                  background: e.debloque
+                    ? `${FAMILLES[e.famille].couleur}26`
+                    : "rgba(255,255,255,0.04)",
                   filter: e.debloque ? undefined : "grayscale(1)",
                 }}
               >
@@ -269,20 +295,26 @@ export function ProgressionPanel() {
                       className="h-full rounded-full"
                       style={{
                         width: `${Math.round((e.valeur / e.seuil) * 100)}%`,
-                        background: "var(--color-vio)",
+                        background: FAMILLES[e.famille].couleur,
                       }}
                     />
                   </div>
                 )}
               </div>
               {e.debloque && (
-                <span className="flex-none text-[12px] font-black text-[color:var(--color-vio-soft)]">
+                <span
+                  className="flex-none text-[12px] font-black"
+                  style={{ color: FAMILLES[e.famille].couleur }}
+                >
                   ✓
                 </span>
               )}
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </Panel>
     </div>
   );

@@ -183,6 +183,13 @@ export const BLOCS: BlocAccueil[] = [
     profils: TOUS,
   },
   {
+    id: "quetes",
+    titre: "Quêtes du jour",
+    emoji: "🎲",
+    description: "Trois objectifs tirés chaque matin. Ils changent tous les jours.",
+    profils: TOUS,
+  },
+  {
     id: "taches",
     titre: "Tâches clés",
     emoji: "✅",
@@ -240,6 +247,13 @@ export const BLOCS: BlocAccueil[] = [
     description: "Le résumé de ce qui rentre.",
     module: "Revenus",
     profils: ["createur", "independant"],
+  },
+  {
+    id: "exploits",
+    titre: "Exploits",
+    emoji: "🏅",
+    description: "Les prochains exploits à débloquer, et ceux déjà pris.",
+    profils: TOUS,
   },
   {
     id: "pipeline",

@@ -16,6 +16,8 @@
  * compteur.
  */
 
+import { queteDepuisCle } from "./quetes";
+
 /* ------------------------------------------------------------------ */
 /* Le barème                                                           */
 /* ------------------------------------------------------------------ */
@@ -114,6 +116,28 @@ export const BONUS: Bonus[] = [
 
 const BONUS_PAR_ID = new Map(BONUS.map((b) => [b.id, b]));
 
+/**
+ * La récompense derrière un identifiant, bonus permanent ou quête du jour.
+ *
+ * Les deux vivent dans la même liste, écrite dans la journée : c'est ce qui
+ * rend l'XP d'une quête aussi définitive que celle d'un bonus. Un seul endroit
+ * les résout, pour que le détail affiché à l'écran, le total rejoué par le
+ * serveur et la fenêtre de célébration ne puissent pas diverger.
+ */
+export function recompenseDe(id: string): Bonus | null {
+  const b = BONUS_PAR_ID.get(id);
+  if (b) return b;
+  const q = queteDepuisCle(id);
+  if (!q) return null;
+  return {
+    id,
+    label: q.titre,
+    emoji: q.emoji,
+    xp: q.xp,
+    cri: "Quête du jour bouclée. Elle change demain.",
+  };
+}
+
 /** Les bonus que cette journée MÉRITE, d'après son état actuel. */
 export function bonusMerites(j: JourChiffre): string[] {
   const gagnes: string[] = [];
@@ -169,7 +193,7 @@ export function detailXp(j: JourChiffre): LigneXp[] {
   pousser(`${j.repas} repas noté${j.repas > 1 ? "s" : ""}`, "🍽", j.repas * BAREME.repas);
 
   for (const id of j.bonus) {
-    const b = BONUS_PAR_ID.get(id);
+    const b = recompenseDe(id);
     if (b) lignes.push({ label: b.label, emoji: b.emoji, xp: b.xp });
   }
 
@@ -266,13 +290,19 @@ export function coutNiveau(n: number): number {
 
 /** Les grades — un nom sur le chiffre, sinon « niveau 14 » ne dit rien. */
 const GRADES: { min: number; nom: string; couleur: string }[] = [
+  { min: 100, nom: "Hors catégorie", couleur: "#ffffff" },
+  { min: 70, nom: "Monument", couleur: "#ffd23d" },
+  { min: 55, nom: "Colosse", couleur: "#ff9f1c" },
   { min: 40, nom: "Légende", couleur: "#ffd23d" },
   { min: 30, nom: "Souverain", couleur: "#ff3d8b" },
   { min: 22, nom: "Implacable", couleur: "#b06bff" },
   { min: 15, nom: "Machine", couleur: "#22d3ee" },
+  { min: 11, nom: "Increvable", couleur: "#5fd39a" },
   { min: 9, nom: "Discipliné", couleur: "#3ddc84" },
+  { min: 7, nom: "Constant", couleur: "#61c9db" },
   { min: 5, nom: "Assidu", couleur: "#4f9cff" },
   { min: 3, nom: "Régulier", couleur: "#e6c060" },
+  { min: 2, nom: "Lancé", couleur: "#c3b2ff" },
   { min: 1, nom: "Éveil", couleur: "rgba(255,255,255,0.5)" },
 ];
 
@@ -333,6 +363,8 @@ export type Cumuls = {
   parfaites: number;
   meilleurJour: number;
   taches: number;
+  /** Quêtes du jour bouclées, tous jours confondus. */
+  quetes: number;
 };
 
 export const CUMULS_VIDES: Cumuls = {
@@ -344,39 +376,96 @@ export const CUMULS_VIDES: Cumuls = {
   parfaites: 0,
   meilleurJour: 0,
   taches: 0,
+  quetes: 0,
 };
+
+/** Les familles d'exploits — sert à les grouper à l'écran. */
+export const FAMILLES = {
+  serie: { nom: "Série", couleur: "#ff7a3d" },
+  journee: { nom: "Journée type", couleur: "#22d3ee" },
+  habitudes: { nom: "Habitudes", couleur: "#3ddc84" },
+  taches: { nom: "Tâches", couleur: "#ff3d8b" },
+  journal: { nom: "Journal", couleur: "#b06bff" },
+  maitrise: { nom: "Maîtrise", couleur: "#ffd23d" },
+} as const;
+
+export type Famille = keyof typeof FAMILLES;
 
 export type Exploit = {
   id: string;
   nom: string;
   emoji: string;
   description: string;
+  famille: Famille;
   /** Où on en est, et où il faut arriver. */
   valeur: number;
   seuil: number;
   debloque: boolean;
 };
 
+/**
+ * Le tableau des exploits.
+ *
+ * Douze au départ, dont cinq atteignables la première semaine et rien entre
+ * « trente jours » et « cent jours » — trois mois sans le moindre palier. Un
+ * tableau d'exploits doit toujours avoir quelque chose à moins de deux
+ * semaines de distance, sinon il cesse d'être regardé.
+ *
+ * Ils sont maintenant rangés par famille et échelonnés : chaque famille a un
+ * premier palier facile, puis des marches qui s'espacent. Les seuils sont
+ * GRAVÉS comme les identifiants — les remonter reprendrait à quelqu'un un
+ * exploit déjà annoncé.
+ */
 const DEFINITIONS: {
   id: string;
   nom: string;
   emoji: string;
   description: string;
+  famille: Famille;
   seuil: number;
   lire: (c: Cumuls) => number;
 }[] = [
-  { id: "etincelle", nom: "Première étincelle", emoji: "🌱", description: "Une première journée qui laisse une trace.", seuil: 1, lire: (c) => c.joursRemplis },
-  { id: "semaine", nom: "Semaine pleine", emoji: "🔥", description: "Sept jours d'affilée.", seuil: 7, lire: (c) => c.meilleureSerie },
-  { id: "quinzaine", nom: "Quinze jours", emoji: "🔥", description: "Deux semaines sans lâcher.", seuil: 14, lire: (c) => c.meilleureSerie },
-  { id: "mois", nom: "Un mois d'affilée", emoji: "🗓", description: "Trente jours. Ce n'est plus un effort, c'est une habitude.", seuil: 30, lire: (c) => c.meilleureSerie },
-  { id: "cent", nom: "Cent jours", emoji: "💎", description: "Cent jours d'affilée. Presque personne ne va là.", seuil: 100, lire: (c) => c.meilleureSerie },
-  { id: "blocs50", nom: "Cinquante blocs", emoji: "🧱", description: "Cinquante blocs de journée type cochés.", seuil: 50, lire: (c) => c.blocs },
-  { id: "blocs300", nom: "Trois cents blocs", emoji: "🏗", description: "La journée type est devenue une machine.", seuil: 300, lire: (c) => c.blocs },
-  { id: "coches200", nom: "Deux cents coches", emoji: "☑️", description: "Deux cents habitudes cochées, tous jours confondus.", seuil: 200, lire: (c) => c.habitudes },
-  { id: "plume", nom: "La plume", emoji: "✍️", description: "Quinze journaux écrits.", seuil: 15, lire: (c) => c.journaux },
-  { id: "sansfaute", nom: "Sans faute", emoji: "🏆", description: "Une journée parfaite : blocs, habitudes et focus.", seuil: 1, lire: (c) => c.parfaites },
-  { id: "dixsansfaute", nom: "Dix sans faute", emoji: "👑", description: "Dix journées parfaites.", seuil: 10, lire: (c) => c.parfaites },
-  { id: "grossejournee", nom: "Grosse journée", emoji: "⚡", description: "Deux cents XP dans une seule journée.", seuil: 200, lire: (c) => c.meilleurJour },
+  /* ---- Série ---- */
+  { id: "etincelle", nom: "Première étincelle", emoji: "🌱", famille: "serie", description: "Une première journée qui laisse une trace.", seuil: 1, lire: (c) => c.joursRemplis },
+  { id: "trois", nom: "Trois jours", emoji: "✨", famille: "serie", description: "Trois jours d'affilée. C'est là que ça commence à tenir.", seuil: 3, lire: (c) => c.meilleureSerie },
+  { id: "semaine", nom: "Semaine pleine", emoji: "🔥", famille: "serie", description: "Sept jours d'affilée.", seuil: 7, lire: (c) => c.meilleureSerie },
+  { id: "quinzaine", nom: "Quinze jours", emoji: "🔥", famille: "serie", description: "Deux semaines sans lâcher.", seuil: 14, lire: (c) => c.meilleureSerie },
+  { id: "mois", nom: "Un mois d'affilée", emoji: "🗓", famille: "serie", description: "Trente jours. Ce n'est plus un effort, c'est une habitude.", seuil: 30, lire: (c) => c.meilleureSerie },
+  { id: "cinquante", nom: "Cinquante jours", emoji: "🌘", famille: "serie", description: "Cinquante jours. La moitié du chemin vers cent.", seuil: 50, lire: (c) => c.meilleureSerie },
+  { id: "cent", nom: "Cent jours", emoji: "💎", famille: "serie", description: "Cent jours d'affilée. Presque personne ne va là.", seuil: 100, lire: (c) => c.meilleureSerie },
+  { id: "an", nom: "Une année", emoji: "🏛", famille: "serie", description: "Trois cent soixante-cinq jours. Sans commentaire.", seuil: 365, lire: (c) => c.meilleureSerie },
+  { id: "assidu50", nom: "Cinquante journées", emoji: "📌", famille: "serie", description: "Cinquante journées remplies, à la suite ou non.", seuil: 50, lire: (c) => c.joursRemplis },
+  { id: "assidu200", nom: "Deux cents journées", emoji: "🗿", famille: "serie", description: "Deux cents journées qui ont laissé une trace.", seuil: 200, lire: (c) => c.joursRemplis },
+
+  /* ---- Journée type ---- */
+  { id: "blocs10", nom: "Dix blocs", emoji: "🧩", famille: "journee", description: "Dix blocs de journée type cochés.", seuil: 10, lire: (c) => c.blocs },
+  { id: "blocs50", nom: "Cinquante blocs", emoji: "🧱", famille: "journee", description: "Cinquante blocs de journée type cochés.", seuil: 50, lire: (c) => c.blocs },
+  { id: "blocs300", nom: "Trois cents blocs", emoji: "🏗", famille: "journee", description: "La journée type est devenue une machine.", seuil: 300, lire: (c) => c.blocs },
+  { id: "blocs1000", nom: "Mille blocs", emoji: "🏙", famille: "journee", description: "Mille blocs. Tu ne construis plus une journée, tu l'habites.", seuil: 1000, lire: (c) => c.blocs },
+
+  /* ---- Habitudes ---- */
+  { id: "coches25", nom: "Vingt-cinq coches", emoji: "🌿", famille: "habitudes", description: "Vingt-cinq habitudes cochées.", seuil: 25, lire: (c) => c.habitudes },
+  { id: "coches200", nom: "Deux cents coches", emoji: "☑️", famille: "habitudes", description: "Deux cents habitudes cochées, tous jours confondus.", seuil: 200, lire: (c) => c.habitudes },
+  { id: "coches750", nom: "Sept cent cinquante", emoji: "🌳", famille: "habitudes", description: "Les habitudes ne se décident plus, elles se font.", seuil: 750, lire: (c) => c.habitudes },
+
+  /* ---- Tâches ---- */
+  { id: "taches25", nom: "Vingt-cinq tâches", emoji: "📎", famille: "taches", description: "Vingt-cinq tâches bouclées.", seuil: 25, lire: (c) => c.taches },
+  { id: "taches150", nom: "Cent cinquante tâches", emoji: "🧹", famille: "taches", description: "Cent cinquante tâches sorties de la liste.", seuil: 150, lire: (c) => c.taches },
+  { id: "taches600", nom: "Six cents tâches", emoji: "⚙️", famille: "taches", description: "Six cents tâches. La liste ne te fait plus peur.", seuil: 600, lire: (c) => c.taches },
+
+  /* ---- Journal ---- */
+  { id: "premiereligne", nom: "Première ligne", emoji: "🖊", famille: "journal", description: "Un premier soir écrit.", seuil: 1, lire: (c) => c.journaux },
+  { id: "plume", nom: "La plume", emoji: "✍️", famille: "journal", description: "Quinze journaux écrits.", seuil: 15, lire: (c) => c.journaux },
+  { id: "chroniqueur", nom: "Chroniqueur", emoji: "📖", famille: "journal", description: "Cent soirs écrits. Une année devient lisible.", seuil: 100, lire: (c) => c.journaux },
+
+  /* ---- Maîtrise ---- */
+  { id: "sansfaute", nom: "Sans faute", emoji: "🏆", famille: "maitrise", description: "Une journée parfaite : blocs, habitudes et focus.", seuil: 1, lire: (c) => c.parfaites },
+  { id: "dixsansfaute", nom: "Dix sans faute", emoji: "👑", famille: "maitrise", description: "Dix journées parfaites.", seuil: 10, lire: (c) => c.parfaites },
+  { id: "cinquantesansfaute", nom: "Cinquante sans faute", emoji: "🜲", famille: "maitrise", description: "Cinquante journées parfaites.", seuil: 50, lire: (c) => c.parfaites },
+  { id: "grossejournee", nom: "Grosse journée", emoji: "⚡", famille: "maitrise", description: "Deux cents XP dans une seule journée.", seuil: 200, lire: (c) => c.meilleurJour },
+  { id: "enorme", nom: "Journée énorme", emoji: "☄️", famille: "maitrise", description: "Quatre cents XP dans une seule journée.", seuil: 400, lire: (c) => c.meilleurJour },
+  { id: "quetes10", nom: "Dix quêtes", emoji: "🎲", famille: "maitrise", description: "Dix quêtes du jour bouclées.", seuil: 10, lire: (c) => c.quetes },
+  { id: "quetes100", nom: "Cent quêtes", emoji: "🎰", famille: "maitrise", description: "Cent quêtes du jour bouclées.", seuil: 100, lire: (c) => c.quetes },
 ];
 
 export function exploitsDe(c: Cumuls): Exploit[] {
@@ -387,11 +476,26 @@ export function exploitsDe(c: Cumuls): Exploit[] {
       nom: d.nom,
       emoji: d.emoji,
       description: d.description,
+      famille: d.famille,
       valeur: Math.min(valeur, d.seuil),
       seuil: d.seuil,
       debloque: valeur >= d.seuil,
     };
   });
+}
+
+/**
+ * Le prochain exploit à portée, famille par famille.
+ *
+ * Trente exploits affichés d'un bloc, c'est un mur : on voit surtout les
+ * vingt-cinq qui restent gris. Ce qui fait agir, c'est le suivant — celui
+ * dont la barre est déjà à moitié pleine.
+ */
+export function prochainsExploits(c: Cumuls, combien = 4): Exploit[] {
+  return exploitsDe(c)
+    .filter((e) => !e.debloque)
+    .sort((a, b) => b.valeur / b.seuil - a.valeur / a.seuil)
+    .slice(0, combien);
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,4 +1,7 @@
 import { supabaseAdmin, uid } from "./supabase";
+import { calculerSerie } from "./gel";
+import { lireSentinelle, majSentinelle } from "./sentinelle";
+import { PREFIXE_QUETE } from "./quetes";
 import {
   CUMULS_VIDES,
   chiffrerJourStocke,
@@ -52,6 +55,10 @@ export type Progression = {
   dernierJourRempli: string | null;
   /** Les bonus déjà gagnés aujourd'hui — pour ne pas les refêter au rechargement. */
   bonusAujourdhui: string[];
+  /** Gels de série en réserve. */
+  gels: number;
+  /** Le jour qu'un gel vient de sauver, s'il y en a un. */
+  jourSauve: string | null;
 };
 
 /** Avance ou recule d'un nombre de jours, en UTC pour ne pas sauter d'heure d'été. */
@@ -138,57 +145,67 @@ export async function lireProgression(aujourdhui: string): Promise<Progression> 
       chiffre.principalesFaites + chiffre.secondairesFaites + chiffre.annexesFaites;
     if (chiffre.journalEcrit) cumuls.journaux += 1;
     if (chiffre.bonus.includes("parfaite")) cumuls.parfaites += 1;
+    cumuls.quetes += chiffre.bonus.filter((b) => b.startsWith(PREFIXE_QUETE)).length;
     if (xp > cumuls.meilleurJour) cumuls.meilleurJour = xp;
   }
 
   // Un record à zéro n'est pas un record.
   if (record && record.xp <= 0) record = null;
 
+  /*
+   * La série passe par les gels, qui peuvent la sauver ET la faire grandir.
+   *
+   * Le calcul écrit parfois — poser un gel sur hier, en créditer un nouveau au
+   * septième jour. C'est une écriture depuis une lecture, ce qui se justifie
+   * ici : elle est idempotente (une fois hier gelé, le tour suivant ne fait
+   * plus rien) et il n'existe pas d'autre moment où l'on sait à la fois que la
+   * série était vivante et que la personne est revenue.
+   */
+  const g = calculerSerie(remplis, aujourdhui, (await lireSentinelle()).gels);
+  if (g.change) {
+    try {
+      await majSentinelle({ gels: g.gels });
+    } catch (err) {
+      // Un gel non enregistré se reposera au prochain chargement : ce n'est
+      // pas une raison pour faire échouer la lecture de toute la progression.
+      console.error("[progression] gels non enregistrés :", err);
+    }
+  }
+
   return {
     jours,
     xpAvant,
     xpAujourdhui,
-    serie: serieJusqua(remplis, aujourdhui),
-    aujourdhuiCompte: remplis.has(aujourdhui),
-    meilleureSerie: meilleureSerieDe(remplis),
-    cumuls: { ...cumuls, meilleureSerie: meilleureSerieDe(remplis) },
+    serie: g.serie,
+    aujourdhuiCompte: g.aujourdhuiCompte,
+    meilleureSerie: g.meilleureSerie,
+    cumuls: { ...cumuls, meilleureSerie: g.meilleureSerie },
     seriesBlocs: Object.fromEntries(
       [...blocsParJour.entries()]
-        .map(([id, vus]) => [id, serieJusqua(vus, aujourdhui)] as const)
+        .map(([id, vus]) => [id, serieBlocJusqua(vus, aujourdhui)] as const)
         .filter(([, n]) => n > 0),
     ),
     record,
     dernierJourRempli,
     bonusAujourdhui,
+    gels: g.gels.dispo,
+    jourSauve: g.sauve,
   };
 }
 
 /**
- * Les jours d'affilée jusqu'à aujourd'hui.
+ * Les jours d'affilée d'UN bloc précis.
  *
- * La journée en cours ne casse rien tant qu'elle est vide : à neuf heures du
- * matin rien n'est encore coché, et remettre le compteur à zéro chaque nuit
- * rendrait la série absurde. On repart donc d'hier si aujourd'hui est vierge.
+ * Sans gel, volontairement : le gel protège la régularité globale, pas la
+ * petite flamme d'un bloc particulier. Sauver l'une avec l'autre reviendrait
+ * à afficher « 🔥12 » sur un bloc coché onze fois.
  */
-function serieJusqua(remplis: Set<string>, aujourdhui: string): number {
-  let curseur = remplis.has(aujourdhui) ? aujourdhui : decaler(aujourdhui, -1);
+function serieBlocJusqua(vus: Set<string>, aujourdhui: string): number {
+  let curseur = vus.has(aujourdhui) ? aujourdhui : decaler(aujourdhui, -1);
   let serie = 0;
-  while (remplis.has(curseur)) {
+  while (vus.has(curseur)) {
     serie += 1;
     curseur = decaler(curseur, -1);
   }
   return serie;
-}
-
-/** La plus longue suite jamais tenue dans la fenêtre lue. */
-function meilleureSerieDe(remplis: Set<string>): number {
-  if (remplis.size === 0) return 0;
-  const tries = [...remplis].sort();
-  let meilleure = 1;
-  let courante = 1;
-  for (let i = 1; i < tries.length; i++) {
-    courante = tries[i] === decaler(tries[i - 1], 1) ? courante + 1 : 1;
-    if (courante > meilleure) meilleure = courante;
-  }
-  return meilleure;
 }

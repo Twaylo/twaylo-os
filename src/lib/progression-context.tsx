@@ -16,8 +16,9 @@ import { localDateKey } from "./local-date";
 import { synchroniserJour } from "./sync";
 import { KEYS, readJSON, writeJSON } from "./storage";
 import { feter } from "./recompenses-store";
+import { AMBIANCES, type AmbianceId } from "./custom";
+import { quetesBouclees, quetesDuJour, type Quete } from "./quetes";
 import {
-  BONUS,
   CUMULS_VIDES,
   JOUR_CHIFFRE_VIDE,
   bonusMerites,
@@ -27,6 +28,7 @@ import {
   gradeDe,
   palierDe,
   prochainPalierSerie,
+  recompenseDe,
   xpDuJour,
   type Cumuls,
   type Exploit,
@@ -65,6 +67,8 @@ type ProgressionDistante = {
   record: { jour: string; xp: number } | null;
   bonusAujourdhui: string[];
   dernierJourRempli: string | null;
+  gels: number;
+  jourSauve: string | null;
 };
 
 type ProgressionState = {
@@ -86,6 +90,10 @@ type ProgressionState = {
   record: { jour: string; xp: number } | null;
   /** Le dernier jour rempli avant aujourd'hui — sert aux relances. */
   dernierJourRempli: string | null;
+  /** Les trois quêtes du jour, avec leur avancement. */
+  quetes: { quete: Quete; valeur: number; fait: boolean }[];
+  /** Gels de série en réserve. */
+  gels: number;
   /**
    * Vrai dès qu'il y a quelque chose de crédible à AFFICHER — cache compris.
    *
@@ -132,6 +140,8 @@ const DISTANTE_VIDE: ProgressionDistante = {
   record: null,
   bonusAujourdhui: [],
   dernierJourRempli: null,
+  gels: 0,
+  jourSauve: null,
 };
 
 const AUCUN_BONUS: string[] = [];
@@ -144,6 +154,7 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
     habits,
     faitesDuJour,
     tasks,
+    blocsAccueil,
   } = useOs();
   /*
    * Le RÉSUMÉ, pas la saisie.
@@ -327,6 +338,19 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
    */
   const [plancher, setPlancher] = useState(0);
 
+  /*
+   * Les trois quêtes du jour, tirées de la DATE et de ce qui est installé.
+   *
+   * Aucun hasard : deux appareils ouverts en même temps affichent les mêmes,
+   * et recharger ne redistribue pas. Le filtre par blocs installés évite de
+   * proposer « écris ton journal » à quelqu'un qui n'a pas de journal — une
+   * quête impossible n'est pas un objectif, c'est une punition.
+   */
+  const quetesTirees = useMemo(
+    () => (demoMode ? [] : quetesDuJour(jourVoulu, blocsAccueil)),
+    [demoMode, jourVoulu, blocsAccueil],
+  );
+
   const jour = useMemo<JourChiffre>(() => ({ ...brut, bonus: acquis }), [brut, acquis]);
   const xpCalcule = useMemo(() => xpDuJour(jour), [jour]);
   const xpJour = Math.max(xpCalcule, plancher, distant?.xpAujourdhui ?? 0);
@@ -344,7 +368,11 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
   } else {
     if (pret) {
       const attendus = [
-        ...new Set([...(distant?.bonusAujourdhui ?? []), ...bonusMerites(brut)]),
+        ...new Set([
+          ...(distant?.bonusAujourdhui ?? []),
+          ...bonusMerites(brut),
+          ...quetesBouclees(quetesTirees, brut),
+        ]),
       ];
       const manquants = attendus.filter((id) => !acquis.includes(id));
       if (manquants.length > 0) setAcquis([...acquis, ...manquants]);
@@ -388,19 +416,16 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
      * journée. Une seule fenêtre, avec le total des quatre.
      */
     const fetes = aEcrire.includes("parfaite") ? ["parfaite"] : aEcrire;
-    const xpTotalBonus = aEcrire.reduce(
-      (n, id) => n + (BONUS.find((x) => x.id === id)?.xp ?? 0),
-      0,
-    );
+    const xpTotalBonus = aEcrire.reduce((n, id) => n + (recompenseDe(id)?.xp ?? 0), 0);
 
     for (const id of fetes) {
-      const b = BONUS.find((x) => x.id === id);
+      const b = recompenseDe(id);
       if (!b) continue;
       feter({
         emoji: b.emoji,
         titre: b.label,
         texte: b.cri,
-        couleur: id === "parfaite" ? "#ffd23d" : "#3ddc84",
+        couleur: id === "parfaite" ? "#ffd23d" : id.startsWith("q:") ? "#22d3ee" : "#3ddc84",
         xp: id === "parfaite" ? xpTotalBonus : b.xp,
       });
     }
@@ -418,13 +443,44 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
 
     const fetes = readJSON<Fetes>(CLE_FETES, {});
     writeJSON(CLE_FETES, { ...fetes, niveau: palier.niveau });
+
+    /*
+     * L'ambiance débloquée est annoncée DANS la fenêtre de niveau.
+     *
+     * Une récompense qu'on ne remarque pas n'en est pas une : sans cette
+     * phrase, une ambiance s'ouvrait en silence dans un panneau de réglages
+     * que personne n'a de raison d'ouvrir ce jour-là.
+     */
+    const ouverte = (Object.keys(AMBIANCES) as AmbianceId[]).find(
+      (id) => AMBIANCES[id].niveau === palier.niveau,
+    );
+
     feter({
       emoji: "🆙",
       titre: `Niveau ${palier.niveau}`,
-      texte: `Tu passes ${gradeDe(palier.niveau).nom}. Prochain palier dans ${palier.pourNiveau} XP.`,
+      texte: ouverte
+        ? `Tu passes ${gradeDe(palier.niveau).nom}, et l'ambiance « ${AMBIANCES[ouverte].nom} » s'ouvre. Avatar → Personnaliser.`
+        : `Tu passes ${gradeDe(palier.niveau).nom}. Prochain palier dans ${palier.pourNiveau} XP.`,
       couleur: palier.couleur,
     });
   }, [pret, palier.niveau, palier.pourNiveau, palier.couleur]);
+
+  /* ---------------- Un gel vient de sauver la série ---------------- */
+
+  const gelAnnonce = useRef<string | null>(null);
+
+  useEffect(() => {
+    const sauve = distant?.jourSauve;
+    if (!pret || !sauve || gelAnnonce.current === sauve) return;
+    gelAnnonce.current = sauve;
+    feter({
+      emoji: "🧊",
+      titre: "Série sauvée",
+      texte:
+        "Tu as manqué hier, un gel a pris le relais. La série continue — il t'en reste un de moins.",
+      couleur: "#8fd7ff",
+    });
+  }, [pret, distant?.jourSauve]);
 
   /* ---------------- Paliers de série ---------------- */
 
@@ -478,6 +534,8 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
      * méritée ne récompense plus rien.
      */
     return {
+      // Les quêtes du jour comptent dès qu'elles tombent, comme le reste.
+      quetes: base.quetes + jour.bonus.filter((b) => b.startsWith("q:")).length,
       blocs: base.blocs + jour.blocsFaits,
       habitudes: base.habitudes + jour.habitudesFaites,
       taches:
@@ -553,6 +611,14 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       jours: distant?.jours ?? [],
       record: distant?.record ?? null,
       dernierJourRempli: distant?.dernierJourRempli ?? null,
+      quetes: quetesTirees.map((q) => ({
+        quete: q,
+        valeur: Math.min(q.lire(jour), q.cible),
+        // Une quête bouclée le reste : elle est passée dans `acquis`, qui ne
+        // se vide jamais avant minuit. Décocher ne reprend pas une récompense.
+        fait: acquis.includes(`q:${q.id}`) || q.lire(jour) >= q.cible,
+      })),
+      gels: distant?.gels ?? 0,
       affichable,
     }),
     [
@@ -569,6 +635,8 @@ export function ProgressionProvider({ children }: { children: ReactNode }) {
       jourVoulu,
       cumuls,
       exploits,
+      quetesTirees,
+      acquis,
     ],
   );
 
