@@ -1050,11 +1050,62 @@ $("bouton-filtres").addEventListener("click", () => {
   $("bouton-filtres").setAttribute("aria-expanded", String(!filtres.hidden));
 });
 
+/* ═══════════════════════════════════════════════════════════════════════
+   La place que prend le panneau
+
+   La carte s'arrête à son bord supérieur plutôt que de passer dessous : sinon
+   les commandes cachent la moitié sud de la flotte, et rien ne permet de la
+   découvrir — MapLibre impose que le planisphère remplisse la hauteur de son
+   conteneur, il n'y a donc aucune marge de déplacement vertical à ce zoom.
+
+   La hauteur est MESURÉE, jamais devinée : elle change quand on replie le
+   panneau, quand le téléphone tourne, quand une police arrive et fait passer
+   une ligne à deux, ou quand un filtre ajoute une rangée de jetons.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function mesurerCommandes() {
+  const commandes = $("commandes");
+  // Au-delà de 900 px, le panneau flotte dans un coin : la carte garde toute
+  // la hauteur et la mesure n'a plus lieu d'être.
+  const hauteur = window.innerWidth >= 900 ? 0 : commandes.offsetHeight;
+  const actuelle = document.documentElement.style.getPropertyValue("--h-commandes");
+  const nouvelle = `${hauteur}px`;
+  if (actuelle === nouvelle) return;
+
+  document.documentElement.style.setProperty("--h-commandes", nouvelle);
+  // Le conteneur vient de changer de taille : sans cela MapLibre continue de
+  // dessiner à l'ancienne dimension et la carte paraît étirée.
+  carteGL.resize();
+}
+
+/*
+ * Sur téléphone, le panneau s'ouvre REPLIÉ.
+ *
+ * Déplié il occupe 45 % de la hauteur, et la carte — le sujet — est réduite à
+ * une bande. Replié, elle en occupe 82 %, et il reste tout de même le
+ * compteur et la chronologie : de quoi lire et parcourir sans rien ouvrir.
+ * Les filtres sont à un toucher, sur un bouton qui dit « DÉPLIER ».
+ *
+ * Sur grand écran la question ne se pose pas : le panneau flotte dans un coin
+ * d'océan sans rien masquer.
+ */
+if (window.innerWidth < 900) {
+  $("commandes").toggleAttribute("data-replie", true);
+  $("bouton-replier").setAttribute("aria-expanded", "false");
+  $("bouton-replier").lastElementChild.textContent = t("deplier");
+}
+
+new ResizeObserver(mesurerCommandes).observe($("commandes"));
+window.addEventListener("orientationchange", () => setTimeout(mesurerCommandes, 200));
+mesurerCommandes();
+
 $("bouton-replier").addEventListener("click", () => {
   const commandes = $("commandes");
   const replie = commandes.hasAttribute("data-replie");
   commandes.toggleAttribute("data-replie", !replie);
   $("bouton-replier").setAttribute("aria-expanded", String(replie));
+  $("bouton-replier").lastElementChild.textContent = replie ? t("replier") : t("deplier");
+  mesurerCommandes();
 });
 
 document.addEventListener("keydown", (evenement) => {

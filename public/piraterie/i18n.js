@@ -22,7 +22,8 @@ export const TEXTES = {
     commandesAria: "Filtres, chronologie et recherche",
     chargement: "Chargement des incidents…",
     fermer: "Fermer",
-    replier: "Replier les commandes",
+    replier: "Replier",
+    deplier: "Déplier",
 
     compteur: "incidents affichés",
     compteurUn: "incident affiché",
@@ -154,7 +155,8 @@ export const TEXTES = {
     commandesAria: "Filters, timeline and search",
     chargement: "Loading incidents…",
     fermer: "Close",
-    replier: "Collapse controls",
+    replier: "Collapse",
+    deplier: "Expand",
 
     compteur: "incidents shown",
     compteurUn: "incident shown",

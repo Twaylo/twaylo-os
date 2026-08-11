@@ -143,9 +143,29 @@ body {
 
 /* ══ Carte ═══════════════════════════════════════════════════════════════ */
 
+/*
+ * La carte s'arrête au bord du panneau, elle ne passe pas dessous.
+ *
+ * Elle occupait tout l'écran et les commandes flottaient par-dessus : sur un
+ * téléphone, elles mangeaient près de la moitié de la hauteur et la moitié
+ * sud de la flotte disparaissait derrière — golfe de Guinée et océan Indien
+ * coupés net, sans aucun moyen de les découvrir.
+ *
+ * Déplacer la carte ne servait à rien : MapLibre impose que le planisphère
+ * remplisse la hauteur de son conteneur, il n'y a donc aucune marge de
+ * déplacement vertical à ce zoom. La seule issue est de RÉDUIRE le conteneur.
+ * La carte devient plus petite, mais elle est entière.
+ *
+ * `--h-commandes` est mesurée en continu par le script : le panneau change de
+ * hauteur quand on le replie, quand le téléphone tourne, ou quand une police
+ * arrive et fait passer une ligne à deux.
+ */
 .carte {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--h-commandes, 0px);
   background: var(--fond);
 }
 
@@ -162,12 +182,37 @@ body {
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: invert(1) brightness(0.85);
 }
-.maplibregl-ctrl-attrib {
-  background: rgba(6, 13, 20, 0.8) !important;
+/*
+ * L'attribution et l'échelle arrivent en habillage clair — pastille blanche,
+ * texte noir — posées sur une carte de nuit. On les ramène dans la gamme.
+ * Le sélecteur compact est visé nommément : c'est celui que MapLibre utilise
+ * sur les écrans étroits, et il porte ses propres règles.
+ */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: rgba(10, 17, 25, 0.88) !important;
+  border: 1px solid var(--bord);
+  border-radius: var(--r);
   color: var(--texte-faible);
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
 }
 .maplibregl-ctrl-attrib a {
   color: var(--texte-doux);
+}
+.maplibregl-ctrl-attrib-button {
+  filter: invert(1) brightness(0.8);
+}
+.maplibregl-ctrl-scale {
+  background: rgba(10, 17, 25, 0.88);
+  border-color: var(--bord-net);
+  border-top: 0;
+  border-radius: 0 0 var(--r) var(--r);
+  color: var(--texte-doux);
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
 }
 
 /* ══ Encart d'une attaque ════════════════════════════════════════════════ */
@@ -490,23 +535,54 @@ body {
   background: linear-gradient(180deg, rgba(6, 13, 20, 0) 0%, rgba(6, 13, 20, 0.93) 22%);
   backdrop-filter: blur(6px);
 }
+/*
+ * Le bouton qui replie les commandes.
+ *
+ * C'était un simple trait gris : rien n'indiquait qu'on pouvait appuyer
+ * dessus, et donc personne ne le faisait. C'est maintenant une barre pleine
+ * largeur, avec un chevron qui montre le sens et un libellé qui le dit.
+ */
 .poignee {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
-  padding: 9px 0 7px;
+  padding: 9px 0 8px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texte-faible);
   background: none;
   border: 0;
   cursor: pointer;
 }
-.poignee-trait {
-  display: block;
-  width: 38px;
-  height: 4px;
-  margin: 0 auto;
-  border-radius: 1px;
-  background: var(--bord-net);
+.poignee:hover {
+  color: var(--texte-doux);
 }
-.commandes[data-replie] #commandes-corps {
+.poignee-trait {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.18s ease;
+}
+.commandes[data-replie] .poignee-trait {
+  transform: rotate(180deg);
+}
+
+/*
+ * Replié, il reste le compteur et la chronologie : de quoi lire la carte et
+ * la parcourir dans le temps. Tout le reste s'efface, et la carte récupère
+ * la hauteur.
+ */
+.commandes[data-replie] .stats,
+.commandes[data-replie] .rangee-gravite,
+.commandes[data-replie] .actions,
+.commandes[data-replie] .filtres,
+.commandes[data-replie] .pied {
   display: none;
 }
 
@@ -941,6 +1017,11 @@ body {
   /* Les commandes quittent le bas de l'écran pour une colonne : sur un grand
      écran, une barre horizontale gaspillerait la largeur et écraserait la
      carte en hauteur. */
+  /* Sur grand écran, le panneau est une carte posée dans un coin d'océan :
+     la carte reprend toute la hauteur. */
+  .carte {
+    bottom: 0;
+  }
   .commandes {
     left: 20px;
     right: auto;
