@@ -19,7 +19,7 @@ import type { PlanOs } from "@/lib/sas-plan";
  * premier ferait fuir.
  */
 
-type Phase = "questions" | "construction" | "apercu" | "pose";
+type Phase = "porte" | "questions" | "construction" | "apercu" | "pose";
 
 const TOTAL = 1 + QUESTIONS.length + 1; // profil + questions + précision
 
@@ -29,7 +29,15 @@ export function Sas() {
   const [choix, setChoix] = useState<Record<string, string[]>>({});
   const [precision, setPrecision] = useState("");
 
-  const [phase, setPhase] = useState<Phase>("questions");
+  /*
+   * On commence par la PORTE : continuer avec l'OS déjà ouvert, ou en créer
+   * un nouveau. Sans cet écran, quelqu'un de déjà connecté qui clique
+   * « Construire mon OS » retombait dans le sien — ce qui n'est pas ce qu'il
+   * demandait — et un nouveau venu se heurtait à un mot de passe qu'il n'a pas.
+   */
+  const [phase, setPhase] = useState<Phase>("porte");
+  const [nouveauNom, setNouveauNom] = useState("");
+  const [nouveauMdp, setNouveauMdp] = useState("");
   const [plan, setPlan] = useState<PlanOs | null>(null);
   /*
    * Ce qu'on GARDE, coche par coche.
@@ -182,7 +190,7 @@ export function Sas() {
             <div
               className="h-full rounded-full transition-[width] duration-300"
               style={{
-                width: `${Math.round(((phase === "questions" ? etape : TOTAL) / TOTAL) * 100)}%`,
+                width: `${Math.round(((phase === "porte" ? 0 : phase === "questions" ? etape : TOTAL) / TOTAL) * 100)}%`,
                 background: "var(--grad)",
               }}
             />
@@ -198,6 +206,36 @@ export function Sas() {
           paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
         }}
       >
+        {phase === "porte" && (
+          <Porte
+            nom={nouveauNom}
+            mdp={nouveauMdp}
+            erreur={erreur}
+            onNom={setNouveauNom}
+            onMdp={setNouveauMdp}
+            onContinuer={() => {
+              setErreur(null);
+              setPhase("questions");
+            }}
+            onCreer={async () => {
+              setErreur(null);
+              try {
+                const r = await fetch("/api/auth/creer", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ nom: nouveauNom, motDePasse: nouveauMdp }),
+                });
+                const d = (await r.json()) as { error?: string };
+                if (!r.ok) throw new Error(d.error ?? "Création impossible.");
+                // Le compte est ouvert et la session posée : on enchaîne.
+                setPhase("questions");
+              } catch (err) {
+                setErreur(err instanceof Error ? err.message : "Création impossible.");
+              }
+            }}
+          />
+        )}
+
         {phase === "construction" && <EnConstruction />}
 
         {phase === "questions" && (
@@ -322,6 +360,137 @@ export function Sas() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * La porte : continuer, ou créer.
+ *
+ * Deux chemins visibles d'emblée, parce que les deux existent réellement.
+ * Cacher la création derrière un lien discret revenait à dire « c'est
+ * l'application de quelqu'un d'autre ».
+ */
+function Porte({
+  nom,
+  mdp,
+  erreur,
+  onNom,
+  onMdp,
+  onContinuer,
+  onCreer,
+}: {
+  nom: string;
+  mdp: string;
+  erreur: string | null;
+  onNom: (v: string) => void;
+  onMdp: (v: string) => void;
+  onContinuer: () => void;
+  onCreer: () => void | Promise<void>;
+}) {
+  const [ouvre, setOuvre] = useState(false);
+  const pret = nom.trim().length >= 2 && mdp.length >= 8;
+
+  return (
+    <div className="view-in flex flex-1 flex-col">
+      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em] sm:text-[27px]">
+        On part de quoi ?
+      </h1>
+      <p className="mt-[7px] text-[12.5px] font-semibold leading-[1.45] text-white/45">
+        Chaque OS est séparé : ses journées, ses tâches, ses objectifs n&apos;appartiennent
+        qu&apos;à lui.
+      </p>
+
+      <div className="mt-[20px] flex flex-col gap-[9px]">
+        <button
+          type="button"
+          onClick={onContinuer}
+          className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all"
+          style={{
+            background: "rgba(255,255,255,0.035)",
+            border: "1.5px solid rgba(255,255,255,0.09)",
+          }}
+        >
+          <span className="text-[22px]">🔑</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14.5px] font-black">Continuer avec mon OS</span>
+            <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
+              Ajoute des blocs, des habitudes et des objectifs à celui que tu as déjà.
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setOuvre((v) => !v)}
+          aria-expanded={ouvre}
+          className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all"
+          style={{
+            background: ouvre ? "rgba(61,220,132,0.1)" : "rgba(255,255,255,0.035)",
+            border: `1.5px solid ${ouvre ? "rgba(61,220,132,0.45)" : "rgba(255,255,255,0.09)"}`,
+          }}
+        >
+          <span className="text-[22px]">✨</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14.5px] font-black">Créer un nouvel OS</span>
+            <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
+              Un espace vierge, avec son propre nom et son propre mot de passe.
+            </span>
+          </span>
+        </button>
+      </div>
+
+      {ouvre && (
+        <div className="mt-[12px] flex flex-col gap-[8px]">
+          <input
+            value={nom}
+            onChange={(e) => onNom(e.target.value)}
+            placeholder="Nom de l'OS — ex. « julie »"
+            autoCapitalize="none"
+            autoCorrect="off"
+            className="w-full rounded-[12px] px-[13px] py-[12px] text-[14px] font-semibold outline-none placeholder:text-white/25"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.09)",
+              color: "var(--color-fg)",
+            }}
+          />
+          <input
+            value={mdp}
+            onChange={(e) => onMdp(e.target.value)}
+            type="password"
+            placeholder="Mot de passe — 8 caractères minimum"
+            className="w-full rounded-[12px] px-[13px] py-[12px] text-[14px] font-semibold outline-none placeholder:text-white/25"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.09)",
+              color: "var(--color-fg)",
+            }}
+          />
+          <button
+            type="button"
+            disabled={!pret}
+            onClick={() => void onCreer()}
+            className="flex min-h-[50px] w-full cursor-pointer items-center justify-center rounded-[13px] text-[14.5px] font-black text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-25"
+            style={{ background: "var(--grad)" }}
+          >
+            Créer et continuer
+          </button>
+          {/* Il n'y a pas de « mot de passe oublié » : on le dit avant. */}
+          <p className="text-center text-[11px] font-bold leading-[1.4] text-white/30">
+            Note ce mot de passe : il n&apos;y a aucun moyen de le retrouver.
+          </p>
+        </div>
+      )}
+
+      {erreur && (
+        <p
+          className="mt-[14px] rounded-[11px] px-[12px] py-[9px] text-center text-[12px] font-bold"
+          style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.1)" }}
+        >
+          {erreur}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Ecran({
   titre,

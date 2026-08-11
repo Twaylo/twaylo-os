@@ -1,4 +1,4 @@
-import { USER_ID, supabaseAdmin } from "./supabase";
+import { uid, supabaseAdmin } from "./supabase";
 
 /**
  * La ligne « sentinelle » — le fourre-tout des réglages.
@@ -28,7 +28,7 @@ export async function lireSentinelle(): Promise<Record<string, unknown>> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", JOUR_SENTINELLE)
     .maybeSingle();
 
@@ -54,7 +54,7 @@ export async function majSentinelle(patch: Record<string, unknown>): Promise<voi
 
     const { error } = await db.from("daily_logs").upsert(
       {
-        user_id: USER_ID,
+        user_id: (await uid()),
         jour: JOUR_SENTINELLE,
         habitudes: { ...actuel, ...patch },
       },

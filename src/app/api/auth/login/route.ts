@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { normaliserId, verifierCompte } from "@/lib/comptes";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -86,25 +88,43 @@ export async function POST(req: Request) {
   }
 
   let password: unknown;
+  let compteBrut: unknown;
   try {
-    ({ password } = await req.json());
+    ({ password, compte: compteBrut } = await req.json());
   } catch {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  if (typeof password !== "string" || !timingSafeEqual(password, expected)) {
+  /*
+   * Deux façons d'entrer, et une seule porte.
+   *
+   * Sans identifiant, c'est le compte historique et le mot de passe du
+   * serveur : rien ne change pour Twaylo, ni pour les sessions déjà ouvertes.
+   * Avec un identifiant, c'est un compte créé par le sas, dont le mot de passe
+   * est vérifié contre son empreinte en base.
+   */
+  const compte = typeof compteBrut === "string" ? normaliserId(compteBrut) : "";
+
+  let ouvre = false;
+  if (compte) {
+    ouvre = typeof password === "string" && (await verifierCompte(compte, password));
+  } else {
+    ouvre = typeof password === "string" && timingSafeEqual(password, expected);
+  }
+
+  if (!ouvre) {
     enregistrerEchec(ip);
     // Un échec silencieux est un échec qu'on ne verra jamais venir.
-    console.warn(`[auth] mot de passe refusé depuis ${ip}`);
-    // Message volontairement neutre : rien qui distingue « champ vide » de
+    console.warn(`[auth] connexion refusée depuis ${ip}`);
+    // Message volontairement neutre : rien qui distingue « nom inconnu » de
     // « mauvais mot de passe ».
-    return NextResponse.json({ error: "Mot de passe incorrect." }, { status: 401 });
+    return NextResponse.json({ error: "Nom ou mot de passe incorrect." }, { status: 401 });
   }
 
   tentatives.delete(ip);
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, await createSessionToken(secret, expected), {
+  res.cookies.set(SESSION_COOKIE, await createSessionToken(secret, expected, undefined, compte || undefined), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

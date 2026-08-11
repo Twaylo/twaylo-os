@@ -1,4 +1,4 @@
-import { supabaseAdmin, USER_ID } from "./supabase";
+import { supabaseAdmin, uid } from "./supabase";
 
 /**
  * L'historique nutrition, lu à travers le temps.
@@ -66,7 +66,7 @@ export async function lireStatsNutrition(
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("jour, habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .neq("jour", JOUR_SENTINELLE)
     .gte("jour", debut)
     .lte("jour", aujourdhui)

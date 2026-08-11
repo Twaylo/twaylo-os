@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isSupabaseConfigured, supabaseAdmin, USER_ID } from "@/lib/supabase";
+import { isSupabaseConfigured, supabaseAdmin, uid } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
       db
         .from("daily_logs")
         .select("jour, journal_texte")
-        .eq("user_id", USER_ID)
+        .eq("user_id", (await uid()))
         .neq("jour", "2000-01-01")
         .lt("jour", jour)
         .order("jour", { ascending: false })
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       db
         .from("daily_logs")
         .select("journal_texte")
-        .eq("user_id", USER_ID)
+        .eq("user_id", (await uid()))
         .eq("jour", jour)
         .maybeSingle(),
     ]);

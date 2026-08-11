@@ -1,4 +1,4 @@
-import { USER_ID, supabaseAdmin } from "./supabase";
+import { uid, supabaseAdmin } from "./supabase";
 import { lireSentinelle, majSentinelle } from "./sentinelle";
 import { estQuadrant, quadrantParDefaut, type Quadrant } from "./eisenhower";
 import { NIVEAUX, type Niveau } from "./types";
@@ -103,7 +103,7 @@ export async function archiverTachesOubliees(): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("tasks")
     .update({ statut: "abandonnee" })
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .in("statut", ["ouverte", "en_cours"])
     .neq("urgence", "aujourdhui")
     .lt("created_at", seuilOubli());
@@ -124,7 +124,7 @@ export async function lireOubliees(): Promise<TacheOubliee[]> {
   const { data, error } = await supabaseAdmin()
     .from("tasks")
     .select("id, titre, categorie, urgence, created_at")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("statut", "abandonnee")
     .order("created_at", { ascending: true });
 
@@ -187,7 +187,7 @@ export async function reprendreOubliee(
       ...(niveau ? { urgence: NIVEAUX[niveau].urgence } : {}),
     })
     .eq("id", id)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("statut", "abandonnee")
     .select("id, titre, urgence")
     .maybeSingle();
@@ -210,7 +210,7 @@ export async function supprimerOubliee(id: string): Promise<void> {
     .from("tasks")
     .delete()
     .eq("id", id)
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("statut", "abandonnee");
 
   if (error) throw error;

@@ -1,4 +1,4 @@
-import { supabaseAdmin, USER_ID } from "./supabase";
+import { supabaseAdmin, uid } from "./supabase";
 import {
   CUMULS_VIDES,
   chiffrerJourStocke,
@@ -67,7 +67,7 @@ export async function lireProgression(aujourdhui: string): Promise<Progression> 
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("jour, habitudes, journal_texte")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .neq("jour", JOUR_SENTINELLE)
     .gte("jour", debut)
     .lte("jour", aujourdhui)

@@ -1,4 +1,4 @@
-import { USER_ID, supabaseAdmin } from "./supabase";
+import { uid, supabaseAdmin } from "./supabase";
 import { ecrireJour } from "./db";
 import { lireSentinelle, majSentinelle } from "./sentinelle";
 import { JOURNEES_DEFAUT, bornerJournees, type JourneesConfig } from "./journees";
@@ -44,7 +44,7 @@ export async function lireBlocsFaits(jour: string): Promise<string[]> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", jour)
     .maybeSingle();
 

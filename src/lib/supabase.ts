@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { SESSION_COOKIE, lireUtilisateur } from "./auth";
+
 /**
  * Client Supabase à privilèges service role.
  *
@@ -41,8 +43,48 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
-/** V1 mono-utilisateur (spec Partie 4). */
+/**
+ * L'utilisateur par défaut : le compte historique, et le repli.
+ *
+ * Il sert quand aucun cookie n'accompagne la requête — les tâches planifiées
+ * de Vercel et le webhook Telegram, qui s'authentifient par un secret d'en-tête
+ * et non par une session.
+ */
 export const USER_ID = process.env.USER_ID ?? "twaylo";
+
+/**
+ * L'utilisateur de la requête EN COURS.
+ *
+ * C'est la pièce qui rend plusieurs OS possibles sur la même base. Chaque
+ * table porte déjà une colonne `user_id` depuis le premier jour ; il ne
+ * manquait qu'une chose : que sa valeur vienne de QUI EST CONNECTÉ, et non
+ * d'une constante lue au démarrage du serveur.
+ *
+ * Le nom est lu dans le cookie de session, qui est signé : il ne peut pas
+ * être fabriqué depuis le navigateur. Sans cookie — tâche planifiée, webhook
+ * Telegram — on retombe sur le compte par défaut, ce qui préserve exactement
+ * le comportement d'avant.
+ *
+ * Volontairement asynchrone : `cookies()` l'est depuis Next 15. Le compilateur
+ * s'en sert d'ailleurs comme garde-fou — un appel oublié dans une fonction non
+ * asynchrone ne compile pas, ce qui est précisément la vérification qu'on veut
+ * sur les quatre-vingt-quatorze endroits concernés.
+ */
+export async function uid(): Promise<string> {
+  try {
+    const { cookies } = await import("next/headers");
+    const jeton = (await cookies()).get(SESSION_COOKIE)?.value;
+    const nom = jeton ? lireUtilisateur(jeton) : null;
+    return nom ?? USER_ID;
+  } catch {
+    /*
+     * Hors contexte de requête — une tâche planifiée, un script. `cookies()`
+     * lève dans ce cas plutôt que de renvoyer vide, et c'est tant mieux : on
+     * veut le compte par défaut, pas une erreur.
+     */
+    return USER_ID;
+  }
+}
 
 /**
  * Contourne le cache edge de PostgREST, qui ressert volontiers des snapshots

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { USER_ID, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
+import { uid, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
 import { ecrireJour } from "@/lib/db";
 import { REVUE_VIDE, type Revue } from "@/lib/types";
 
@@ -51,7 +51,7 @@ async function lireLigne(lundi: string) {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
-    .eq("user_id", USER_ID)
+    .eq("user_id", (await uid()))
     .eq("jour", lundi)
     .maybeSingle();
 

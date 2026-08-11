@@ -23,6 +23,8 @@ import {
 const CHEMINS_PUBLICS = new Set([
   "/login",
   "/api/auth/login",
+  // Créer un OS : forcément ouvert, personne n'a encore de compte.
+  "/api/auth/creer",
   "/api/auth/logout",
   "/api/telegram/webhook",
   /*
@@ -64,6 +66,13 @@ const CHEMINS_PUBLICS = new Set([
    * donnée — uniquement ce que le produit propose.
    */
   "/bienvenue",
+  /*
+   * Le sas est ouvert : on ne peut pas exiger un compte de quelqu'un qui
+   * vient précisément en créer un. Son premier écran demande si l'on continue
+   * avec son OS ou si l'on en crée un nouveau, et les routes qui ÉCRIVENT
+   * (`/api/sas/appliquer`) restent, elles, derrière la porte.
+   */
+  "/demarrer",
   // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
   // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
   // elle-même et refuse tout si la variable manque.
