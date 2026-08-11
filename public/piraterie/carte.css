@@ -1,33 +1,76 @@
 /*
  * Carte des attaques de pirates — habillage.
  *
- * Parti pris : un instrument, pas une page de promotion. Fond sombre, texte
- * net, aucune animation qui ne serve à lire quelque chose. Les seuls
- * mouvements sont ceux qui portent une information : l'ouverture d'un
- * panneau, le déroulé du temps.
+ * Parti pris : un instrument de lecture, pas une application. Ce qui le
+ * porte, dans l'ordre :
  *
- * Aucune police n'est téléchargée. Celles du système suffisent, s'affichent
- * sans attendre, et évitent une requête vers un domaine tiers.
+ *   · IBM Plex, dessinée pour la documentation technique. Le monospace tient
+ *     les libellés et les chiffres, le sans tient le texte qui se lit. Deux
+ *     familles, quatre graisses, servies depuis notre domaine.
+ *   · Des angles nets — 2 à 4 px, jamais de galet. Les coins très arrondis
+ *     disent « application grand public » ; ici on veut une planche.
+ *   · Des libellés en capitales espacées, comme les intitulés d'une carte
+ *     marine.
+ *   · Des filets d'un pixel plutôt que des ombres portées, et des aplats
+ *     opaques plutôt que des dégradés.
+ *
+ * Aucune police n'est appelée chez un tiers : les quatre fichiers sont
+ * copiés dans `vendeur/` à la construction.
  */
 
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/piraterie/vendeur/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/piraterie/vendeur/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/piraterie/vendeur/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
 :root {
-  --fond: #060d14;
-  --fond-panneau: #0b1520;
-  --fond-panneau-haut: #101d2a;
-  --bord: rgba(255, 255, 255, 0.09);
-  --bord-net: rgba(255, 255, 255, 0.16);
+  --fond: #05090f;
+  --fond-panneau: #0a1119;
+  --fond-panneau-haut: #0e1721;
+  --bord: #1a2734;
+  --bord-net: #2a3b4c;
 
-  --texte: #e8eef4;
-  --texte-doux: #93a5b5;
-  --texte-faible: #64778a;
+  --texte: #e6edf4;
+  --texte-doux: #8fa2b4;
+  --texte-faible: #5d7085;
 
-  /* Orange → rouge : la gamme des points et des regroupements. */
-  --feu-1: #ffb02e;
-  --feu-2: #ff7a1a;
-  --feu-3: #f4471f;
-  --feu-4: #c2160f;
+  /*
+   * Le jaune de la flotte. Un seul ton pour tous les bateaux : c'est la
+   * densité qu'on regarde d'abord, pas le détail de chacun.
+   */
+  --jaune: #ffd60a;
+  --jaune-sombre: #b8990a;
+
+  /* L'échelle de gravité, réservée au mode « colorer par gravité ». */
+  --feu-1: #ffd60a;
+  --feu-2: #ff9e1b;
+  --feu-3: #ff5c2b;
+  --feu-4: #ff2d4d;
 
   --focus: #4da3ff;
+
+  /* Angles nets : une planche, pas un galet. */
+  --r: 3px;
 
   --marge-basse: env(safe-area-inset-bottom, 0px);
   --marge-haute: env(safe-area-inset-top, 0px);
@@ -47,17 +90,17 @@ body {
 body {
   background: var(--fond);
   color: var(--texte);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Plex Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.45;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   /* Le bleu de sélection par défaut d'iOS jure avec la gamme sombre. */
   -webkit-tap-highlight-color: transparent;
 }
 
 .mono {
-  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  font-variant-numeric: tabular-nums;
+  font-family: "Plex Mono", ui-monospace, Menlo, monospace;
 }
 
 /* Réservé aux lecteurs d'écran : présent dans l'arbre d'accessibilité,
@@ -84,7 +127,7 @@ body {
   background: var(--fond-panneau-haut);
   color: var(--texte);
   border: 1px solid var(--bord-net);
-  border-radius: 8px;
+  border-radius: var(--r);
   text-decoration: none;
 }
 .saut-lien:focus {
@@ -149,7 +192,7 @@ body {
   padding: 11px 13px 12px;
   background: rgba(13, 24, 35, 0.97);
   border: 1px solid var(--bord-net);
-  border-radius: 11px;
+  border-radius: var(--r);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
   color: var(--texte);
 }
@@ -233,7 +276,7 @@ body {
   color: #1a0c00;
   background: var(--feu-1);
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r);
   cursor: pointer;
 }
 .encart-bouton:hover {
@@ -254,8 +297,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 4px 7px;
+  font-size: 10.5px;
 }
 .jeton-gravite i {
   width: 9px;
@@ -292,11 +335,22 @@ body {
   min-width: 0;
 }
 .entete h1 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  margin: 0 0 3px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
+  color: var(--jaune);
+}
+/* Le filet sous le titre : un trait de planche, pas une décoration. */
+.entete h1::after {
+  content: "";
+  display: block;
+  width: 46px;
+  height: 2px;
+  margin-top: 6px;
+  background: var(--jaune);
 }
 .entete-phrase {
   margin: 2px 0 0;
@@ -323,12 +377,15 @@ body {
   color: var(--texte);
   background: var(--fond-panneau-haut);
   border: 1px solid var(--bord-net);
-  border-radius: 9px;
+  border-radius: var(--r);
   cursor: pointer;
 }
 .bouton {
-  padding: 9px 13px;
-  font-size: 13.5px;
+  padding: 8px 12px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 .bouton:hover,
@@ -358,7 +415,7 @@ body {
   height: 18px;
   margin-left: 4px;
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: var(--r);
   background: var(--feu-2);
   color: #1a0c00;
   font-size: 11px;
@@ -446,7 +503,7 @@ body {
   width: 38px;
   height: 4px;
   margin: 0 auto;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--bord-net);
 }
 .commandes[data-replie] #commandes-corps {
@@ -454,20 +511,26 @@ body {
 }
 
 .compteur {
-  margin: 0 0 8px;
-  font-size: 12.5px;
-  color: var(--texte-doux);
-  letter-spacing: 0.02em;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0 0 4px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--texte-faible);
 }
 .compteur strong {
-  color: var(--feu-1);
-  font-size: 16px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  color: var(--jaune);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .stats {
-  margin: -4px 0 9px;
+  margin: -2px 0 8px;
   font-size: 11.5px;
   line-height: 1.4;
   color: var(--texte-faible);
@@ -519,19 +582,51 @@ body {
   flex: 1;
   min-width: 0;
 }
+/* Assez haut pour porter l'histogramme ET la barre de sélection dessous. */
 .temps-bornes {
   position: relative;
-  height: 26px;
+  height: 54px;
+}
+
+/*
+ * L'histogramme : une barre par année, hauteur proportionnelle au nombre
+ * d'attaques. C'est la piste elle-même, pas une décoration — on découpe le
+ * temps en voyant sa forme.
+ */
+.temps-histogramme {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  pointer-events: none;
+}
+.temps-histogramme span {
+  flex: 1;
+  min-width: 1px;
+  background: #24333f;
+  transition: background-color 0.12s linear;
+}
+/* Dans la fenêtre retenue : la barre s'allume. Le reste reste lisible, en
+   sourdine — on doit continuer à voir ce qu'on a écarté. */
+.temps-histogramme span[data-dedans] {
+  background: var(--jaune);
+}
+.temps-histogramme span[data-vide] {
+  background: #16212b;
 }
 /* Le rail et la portion sélectionnée sont purement décoratifs : ce sont les
    deux `input` au-dessus qui portent la valeur, le nom et le clavier. */
 .temps-rail {
   position: absolute;
-  top: 11px;
+  top: 42px;
   left: 0;
   right: 0;
-  height: 4px;
-  border-radius: 2px;
+  height: 3px;
+  border-radius: 1px;
   background: rgba(255, 255, 255, 0.11);
   pointer-events: none;
 }
@@ -539,16 +634,15 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--feu-1), var(--feu-3));
+  background: var(--jaune);
 }
 
 .curseur {
   position: absolute;
-  top: 0;
+  top: 32px;
   left: 0;
   width: 100%;
-  height: 26px;
+  height: 22px;
   margin: 0;
   background: none;
   appearance: none;
@@ -562,21 +656,21 @@ body {
 .curseur::-webkit-slider-thumb {
   appearance: none;
   pointer-events: auto;
-  width: 20px;
+  width: 12px;
   height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--feu-3);
-  cursor: grab;
+  border-radius: 1px;
+  background: var(--jaune);
+  border: 1px solid #05090f;
+  cursor: ew-resize;
 }
 .curseur::-moz-range-thumb {
   pointer-events: auto;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--feu-3);
-  cursor: grab;
+  width: 10px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--jaune);
+  border: 1px solid #05090f;
+  cursor: ew-resize;
 }
 .curseur::-webkit-slider-runnable-track,
 .curseur::-moz-range-track {
@@ -597,11 +691,11 @@ body {
 }
 
 .temps-libelle {
-  margin: 0;
-  font-size: 12px;
+  margin: 2px 0 0;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
   color: var(--texte-doux);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
 }
 
 /* ── Recherche et actions ── */
@@ -625,7 +719,7 @@ body {
   color: var(--texte);
   background: var(--fond-panneau);
   border: 1px solid var(--bord-net);
-  border-radius: 9px;
+  border-radius: var(--r);
 }
 .champ-recherche input::placeholder {
   color: var(--texte-faible);
@@ -644,16 +738,17 @@ body {
   padding: 12px;
   background: var(--fond-panneau);
   border: 1px solid var(--bord);
-  border-radius: 11px;
+  border-radius: var(--r);
 }
 .filtre-groupe + .filtre-groupe {
   margin-top: 13px;
 }
 .filtre-groupe h3 {
   margin: 0 0 7px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--texte-faible);
 }
@@ -663,20 +758,26 @@ body {
   gap: 6px;
 }
 .jeton {
-  font: inherit;
-  font-size: 12.5px;
-  padding: 6px 10px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 5px 9px;
   color: var(--texte-doux);
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   border: 1px solid var(--bord);
-  border-radius: 20px;
+  border-radius: var(--r);
   cursor: pointer;
 }
+.jeton:hover {
+  border-color: var(--bord-net);
+  color: var(--texte);
+}
+/* Sélectionné : le fond reste sombre et c'est le liseré jaune qui parle.
+   Un aplat vif sur cinq jetons transformerait la légende en guirlande. */
 .jeton[aria-pressed="true"] {
-  color: #1a0c00;
-  background: var(--feu-1);
-  border-color: var(--feu-1);
-  font-weight: 700;
+  color: var(--jaune);
+  background: rgba(255, 214, 10, 0.1);
+  border-color: var(--jaune);
 }
 .jeton-compte {
   margin-left: 5px;
@@ -728,7 +829,7 @@ body {
   padding: 4px 16px calc(18px + var(--marge-basse));
   background: var(--fond-panneau-haut);
   border-top: 1px solid var(--bord-net);
-  border-radius: 16px 16px 0 0;
+  border-radius: 0;
   box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.5);
   animation: monte 0.22s ease;
 }
@@ -814,7 +915,7 @@ body {
   font-size: 13px;
   background: var(--fond-panneau-haut);
   border: 1px solid var(--bord-net);
-  border-radius: 20px;
+  border-radius: var(--r);
   animation: monte 0.18s ease;
 }
 
@@ -850,7 +951,7 @@ body {
     padding: 0 16px 14px;
     background: rgba(11, 21, 32, 0.94);
     border: 1px solid var(--bord);
-    border-radius: 14px;
+    border-radius: var(--r);
   }
   .filtres {
     max-height: none;
@@ -904,4 +1005,166 @@ body {
     width: 100%;
     animation: none;
   }
+}
+
+/* ══ Langue, bascule de couleur, en-tête ═════════════════════════════════ */
+
+.entete-outils {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+/*
+ * Le sélecteur de langue : deux boutons accolés, pas une liste déroulante.
+ * Deux langues seulement — les cacher derrière une ouverture coûterait un
+ * geste de plus pour rien, et l'état en cours doit se lire d'un regard.
+ */
+.langues {
+  display: flex;
+  border: 1px solid var(--bord-net);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.langues button {
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  padding: 6px 8px;
+  color: var(--texte-faible);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.langues button + button {
+  border-left: 1px solid var(--bord);
+}
+.langues button[aria-pressed="true"] {
+  color: #05090f;
+  background: var(--jaune);
+}
+
+.rangee-gravite {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rangee-gravite .gravites {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* La bascule de couleur : un carré de nuancier, pas un interrupteur. Elle
+   n'allume rien tant qu'on ne la demande pas — la flotte est jaune par
+   défaut, parce que la densité passe avant le détail. */
+.bascule {
+  flex: none;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  color: var(--texte-faible);
+  background: transparent;
+  border: 1px solid var(--bord);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.bascule[aria-pressed="true"] {
+  color: var(--jaune);
+  border-color: var(--jaune);
+  background: rgba(255, 214, 10, 0.1);
+}
+
+/* ══ Ajustements de la nouvelle grammaire ════════════════════════════════ */
+
+.entete-phrase {
+  font-size: 12px;
+  color: var(--texte-doux);
+}
+.entete-chiffres {
+  display: block;
+  color: var(--texte-faible);
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+
+.stats {
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.encart-ref,
+.encart-date,
+.encart-gravite,
+.encart-champs dt,
+.jeton-compte,
+.pied,
+.fiche-champs dt,
+.fiche-source {
+  font-family: "Plex Mono", ui-monospace, monospace;
+}
+
+.encart-corps,
+.fiche,
+.apropos,
+.commandes,
+.souffle {
+  border-radius: var(--r);
+}
+.fiche,
+.apropos {
+  border-radius: 0;
+}
+
+/* Le bouton de l'encart reprend le jaune de la flotte : c'est le même
+   objet qu'on suit, du navire cliqué jusqu'à son récit. */
+.encart-bouton {
+  background: var(--jaune);
+  color: #05090f;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 10px;
+}
+
+.fiche-recit-note {
+  margin: 0 0 7px;
+  font-size: 11px;
+  color: var(--texte-faible);
+  font-style: italic;
+}
+
+.attente-barre span {
+  background: var(--jaune);
+}
+.lien-video {
+  color: var(--jaune) !important;
+  border-bottom-color: rgba(255, 214, 10, 0.4) !important;
+}
+.pastille {
+  background: var(--jaune);
+  color: #05090f;
+  border-radius: 1px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+}
+.icone-lecture {
+  border-left-color: var(--jaune);
+}
+.bouton-lecture[data-joue] .icone-lecture {
+  background: linear-gradient(
+    90deg,
+    var(--jaune) 0 4px,
+    transparent 4px 8px,
+    var(--jaune) 8px 12px
+  );
+}
+.bouton-lecture {
+  border-radius: var(--r);
 }
