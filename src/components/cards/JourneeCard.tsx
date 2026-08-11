@@ -26,9 +26,12 @@ import {
  * En mode ✎ : tout se modifie SUR la carte — heures, intitulés, catégories,
  * ajout, suppression — sans passer par l'onglet.
  *
- * Les coches vivent dans l'état central (os-context) : la même liste apparaît
- * dans la carte Tâches clés, et cocher ici coche là-bas. Le modèle, lui, ne se
- * remet jamais à zéro — seules les coches repartent vierges chaque matin.
+ * Les coches vivent dans l'état central (os-context) : l'onglet Journée type
+ * et le récap Telegram lisent le même état, cocher ici coche partout. C'est
+ * aussi le SEUL endroit de l'accueil où ces blocs s'affichent — la carte
+ * Tâches clés en a longtemps porté une copie, deux listes identiques côte à
+ * côte sur le même écran. Le modèle, lui, ne se remet jamais à zéro : seules
+ * les coches repartent vierges chaque matin.
  */
 export function JourneeCard() {
   const { journees, majJournees, blocsFaits, basculerBlocFait } = useOs();
