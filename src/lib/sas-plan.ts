@@ -1,6 +1,7 @@
 import { CATEGORIES_BLOC, type CategorieBloc } from "./journees";
 import { BLOCS_PAR_PROFIL, HABITUDES_PAR_PROFIL, PROFILS, type Reponses } from "./sas";
 import { BLOCS, TABS, blocsDuProfil, modulesDuProfil, ordonner } from "./modules";
+import { AMBIANCES, AMBIANCE_PAR_PROFIL } from "./custom";
 
 const CATALOGUE_BLOCS = BLOCS.map((b) => b.id);
 
@@ -36,6 +37,15 @@ export type PlanOs = {
    * c'est la partie du sas qui se voit le plus, elle ne doit pas être un pari.
    */
   espace: { modules: string[]; blocs: string[] };
+  /**
+   * Le prénom donné au premier écran, et la couleur du profil.
+   *
+   * Ils font partie du plan parce qu'ils font partie de l'OS qu'on construit :
+   * arriver sur un tableau de bord qui vous appelle par votre prénom et qui
+   * porte votre couleur, c'est la différence entre « un outil » et « le mien ».
+   */
+  nom: string;
+  ambiance: string;
 };
 
 const PORTEES = new Set(["semaine", "mois", "trimestre", "annee"]);
@@ -150,11 +160,19 @@ export function nettoyerPlan(brut: unknown): PlanOs {
     blocs: ordonner(liste(brutEspace.blocs).map((x) => texte(x, 30)), CATALOGUE_BLOCS),
   };
 
-  const profil = texte(p.profil, 20);
+  const brutProfil = texte(p.profil, 20);
+  const profil = PROFILS.some((x) => x.id === brutProfil) ? brutProfil : "autre";
+  const ambiance = texte(p.ambiance, 20);
 
   return {
     resume: texte(p.resume, 240),
-    profil: PROFILS.some((x) => x.id === profil) ? profil : "autre",
+    profil,
+    nom: texte(p.nom, 40),
+    // Rabattue sur la couleur du profil si elle est inconnue : jamais sur
+    // « Signature », qui est l'identité de Twaylo et pas un défaut de produit.
+    ambiance: Object.hasOwn(AMBIANCES, ambiance)
+      ? ambiance
+      : (AMBIANCE_PAR_PROFIL[profil] ?? "bleu"),
     blocs,
     habitudes,
     objectifs,
