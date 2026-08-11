@@ -12,6 +12,12 @@ import { BLOC_PAR_ID, BLOCS, TABS, ordonner, tousLesBlocs, type Tab } from "./mo
 const CATALOGUE_BLOCS = BLOCS.map((b) => b.id);
 
 export type AmbianceId =
+  | "bleu"
+  | "cyan"
+  | "vert"
+  | "ambre"
+  | "rose"
+  | "violet"
   | "signature"
   | "ombre"
   | "aurore"
@@ -21,6 +27,25 @@ export type AmbianceId =
   | "abysse"
   | "prisme"
   | "eclipse";
+
+/**
+ * Les unies, et pourquoi elles existent.
+ *
+ * Le dégradé « Signature » — rose, ambre, vert, cyan dans la même ligne — est
+ * l'identité de Twaylo, celle de sa chaîne et de son logo. Le servir par
+ * défaut à chaque OS créé revenait à donner à des inconnus la marque de
+ * quelqu'un d'autre : leur tableau de bord était le sien repeint.
+ *
+ * Une couleur unie par profil règle les deux problèmes d'un coup. C'est plus
+ * sobre — un dégradé de quatre couleurs sur chaque chiffre finit par fatiguer
+ * — et c'est reconnaissable : l'espace d'un étudiant est cyan, celui d'un
+ * indépendant est ambré, et aucun n'est celui de Twaylo.
+ */
+const UNIE = (c: string, sombre: string) => ({
+  grad: `linear-gradient(100deg, ${c}, ${sombre})`,
+  halos: [`${c}22`, `${sombre}1c`, `${c}12`] as [string, string, string],
+  niveau: 1,
+});
 
 /**
  * Chaque ambiance redéfinit le dégradé signature (onglet actif, chiffres
@@ -44,6 +69,15 @@ export const AMBIANCES: Record<
     niveau: number;
   }
 > = {
+  /* ---- Les unies : sobres, une seule teinte, une par profil ---- */
+  bleu: { nom: "Bleu", description: "Net et calme. Le réglage par défaut.", ...UNIE("#4f9cff", "#2f6fd0") },
+  cyan: { nom: "Cyan", description: "Clair et vif, sans agiter l'écran.", ...UNIE("#22d3ee", "#0e9db5") },
+  vert: { nom: "Vert", description: "Franc, celui des choses cochées.", ...UNIE("#3ddc84", "#22a05e") },
+  ambre: { nom: "Ambre", description: "Chaud, lisible même en plein jour.", ...UNIE("#ffc63d", "#d99a1c") },
+  rose: { nom: "Rose", description: "Vif, pour ceux qui publient.", ...UNIE("#ff3d8b", "#c81f66") },
+  violet: { nom: "Violet", description: "Profond et posé.", ...UNIE("#b06bff", "#7d40c4") },
+
+  /* ---- Les dégradés ---- */
   signature: {
     nom: "Signature",
     description: "Le dégradé du logo — l'ambiance d'origine.",
@@ -116,6 +150,25 @@ export function ambiancesOuvertes(niveau: number): AmbianceId[] {
     (id) => AMBIANCES[id].niveau <= niveau,
   );
 }
+
+/** Les unies d'abord, dans l'ordre du panneau de réglages. */
+export const AMBIANCES_UNIES: AmbianceId[] = ["bleu", "cyan", "vert", "ambre", "rose", "violet"];
+
+/**
+ * La couleur d'un profil — celle que le sas pose sur l'OS qu'il construit.
+ *
+ * Elle suit la couleur déjà affichée sur la carte du profil au premier écran :
+ * ce qu'on a choisi en arrivant est ce qu'on retrouve en ouvrant. Un détail,
+ * mais c'est celui qui fait dire « c'est le mien ».
+ */
+export const AMBIANCE_PAR_PROFIL: Record<string, AmbianceId> = {
+  etudiant: "cyan",
+  createur: "rose",
+  actif: "bleu",
+  independant: "ambre",
+  sportif: "vert",
+  autre: "violet",
+};
 
 export type CustomConfig = {
   ambiance: AmbianceId;

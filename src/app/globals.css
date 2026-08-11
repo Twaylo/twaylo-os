@@ -986,3 +986,407 @@ textarea::placeholder {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ================================================================== */
+/* Le sas — la mascotte et ses écrans                                  */
+/* ================================================================== */
+
+/*
+ * Le compagnon respire.
+ *
+ * Trois animations superposées plutôt qu'une seule image animée : le corps
+ * flotte, la bille de l'antenne pulse, les yeux clignent. Chacune a sa propre
+ * durée, volontairement non multiples — c'est ce qui empêche l'ensemble de
+ * paraître mécanique, et ce qui coûte le moins cher (des transformations
+ * composées par le GPU, jamais de recalcul de mise en page).
+ */
+.mascotte {
+  flex: none;
+}
+
+.masc-corps {
+  animation: mascFlotte 3.4s ease-in-out infinite;
+  transform-origin: 50px 60px;
+}
+
+@keyframes mascFlotte {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* L'ombre rétrécit quand il monte : sans elle, il glisse au lieu de flotter. */
+.masc-ombre {
+  animation: mascOmbre 3.4s ease-in-out infinite;
+  transform-origin: 50px 93px;
+}
+
+@keyframes mascOmbre {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleX(0.86);
+    opacity: 0.22;
+  }
+}
+
+.masc-bille {
+  animation: mascBille 2.1s ease-in-out infinite;
+  transform-origin: 50px 8px;
+}
+
+@keyframes mascBille {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+/*
+ * Le clignement : long temps ouvert, éclair fermé. Les proportions comptent —
+ * réparti également, ça donne un tic nerveux plutôt qu'un regard.
+ */
+.masc-yeux {
+  animation: mascCligne 5.2s infinite;
+  transform-origin: 50px 44px;
+}
+
+@keyframes mascCligne {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.12);
+  }
+}
+
+.masc-bras {
+  animation: mascSalue 1.6s ease-in-out infinite;
+  transform-origin: 86px 50px;
+}
+
+@keyframes mascSalue {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+}
+
+.masc-point {
+  animation: mascPoint 1.3s ease-in-out infinite;
+}
+.masc-point-2 {
+  animation-delay: 0.18s;
+}
+.masc-point-3 {
+  animation-delay: 0.36s;
+}
+
+@keyframes mascPoint {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* ---- La bulle de dialogue ---- */
+
+.bulle-mascotte {
+  position: relative;
+  border-radius: 18px;
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 13px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-fg);
+  animation: bulleIn 0.34s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+@keyframes bulleIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* La pointe, dessinée en bordures : deux triangles superposés, aucun SVG. */
+.bulle-pointe {
+  position: absolute;
+  left: -9px;
+  top: 22px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 9px solid rgba(255, 255, 255, 0.16);
+}
+
+.bulle-pointe::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: -7px;
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 8px solid #0d1a27;
+}
+
+/* ---- Les écrans du sas ---- */
+
+/*
+ * Un écran occupe TOUTE la hauteur, avec le bouton collé en bas.
+ *
+ * C'est la disposition qui distingue une application d'une page web : la
+ * question en haut, le vide au milieu, l'action toujours sous le pouce. Sur
+ * une page qui défile, le bouton part hors de l'écran dès que le clavier
+ * s'ouvre — et on ne sait plus comment avancer.
+ */
+.sas-ecran {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sas-titre {
+  font-size: 27px;
+  font-weight: 900;
+  line-height: 1.14;
+  letter-spacing: -0.03em;
+}
+
+@media (min-width: 640px) {
+  .sas-titre {
+    font-size: 34px;
+  }
+}
+
+/*
+ * Le bouton principal : pleine largeur, 56 px de haut, jamais ailleurs qu'en
+ * bas. Sa profondeur vient d'une ombre portée dure, pas d'un dégradé — c'est
+ * ce qui donne l'impression d'un vrai bouton qu'on enfonce.
+ */
+.sas-bouton {
+  display: flex;
+  min-height: 56px;
+  width: 100%;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  font-size: 15.5px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #07121d;
+  transition:
+    transform 0.08s ease,
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.sas-bouton:active:not(:disabled) {
+  transform: translateY(2px);
+}
+
+.sas-bouton:disabled {
+  cursor: not-allowed;
+  opacity: 0.28;
+}
+
+/* La variante secondaire : même gabarit, contour seul. */
+.sas-bouton-2 {
+  color: var(--color-fg);
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+}
+
+/* ---- Les choix ---- */
+
+/*
+ * Une carte de choix fait 60 px de haut au minimum et se sélectionne d'un
+ * doigt n'importe où sur sa surface. La bordure épaissit à la sélection au
+ * lieu de changer de fond : le texte garde exactement le même contraste,
+ * sélectionné ou non.
+ */
+.sas-choix {
+  display: flex;
+  width: 100%;
+  min-height: 62px;
+  cursor: pointer;
+  align-items: center;
+  gap: 13px;
+  border-radius: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px 15px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-fg);
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease,
+    transform 0.08s ease;
+}
+
+.sas-choix:active {
+  transform: scale(0.985);
+}
+
+.sas-choix[aria-pressed="true"] {
+  border-color: var(--teinte);
+  background: color-mix(in srgb, var(--teinte) 13%, transparent);
+}
+
+/* ---- La barre de progression segmentée ---- */
+
+.sas-jauge {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+}
+
+.sas-jauge span {
+  flex: 1;
+  height: 9px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.sas-jauge span::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: var(--teinte);
+  transition: width 0.42s cubic-bezier(0.3, 1, 0.5, 1);
+}
+
+.sas-jauge span.faite::after {
+  width: 100%;
+}
+
+/* ---- L'entrée d'un écran ---- */
+
+.sas-in {
+  animation: sasIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sasIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Les éléments d'une liste arrivent l'un après l'autre, très vite. */
+.sas-cascade > * {
+  animation: sasIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.sas-cascade > *:nth-child(1) { animation-delay: 0.03s; }
+.sas-cascade > *:nth-child(2) { animation-delay: 0.07s; }
+.sas-cascade > *:nth-child(3) { animation-delay: 0.11s; }
+.sas-cascade > *:nth-child(4) { animation-delay: 0.15s; }
+.sas-cascade > *:nth-child(5) { animation-delay: 0.19s; }
+.sas-cascade > *:nth-child(6) { animation-delay: 0.23s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .masc-corps,
+  .masc-ombre,
+  .masc-bille,
+  .masc-yeux,
+  .masc-bras,
+  .masc-point,
+  .bulle-mascotte,
+  .sas-in,
+  .sas-cascade > * {
+    animation: none;
+  }
+}
+
+/*
+ * Le corps d'un écran de sas : ce qui reste entre la jauge et le bouton.
+ *
+ * `overflow-y: auto` plutôt que sur la page entière : le bouton du bas doit
+ * rester visible même quand le contenu déborde (l'aperçu, ou un clavier
+ * ouvert). Une page qui défile en entier emporte le bouton avec elle, et on
+ * ne sait plus comment avancer.
+ */
+.sas-corps {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 6px 18px 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 640px) {
+  .sas-ecran > header,
+  .sas-ecran > footer,
+  .sas-corps {
+    margin: 0 auto;
+    width: 100%;
+    max-width: 460px;
+  }
+}
+
+/* Les écrans sans barre du haut portent eux-mêmes la marge d'encoche. */
+.sas-sans-barre {
+  padding-top: calc(22px + env(safe-area-inset-top, 0px));
+}
+
+/* Le chevron d'une section : couché quand elle est fermée, dressé quand ouverte. */
+.chevron-section {
+  display: inline-block;
+  transform: rotate(90deg);
+  transition: transform 0.2s ease;
+}
+
+details[open] .chevron-section {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron-section {
+    transition: none;
+  }
+}

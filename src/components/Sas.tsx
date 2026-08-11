@@ -4,50 +4,64 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CATEGORIES_BLOC } from "@/lib/journees";
 import { LONGUEUR_PRECISION, PROFILS, QUESTIONS, type Reponses } from "@/lib/sas";
+import { AMBIANCE_PAR_PROFIL } from "@/lib/custom";
 import { BLOC_PAR_ID, MODULES_COEUR, MODULE_PAR_ID } from "@/lib/modules";
+import { Bulle, Mascotte, type Humeur } from "@/components/Mascotte";
 import type { PlanOs } from "@/lib/sas-plan";
 import { purgerCachesLocaux } from "@/lib/storage";
 
 /**
  * Le sas d'accueil.
  *
- * UNE question par écran, jamais un formulaire. Un formulaire de six champs se
- * referme ; six écrans d'une question se traversent — c'est ce que font les
- * applications qu'on finit d'installer. La barre du haut dit combien il reste,
- * parce qu'un enchaînement sans fin visible se quitte au troisième écran.
+ * UNE chose par écran, et rien d'autre : une question, de l'air, un bouton en
+ * bas. C'est la forme des applications qu'on finit d'installer, et elle ne
+ * tient pas à la décoration — elle tient à ce qu'on RETIRE. Pas de sous-titre
+ * explicatif sous chaque option, pas de deux colonnes, pas de bouton
+ * secondaire posé à côté du principal.
  *
- * Chaque écran doit se répondre au pouce, sans clavier. La saisie libre est
- * gardée pour la fin, quand la personne est déjà engagée : la demander en
- * premier ferait fuir.
+ * Trois décisions structurent le reste :
+ *
+ * 1. LE COMPTE ARRIVE APRÈS LES QUESTIONS. Demander un mot de passe au premier
+ *    écran, c'est demander un engagement avant d'avoir rien montré. On répond
+ *    d'abord — c'est court, et ça se fait au pouce — et le compte se crée au
+ *    moment où l'espace va exister. La route de construction, elle, reste
+ *    derrière la porte : elle appelle un modèle payant.
+ * 2. LA COULEUR VIENT DU PROFIL. Dès l'écran suivant, la jauge, les coches, le
+ *    halo et le compagnon prennent la teinte choisie. L'OS commence à être le
+ *    sien avant même d'exister — et ce n'est jamais le dégradé de Twaylo.
+ * 3. RIEN N'EST APPLIQUÉ SANS ÊTRE MONTRÉ, mais l'aperçu tient en six lignes.
+ *    Qui veut trier ouvre une section ; les autres appuient sur le bouton.
  */
 
-type Phase = "porte" | "questions" | "construction" | "apercu" | "pose";
+type Phase = "porte" | "parcours" | "compte" | "construction" | "apercu" | "pose";
 
-const TOTAL = 1 + QUESTIONS.length + 1; // profil + questions + précision
+/** Les écrans du parcours : prénom, profil, les quatre questions, la précision. */
+const ETAPES = 1 + 1 + QUESTIONS.length + 1;
+
+/** La teinte d'avant le choix du profil : le bleu neutre du produit. */
+const BLEU = "#4f9cff";
 
 export function Sas() {
+  const [phase, setPhase] = useState<Phase>("porte");
   const [etape, setEtape] = useState(0);
+
+  const [prenom, setPrenom] = useState("");
   const [profil, setProfil] = useState<string | null>(null);
   const [choix, setChoix] = useState<Record<string, string[]>>({});
   const [precision, setPrecision] = useState("");
 
-  /*
-   * On commence par la PORTE : continuer avec l'OS déjà ouvert, ou en créer
-   * un nouveau. Sans cet écran, quelqu'un de déjà connecté qui clique
-   * « Construire mon OS » retombait dans le sien — ce qui n'est pas ce qu'il
-   * demandait — et un nouveau venu se heurtait à un mot de passe qu'il n'a pas.
-   */
-  const [phase, setPhase] = useState<Phase>("porte");
   const [nouveauNom, setNouveauNom] = useState("");
   const [nouveauMdp, setNouveauMdp] = useState("");
+  /** Vrai quand ce parcours doit se terminer par la création d'un compte. */
+  const [nouveauCompte, setNouveauCompte] = useState(false);
+
   const [plan, setPlan] = useState<PlanOs | null>(null);
-  /*
+  /**
    * Ce qu'on GARDE, coche par coche.
    *
-   * Séparé du plan lui-même : décocher un bloc ne doit pas l'effacer, sinon
-   * on ne peut plus le récupérer d'un second appui. La clé est
-   * « type:position » — le plan ne bouge pas d'ordre entre l'aperçu et la
-   * mise en place.
+   * Séparé du plan lui-même : décocher un bloc ne doit pas l'effacer, sinon on
+   * ne peut plus le récupérer d'un second appui. La clé est « type:position » —
+   * le plan ne change pas d'ordre entre l'aperçu et la mise en place.
    */
   const [garde, setGarde] = useState<Record<string, boolean>>({});
   const [secours, setSecours] = useState(false);
@@ -57,15 +71,8 @@ export function Sas() {
   /*
    * A-t-on déjà un OS ouvert dans ce navigateur ?
    *
-   * La porte proposait « Continuer avec mon OS » à tout le monde, visiteur de
-   * passage compris. Celui-ci traversait les six écrans, répondait à tout, et
-   * recevait à la fin « Tu n'as pas encore d'OS » — la route de construction
-   * exige une session. Six écrans de travail perdus au dernier pas : c'est la
-   * façon la plus sûre de ne jamais revenir.
-   *
-   * `null` = on ne sait pas encore ; la porte attend plutôt que de proposer
-   * une option qui échouera. La question se pose à une route déjà derrière la
-   * porte, qui répond 401 sans session : pas de route nouvelle à ouvrir.
+   * `null` tant qu'on ne sait pas. La question se pose à une route déjà
+   * fermée, qui répond 401 sans session : aucune route nouvelle à ouvrir.
    */
   const [connecte, setConnecte] = useState<boolean | null>(null);
 
@@ -76,8 +83,6 @@ export function Sas() {
         if (!annule) setConnecte(r.status !== 401);
       })
       .catch(() => {
-        // Hors ligne : on suppose le pire (pas de session) plutôt que de
-        // laisser quelqu'un s'engager dans un parcours qui ne peut pas finir.
         if (!annule) setConnecte(false);
       });
     return () => {
@@ -85,30 +90,29 @@ export function Sas() {
     };
   }, []);
 
-  const question = etape >= 1 && etape <= QUESTIONS.length ? QUESTIONS[etape - 1] : null;
+  const teinte = PROFILS.find((p) => p.id === profil)?.couleur ?? BLEU;
+  const question = etape >= 2 && etape < 2 + QUESTIONS.length ? QUESTIONS[etape - 2] : null;
 
-  /** L'écran courant est-il répondu ? Sinon, « Continuer » reste éteint. */
+  /** L'écran courant est-il répondu ? Sinon, le bouton reste éteint. */
   const repondu = useMemo(() => {
-    if (etape === 0) return profil !== null;
+    if (etape === 0) return prenom.trim().length >= 1;
+    if (etape === 1) return profil !== null;
     if (question) return (choix[question.id] ?? []).length > 0;
     return true; // la précision est facultative
-  }, [etape, profil, question, choix]);
+  }, [etape, prenom, profil, question, choix]);
 
-  const basculer = useCallback(
-    (idQuestion: string, idChoix: string, multiple: boolean) => {
-      setChoix((p) => {
-        const actuels = p[idQuestion] ?? [];
-        if (!multiple) return { ...p, [idQuestion]: [idChoix] };
-        return {
-          ...p,
-          [idQuestion]: actuels.includes(idChoix)
-            ? actuels.filter((c) => c !== idChoix)
-            : [...actuels, idChoix],
-        };
-      });
-    },
-    [],
-  );
+  const basculer = useCallback((idQuestion: string, idChoix: string, multiple: boolean) => {
+    setChoix((p) => {
+      const actuels = p[idQuestion] ?? [];
+      if (!multiple) return { ...p, [idQuestion]: [idChoix] };
+      return {
+        ...p,
+        [idQuestion]: actuels.includes(idChoix)
+          ? actuels.filter((c) => c !== idChoix)
+          : [...actuels, idChoix],
+      };
+    });
+  }, []);
 
   const construire = useCallback(async () => {
     if (!profil) return;
@@ -122,21 +126,19 @@ export function Sas() {
         body: JSON.stringify({ reponses }),
       });
       /*
-       * 401 : il n'y a pas de session. C'est le cas de quelqu'un qui a touché
-       * « Continuer avec mon OS » sans en avoir un.
-       *
-       * La route qui appelle le modèle reste volontairement derrière la porte :
-       * elle coûte de l'argent à chaque appel, et exiger un compte est la
-       * protection la plus solide. Mais l'impasse doit être NOMMÉE, avec la
-       * sortie à côté — un « HTTP 401 » à l'écran ne dit rien à personne.
+       * 401 : pas de session. On ne renvoie pas à l'écran d'accueil les mains
+       * vides — les réponses sont en mémoire, on demande juste le compte et on
+       * enchaîne tout seul.
        */
       if (r.status === 401) {
-        setErreur("Tu n'as pas encore d'OS. Reviens en arrière et crée-en un.");
-        setPhase("porte");
+        setErreur("Il te faut un OS pour continuer. Crée-le ici, ça prend dix secondes.");
+        setNouveauCompte(true);
+        setPhase("compte");
         return;
       }
       const d = (await r.json()) as { plan?: PlanOs; error?: string; secours?: boolean };
       if (!r.ok || !d.plan) throw new Error(d.error ?? `HTTP ${r.status}`);
+
       // Tout coché au départ : on propose, on n'impose pas de trier.
       const coches: Record<string, boolean> = {};
       for (const [type, n] of [
@@ -156,11 +158,9 @@ export function Sas() {
     } catch (err) {
       console.error("[sas] construction impossible :", err);
       setErreur(
-        err instanceof Error && err.message.length < 120
-          ? err.message
-          : "La construction a échoué.",
+        err instanceof Error && err.message.length < 120 ? err.message : "La construction a échoué.",
       );
-      setPhase("questions");
+      setPhase("parcours");
     }
   }, [profil, choix, precision]);
 
@@ -169,8 +169,9 @@ export function Sas() {
     if (!plan) return null;
     const modules = plan.espace.modules.filter((_, i) => garde[`mod:${i}`]);
     return {
-      resume: plan.resume,
-      profil: plan.profil,
+      ...plan,
+      nom: prenom.trim(),
+      ambiance: AMBIANCE_PAR_PROFIL[plan.profil] ?? "bleu",
       blocs: plan.blocs.filter((_, i) => garde[`bloc:${i}`]),
       habitudes: plan.habitudes.filter((_, i) => garde[`hab:${i}`]),
       objectifs: plan.objectifs.filter((_, i) => garde[`obj:${i}`]),
@@ -178,11 +179,9 @@ export function Sas() {
       espace: {
         modules,
         /*
-         * Une carte dont l'onglet vient d'être décoché ne part pas.
-         *
-         * Le filtre existe aussi à l'affichage, mais l'enregistrer quand même
-         * donnerait un accueil qui se remplit tout seul le jour où l'onglet
-         * est réinstallé, sans que personne ne l'ait demandé.
+         * Une carte dont l'onglet vient d'être décoché ne part pas : sinon
+         * l'accueil se remplirait tout seul le jour où l'onglet revient, sans
+         * que personne ne l'ait demandé.
          */
         blocs: plan.espace.blocs.filter((id, i) => {
           if (!garde[`carte:${i}`]) return false;
@@ -191,7 +190,7 @@ export function Sas() {
         }),
       },
     };
-  }, [plan, garde]);
+  }, [plan, garde, prenom]);
 
   const appliquer = useCallback(async () => {
     if (!planRetenu) return;
@@ -214,464 +213,649 @@ export function Sas() {
     }
   }, [planRetenu]);
 
-  /** Modifier un bloc sur place : heure de début, de fin, intitulé. */
-  const modifierBloc = useCallback(
-    (i: number, champ: "debut" | "fin" | "titre", valeur: string) => {
-      setPlan((p) =>
-        p === null
-          ? p
-          : { ...p, blocs: p.blocs.map((b, j) => (j === i ? { ...b, [champ]: valeur } : b)) },
-      );
-    },
-    [],
-  );
+  const creerCompte = useCallback(async () => {
+    setErreur(null);
+    try {
+      const r = await fetch("/api/auth/creer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nom: nouveauNom, motDePasse: nouveauMdp }),
+      });
+      const d = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setErreur(d.error ?? "Création impossible.");
+        return;
+      }
+      /*
+       * On change d'OS : la mémoire du navigateur doit repartir de zéro.
+       *
+       * Les caches locaux (tâches, journée, réglages) ne sont pas rangés par
+       * compte. Sans ce nettoyage, le nouvel OS s'ouvrait rempli des données
+       * du précédent — exactement ce que la séparation des comptes cherche à
+       * empêcher.
+       */
+      purgerCachesLocaux();
+      setConnecte(true);
+      await construire();
+    } catch (err) {
+      console.error("[sas] création impossible :", err);
+      setErreur("Création impossible. Réessaie dans un instant.");
+    }
+  }, [nouveauNom, nouveauMdp, construire]);
 
-  const teinte = PROFILS.find((p) => p.id === profil)?.couleur ?? "var(--color-cya)";
+  /** Avancer d'un écran ; au bout, vers le compte ou droit à la construction. */
+  const suivant = useCallback(() => {
+    if (etape < ETAPES - 1) {
+      setEtape((e) => e + 1);
+      return;
+    }
+    if (nouveauCompte || connecte === false) {
+      // Le nom de compte se déduit du prénom : un champ de moins à remplir.
+      setNouveauNom((n) => n || prenom.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+      setPhase("compte");
+      return;
+    }
+    void construire();
+  }, [etape, nouveauCompte, connecte, prenom, construire]);
+
+  const reculer = useCallback(() => {
+    setErreur(null);
+    if (phase === "compte") {
+      setPhase("parcours");
+      return;
+    }
+    if (phase !== "parcours") return;
+    if (etape === 0) setPhase("porte");
+    else setEtape((e) => e - 1);
+  }, [phase, etape]);
 
   return (
-    <div className="cadre-appli relative flex flex-col overflow-hidden">
+    <div className="sas-ecran relative overflow-hidden" style={{ ["--teinte" as string]: teinte }}>
+      {/* Le halo prend la teinte du profil : l'écran change de couleur au choix. */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div
-          className="absolute -top-[140px] left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full blur-[90px]"
-          style={{ background: `radial-gradient(circle, ${teinte}22, transparent 70%)` }}
+          className="absolute -right-[140px] -top-[180px] h-[430px] w-[430px] rounded-full blur-[90px] transition-[background] duration-700"
+          style={{ background: `radial-gradient(circle, ${teinte}26, transparent 70%)` }}
+        />
+        <div
+          className="absolute -bottom-[200px] -left-[150px] h-[420px] w-[420px] rounded-full blur-[90px] transition-[background] duration-700"
+          style={{ background: `radial-gradient(circle, ${teinte}14, transparent 70%)` }}
         />
       </div>
 
-      {/* ---------- La barre d'avancement ---------- */}
-      <div
-        className="relative z-[1] px-[22px] pt-[18px]"
-        style={{ paddingTop: "calc(18px + env(safe-area-inset-top, 0px))" }}
-      >
-        <div className="mx-auto flex w-full max-w-[560px] items-center gap-[12px]">
-          <button
-            type="button"
-            onClick={() => setEtape((e) => Math.max(0, e - 1))}
-            disabled={etape === 0 || phase !== "questions"}
-            aria-label="Revenir à l'écran précédent"
-            className="flex h-[36px] w-[36px] flex-none cursor-pointer items-center justify-center rounded-full text-[17px] font-black text-white/40 transition-colors hover:text-white/80 disabled:opacity-0"
-          >
-            ←
-          </button>
-          <div className="bar-track flex-1">
-            <div
-              className="h-full rounded-full transition-[width] duration-300"
-              style={{
-                width: `${Math.round(((phase === "porte" ? 0 : phase === "questions" ? etape : TOTAL) / TOTAL) * 100)}%`,
-                background: "var(--grad)",
-              }}
+      {phase === "porte" && (
+        <Porte
+          connecte={connecte}
+          onContinuer={() => {
+            setNouveauCompte(false);
+            setPhase("parcours");
+          }}
+          onCreer={() => {
+            setNouveauCompte(true);
+            setPhase("parcours");
+          }}
+        />
+      )}
+
+      {phase === "parcours" && (
+        <>
+          <BarreHaut etape={etape} total={ETAPES} onRetour={reculer} />
+          <div className="sas-corps">
+            {etape === 0 && (
+              <EcranPrenom valeur={prenom} onChange={setPrenom} onValider={suivant} />
+            )}
+            {etape === 1 && <EcranProfil choisi={profil} onChoisir={setProfil} />}
+            {question && (
+              <EcranQuestion
+                key={question.id}
+                question={question}
+                choisis={choix[question.id] ?? []}
+                teinte={teinte}
+                onBasculer={(id) => basculer(question.id, id, Boolean(question.multiple))}
+              />
+            )}
+            {etape === ETAPES - 1 && (
+              <EcranPrecision valeur={precision} onChange={setPrecision} prenom={prenom} />
+            )}
+          </div>
+          <PiedBouton
+            libelle={etape === ETAPES - 1 ? "Construire mon OS" : "Continuer"}
+            actif={repondu}
+            teinte={teinte}
+            erreur={erreur}
+            onClic={suivant}
+            secondaire={
+              etape === ETAPES - 1 && precision.trim() === ""
+                ? { libelle: "Passer", onClic: suivant }
+                : undefined
+            }
+          />
+        </>
+      )}
+
+      {phase === "compte" && (
+        <>
+          <BarreHaut etape={ETAPES} total={ETAPES} onRetour={reculer} />
+          <div className="sas-corps">
+            <EcranCompte
+              prenom={prenom}
+              nom={nouveauNom}
+              mdp={nouveauMdp}
+              teinte={teinte}
+              onNom={setNouveauNom}
+              onMdp={setNouveauMdp}
             />
           </div>
-        </div>
-      </div>
-
-      <main
-        className="relative z-[1] mx-auto flex w-full max-w-[560px] flex-1 flex-col px-[22px] pb-[24px] pt-[26px]"
-        style={{
-          paddingLeft: "max(22px, env(safe-area-inset-left, 0px))",
-          paddingRight: "max(22px, env(safe-area-inset-right, 0px))",
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
-        }}
-      >
-        {phase === "porte" && (
-          <Porte
-            connecte={connecte}
-            nom={nouveauNom}
-            mdp={nouveauMdp}
+          <PiedBouton
+            libelle="Créer mon OS"
+            actif={nouveauNom.trim().length >= 2 && nouveauMdp.length >= 8}
+            teinte={teinte}
             erreur={erreur}
-            onNom={setNouveauNom}
-            onMdp={setNouveauMdp}
-            onContinuer={() => {
-              setErreur(null);
-              setPhase("questions");
-            }}
-            onCreer={async () => {
-              setErreur(null);
-              try {
-                const r = await fetch("/api/auth/creer", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ nom: nouveauNom, motDePasse: nouveauMdp }),
-                });
-                const d = (await r.json()) as { error?: string };
-                if (!r.ok) throw new Error(d.error ?? "Création impossible.");
-                /*
-                 * Les caches du compte précédent sont vidés ici, pas plus tard.
-                 * Le nouvel OS est vierge ; sans cette purge il se peindrait
-                 * avec la journée type et les tâches de l'ancien.
-                 */
-                purgerCachesLocaux();
-                // Le compte est ouvert et la session posée : on enchaîne.
-                setPhase("questions");
-              } catch (err) {
-                setErreur(err instanceof Error ? err.message : "Création impossible.");
-              }
-            }}
+            onClic={() => void creerCompte()}
           />
-        )}
+        </>
+      )}
 
-        {phase === "construction" && <EnConstruction />}
+      {phase === "construction" && <EnConstruction teinte={teinte} prenom={prenom} />}
 
-        {phase === "questions" && (
-          <>
-            {etape === 0 && (
-              <Ecran
-                titre="Tu ressembles le plus à…"
-                raison="Ce choix décide de tout le reste. Tu pourras en changer."
-              >
-                <div className="flex flex-col gap-[9px]">
-                  {PROFILS.map((p) => (
-                    <Carte
-                      key={p.id}
-                      actif={profil === p.id}
-                      couleur={p.couleur}
-                      onClick={() => setProfil(p.id)}
-                    >
-                      <span className="text-[22px]">{p.emoji}</span>
-                      <span className="min-w-0 flex-1 text-left">
-                        <span className="block text-[14.5px] font-black">{p.titre}</span>
-                        <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
-                          {p.accroche}
-                        </span>
-                      </span>
-                    </Carte>
-                  ))}
-                </div>
-              </Ecran>
-            )}
+      {phase === "apercu" && plan && (
+        <Apercu
+          plan={plan}
+          garde={garde}
+          secours={secours}
+          erreur={erreur}
+          teinte={teinte}
+          prenom={prenom}
+          onBasculer={(cle) => setGarde((g) => ({ ...g, [cle]: !g[cle] }))}
+          onModifierBloc={(i, champ, valeur) =>
+            setPlan((p) =>
+              p === null
+                ? p
+                : { ...p, blocs: p.blocs.map((b, j) => (j === i ? { ...b, [champ]: valeur } : b)) },
+            )
+          }
+          onAppliquer={() => void appliquer()}
+        />
+      )}
 
-            {question && (
-              <Ecran titre={question.intitule} raison={question.raison}>
-                <div className="flex flex-col gap-[9px]">
-                  {question.choix.map((c) => (
-                    <Carte
-                      key={c.id}
-                      actif={(choix[question.id] ?? []).includes(c.id)}
-                      couleur={teinte}
-                      onClick={() => basculer(question.id, c.id, Boolean(question.multiple))}
-                    >
-                      {c.emoji && <span className="text-[19px]">{c.emoji}</span>}
-                      <span className="flex-1 text-left text-[14px] font-bold">{c.libelle}</span>
-                    </Carte>
-                  ))}
-                </div>
-                {question.multiple && (
-                  <p className="mt-[10px] text-center text-[11px] font-bold text-white/25">
-                    Plusieurs réponses possibles.
-                  </p>
-                )}
-              </Ecran>
-            )}
-
-            {etape === TOTAL - 1 && (
-              <Ecran
-                titre="Quelque chose que je devrais savoir ?"
-                raison="Une contrainte, un objectif précis, un métier. Ou rien — c'est facultatif."
-              >
-                <textarea
-                  value={precision}
-                  onChange={(e) => setPrecision(e.target.value.slice(0, LONGUEUR_PRECISION))}
-                  rows={4}
-                  placeholder="Je bosse en 3×8, je prépare le barreau, je pars vivre au Japon en mars…"
-                  className="w-full resize-none rounded-[13px] px-[13px] py-[11px] text-[14px] font-semibold leading-[1.5] outline-none placeholder:text-white/25"
-                  style={{
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.09)",
-                    color: "var(--color-fg)",
-                  }}
-                />
-                <div className="mt-[6px] text-right font-mono text-[10.5px] text-white/25">
-                  {precision.length} / {LONGUEUR_PRECISION}
-                </div>
-              </Ecran>
-            )}
-
-            {erreur && (
-              <p
-                className="mt-[14px] rounded-[11px] px-[12px] py-[9px] text-center text-[12px] font-bold"
-                style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.1)" }}
-              >
-                {erreur}
-              </p>
-            )}
-
-            <div className="mt-auto pt-[22px]">
-              <button
-                type="button"
-                disabled={!repondu}
-                onClick={() => (etape === TOTAL - 1 ? void construire() : setEtape((e) => e + 1))}
-                className="flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-[14px] text-[15px] font-black text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-25"
-                style={{ background: "var(--grad)" }}
-              >
-                {etape === TOTAL - 1 ? "Construire mon OS" : "Continuer"}
-              </button>
-            </div>
-          </>
-        )}
-
-        {phase === "apercu" && plan && (
-          <Apercu
-            plan={plan}
-            garde={garde}
-            secours={secours}
-            erreur={erreur}
-            retenus={
-              (planRetenu?.blocs.length ?? 0) +
-              (planRetenu?.habitudes.length ?? 0) +
-              (planRetenu?.objectifs.length ?? 0) +
-              (planRetenu?.skills.length ?? 0)
-            }
-            onBasculer={(cle) => setGarde((g) => ({ ...g, [cle]: !g[cle] }))}
-            onModifierBloc={modifierBloc}
-            onAppliquer={() => void appliquer()}
-          />
-        )}
-
-        {phase === "pose" && <Termine bilan={bilan} />}
-      </main>
+      {phase === "pose" && <Termine bilan={bilan} teinte={teinte} prenom={prenom} />}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
+/* Le châssis : barre du haut, pied                                    */
+/* ------------------------------------------------------------------ */
 
 /**
- * La porte : continuer, ou créer.
+ * Flèche de retour et jauge segmentée.
  *
- * Deux chemins visibles d'emblée, parce que les deux existent réellement.
- * Cacher la création derrière un lien discret revenait à dire « c'est
- * l'application de quelqu'un d'autre ».
+ * Segmentée, pas continue : une barre qui avance de 14 % ne dit rien, sept
+ * traits dont trois sont pleins disent « il en reste quatre ». C'est la seule
+ * information qui empêche d'abandonner au troisième écran.
  */
-function Porte({
-  connecte,
-  nom,
-  mdp,
-  erreur,
-  onNom,
-  onMdp,
-  onContinuer,
-  onCreer,
+function BarreHaut({
+  etape,
+  total,
+  onRetour,
 }: {
-  /** null tant qu'on ne sait pas encore s'il y a une session. */
-  connecte: boolean | null;
-  nom: string;
-  mdp: string;
-  erreur: string | null;
-  onNom: (v: string) => void;
-  onMdp: (v: string) => void;
-  onContinuer: () => void;
-  onCreer: () => void | Promise<void>;
+  etape: number;
+  total: number;
+  onRetour: () => void;
 }) {
-  /*
-   * Sans session, le formulaire de création est ouvert d'emblée.
-   *
-   * C'est le cas de tous ceux qui arrivent de la page publique : leur unique
-   * chemin est de créer un OS, et le leur faire découvrir en dépliant un
-   * second bouton ajoute un geste pour rien.
-   */
-  const [ouvertManuel, setOuvertManuel] = useState(false);
-  const ouvre = ouvertManuel || connecte === false;
-  const pret = nom.trim().length >= 2 && mdp.length >= 8;
-
   return (
-    <div className="view-in flex flex-1 flex-col">
-      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em] sm:text-[27px]">
-        {connecte === false ? "Commençons par ton OS." : "On part de quoi ?"}
-      </h1>
-      <p className="mt-[7px] text-[12.5px] font-semibold leading-[1.45] text-white/45">
-        {connecte === false
-          ? "Un nom, un mot de passe, et on enchaîne sur les questions. Rien d'autre à remplir."
-          : "Chaque OS est séparé : ses journées, ses tâches, ses objectifs n'appartiennent qu'à lui."}
-      </p>
-
-      <div className="mt-[20px] flex flex-col gap-[9px]">
-        {/*
-          « Continuer avec mon OS » n'apparaît QUE si l'on en a un.
-          Le proposer à un visiteur de passage lui faisait traverser six écrans
-          pour se heurter à « tu n'as pas encore d'OS » au tout dernier pas.
-        */}
-        {connecte !== false && (
-          <button
-            type="button"
-            onClick={onContinuer}
-            disabled={connecte === null}
-            className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all disabled:cursor-wait disabled:opacity-45"
-            style={{
-              background: "rgba(255,255,255,0.035)",
-              border: "1.5px solid rgba(255,255,255,0.09)",
-            }}
-          >
-            <span className="text-[22px]">🔑</span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[14.5px] font-black">Continuer avec mon OS</span>
-              <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
-                Ajoute des blocs, des habitudes et des objectifs à celui que tu as déjà.
-              </span>
-            </span>
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setOuvertManuel((v) => !v)}
-          aria-expanded={ouvre}
-          className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all"
-          style={{
-            background: ouvre ? "rgba(61,220,132,0.1)" : "rgba(255,255,255,0.035)",
-            border: `1.5px solid ${ouvre ? "rgba(61,220,132,0.45)" : "rgba(255,255,255,0.09)"}`,
-          }}
-        >
-          <span className="text-[22px]">✨</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14.5px] font-black">Créer un nouvel OS</span>
-            <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
-              Un espace vierge, avec son propre nom et son propre mot de passe.
-            </span>
-          </span>
-        </button>
+    <header
+      className="relative z-[1] flex items-center gap-[12px] px-[18px] pb-[12px]"
+      style={{ paddingTop: "calc(14px + env(safe-area-inset-top, 0px))" }}
+    >
+      <button
+        type="button"
+        onClick={onRetour}
+        aria-label="Revenir en arrière"
+        className="flex h-[44px] w-[34px] flex-none cursor-pointer items-center text-[25px] font-black text-white/30 transition-colors hover:text-white/70"
+      >
+        ←
+      </button>
+      <div
+        className="sas-jauge"
+        role="progressbar"
+        aria-valuenow={Math.min(etape + 1, total)}
+        aria-valuemin={1}
+        aria-valuemax={total}
+      >
+        {Array.from({ length: total }, (_, i) => (
+          <span key={i} className={i <= etape ? "faite" : ""} />
+        ))}
       </div>
+    </header>
+  );
+}
 
-      {ouvre && (
-        <div className="mt-[12px] flex flex-col gap-[8px]">
-          <input
-            value={nom}
-            onChange={(e) => onNom(e.target.value)}
-            placeholder="Nom de l'OS — ex. « julie »"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="w-full rounded-[12px] px-[13px] py-[12px] text-[14px] font-semibold outline-none placeholder:text-white/25"
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.09)",
-              color: "var(--color-fg)",
-            }}
-          />
-          <input
-            value={mdp}
-            onChange={(e) => onMdp(e.target.value)}
-            type="password"
-            placeholder="Mot de passe — 8 caractères minimum"
-            className="w-full rounded-[12px] px-[13px] py-[12px] text-[14px] font-semibold outline-none placeholder:text-white/25"
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.09)",
-              color: "var(--color-fg)",
-            }}
-          />
-          <button
-            type="button"
-            disabled={!pret}
-            onClick={() => void onCreer()}
-            className="flex min-h-[50px] w-full cursor-pointer items-center justify-center rounded-[13px] text-[14.5px] font-black text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-25"
-            style={{ background: "var(--grad)" }}
-          >
-            Créer et continuer
-          </button>
-          {/* Il n'y a pas de « mot de passe oublié » : on le dit avant. */}
-          <p className="text-center text-[11px] font-bold leading-[1.4] text-white/30">
-            Note ce mot de passe : il n&apos;y a aucun moyen de le retrouver.
-          </p>
-        </div>
-      )}
-
-      {/* La sortie pour qui a déjà un OS mais n'est pas connecté ici. */}
-      {connecte === false && (
-        <a
-          href="/login"
-          className="mt-[16px] flex min-h-[44px] items-center justify-center text-[12.5px] font-bold text-white/35 underline underline-offset-4 transition-colors hover:text-white/60"
-        >
-          J&apos;ai déjà un OS — me connecter
-        </a>
-      )}
-
+/**
+ * Le pied : UN bouton, pleine largeur, toujours au même endroit.
+ *
+ * « Toujours au même endroit » est la partie qui compte. Un bouton qui se
+ * déplace d'un écran à l'autre oblige à le chercher à chaque fois ; ici le
+ * pouce sait où aller sans regarder, et l'enchaînement se fait à l'aveugle.
+ */
+function PiedBouton({
+  libelle,
+  actif,
+  teinte,
+  erreur,
+  onClic,
+  secondaire,
+}: {
+  libelle: string;
+  actif: boolean;
+  teinte: string;
+  erreur?: string | null;
+  onClic: () => void;
+  secondaire?: { libelle: string; onClic: () => void };
+}) {
+  return (
+    <footer
+      className="relative z-[1] flex flex-col gap-[10px] px-[18px] pt-[10px]"
+      style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))" }}
+    >
       {erreur && (
         <p
-          className="mt-[14px] rounded-[11px] px-[12px] py-[9px] text-center text-[12px] font-bold"
-          style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.1)" }}
+          className="rounded-[12px] px-[13px] py-[10px] text-center text-[12.5px] font-bold leading-[1.35]"
+          style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.11)" }}
         >
           {erreur}
         </p>
       )}
-    </div>
-  );
-}
-
-function Ecran({
-  titre,
-  raison,
-  children,
-}: {
-  titre: string;
-  raison: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="view-in">
-      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em] sm:text-[27px]">
-        {titre}
-      </h1>
-      {/* Le POURQUOI sous chaque question : sans lui, on répond au hasard. */}
-      <p className="mt-[7px] text-[12.5px] font-semibold leading-[1.45] text-white/45">{raison}</p>
-      <div className="mt-[20px]">{children}</div>
-    </div>
-  );
-}
-
-function Carte({
-  actif,
-  couleur,
-  onClick,
-  children,
-}: {
-  actif: boolean;
-  couleur: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={actif}
-      className="flex min-h-[58px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[11px] transition-all"
-      style={{
-        background: actif ? `${couleur}1c` : "rgba(255,255,255,0.035)",
-        border: `1.5px solid ${actif ? couleur : "rgba(255,255,255,0.08)"}`,
-        boxShadow: actif ? `0 0 22px -12px ${couleur}` : "none",
-      }}
-    >
-      {children}
-      <span
-        className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-full text-[11px] font-black"
+      {secondaire && (
+        <button
+          type="button"
+          onClick={secondaire.onClic}
+          className="min-h-[40px] cursor-pointer text-[13px] font-extrabold uppercase tracking-[0.06em] text-white/30 transition-colors hover:text-white/60"
+        >
+          {secondaire.libelle}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClic}
+        disabled={!actif}
+        className="sas-bouton"
         style={{
-          background: actif ? couleur : "transparent",
-          border: `2px solid ${actif ? couleur : "rgba(255,255,255,0.15)"}`,
-          color: "#07121d",
+          background: teinte,
+          boxShadow: actif ? `0 5px 0 0 color-mix(in srgb, ${teinte} 58%, #000)` : "none",
         }}
       >
-        {actif ? "✓" : ""}
-      </span>
-    </button>
+        {libelle}
+      </button>
+    </footer>
   );
 }
 
-function EnConstruction() {
+/** Le compagnon et sa bulle, en tête d'écran. */
+function Dit({
+  texte,
+  humeur = "neutre",
+  teinte,
+}: {
+  texte: string;
+  humeur?: Humeur;
+  teinte: string;
+}) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center text-center">
-      <div className="lancement-piste" />
-      <p className="mt-[18px] text-[15px] font-black">Je monte ton espace de travail…</p>
-      <p className="mt-[6px] max-w-[300px] text-[12.5px] font-semibold leading-[1.45] text-white/45">
-        Journée type, habitudes, objectifs et compétences. Quelques secondes.
+    <div className="flex items-start gap-[10px]">
+      <Mascotte humeur={humeur} couleur={teinte} taille={80} />
+      <div className="min-w-0 flex-1 pt-[10px]">
+        <Bulle>{texte}</Bulle>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Les écrans                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * La porte d'entrée.
+ *
+ * Pour un inconnu, c'est l'écran d'accueil d'une application : le nom en très
+ * grand, une promesse d'une ligne, un bouton plein, un lien de connexion.
+ * Pour quelqu'un de déjà connecté, c'est le choix entre enrichir son OS et en
+ * ouvrir un second.
+ */
+function Porte({
+  connecte,
+  onContinuer,
+  onCreer,
+}: {
+  connecte: boolean | null;
+  onContinuer: () => void;
+  onCreer: () => void;
+}) {
+  return (
+    <>
+      <div className="sas-corps sas-in sas-sans-barre items-center justify-center text-center">
+        <Mascotte humeur="salut" couleur={BLEU} taille={140} />
+        <h1 className="mt-[24px] text-[42px] font-black leading-[1] tracking-[-0.045em] sm:text-[54px]">
+          twaylo os
+        </h1>
+        <p className="mt-[13px] max-w-[290px] text-[16px] font-bold leading-[1.4] text-white/55">
+          Ta journée, écrite d&apos;avance. Coche, monte de niveau, recommence.
+        </p>
+      </div>
+
+      <footer
+        className="relative z-[1] flex flex-col gap-[10px] px-[18px] pt-[10px]"
+        style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <button
+          type="button"
+          onClick={onCreer}
+          className="sas-bouton"
+          style={{ background: BLEU, boxShadow: "0 5px 0 0 #2f6fd0" }}
+        >
+          Commencer
+        </button>
+
+        {connecte === true ? (
+          <button type="button" onClick={onContinuer} className="sas-bouton sas-bouton-2">
+            Continuer avec mon OS
+          </button>
+        ) : (
+          <a href="/login" className="sas-bouton sas-bouton-2">
+            J&apos;ai déjà un OS
+          </a>
+        )}
+      </footer>
+    </>
+  );
+}
+
+/** « On t'appelle comment ? » — le premier écran, et le plus court. */
+function EcranPrenom({
+  valeur,
+  onChange,
+  onValider,
+}: {
+  valeur: string;
+  onChange: (v: string) => void;
+  onValider: () => void;
+}) {
+  return (
+    <div className="sas-in">
+      <Dit texte="On t'appelle comment ?" humeur="salut" teinte="var(--teinte)" />
+      <h1 className="sas-titre mt-[26px]">Ton prénom</h1>
+      <input
+        value={valeur}
+        onChange={(e) => onChange(e.target.value.slice(0, 24))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && valeur.trim()) onValider();
+        }}
+        placeholder="Nico"
+        autoFocus
+        autoCapitalize="words"
+        autoCorrect="off"
+        aria-label="Ton prénom"
+        className="mt-[16px] w-full rounded-[16px] px-[16px] py-[16px] text-[17px] font-bold outline-none placeholder:text-white/20"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "2px solid var(--teinte)",
+          color: "var(--color-fg)",
+        }}
+      />
+      <p className="mt-[10px] text-[12.5px] font-semibold text-white/35">
+        Tu pourras en changer plus tard dans ton profil.
       </p>
     </div>
   );
 }
 
+/** Le profil : six grandes cartes, un seul appui. */
+function EcranProfil({
+  choisi,
+  onChoisir,
+}: {
+  choisi: string | null;
+  onChoisir: (id: string) => void;
+}) {
+  return (
+    <div className="sas-in">
+      <h1 className="sas-titre">Tu te reconnais dans quoi ?</h1>
+      <p className="mt-[9px] text-[13.5px] font-semibold leading-[1.4] text-white/40">
+        Un étudiant et un indépendant n&apos;ont pas la même journée.
+      </p>
+      <div className="sas-cascade mt-[20px] flex flex-col gap-[9px]">
+        {PROFILS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onChoisir(p.id)}
+            aria-pressed={choisi === p.id}
+            className="sas-choix"
+            style={{ ["--teinte" as string]: p.couleur }}
+          >
+            <span className="text-[26px] leading-none">{p.emoji}</span>
+            <span className="min-w-0 flex-1">{p.titre}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Une question, ses choix. Rien d'autre à l'écran. */
+function EcranQuestion({
+  question,
+  choisis,
+  teinte,
+  onBasculer,
+}: {
+  question: (typeof QUESTIONS)[number];
+  choisis: string[];
+  teinte: string;
+  onBasculer: (id: string) => void;
+}) {
+  return (
+    <div className="sas-in">
+      <Dit texte={question.intitule} humeur="neutre" teinte={teinte} />
+      <p className="mt-[16px] text-[13px] font-semibold leading-[1.4] text-white/35">
+        {question.raison}
+        {question.multiple && (
+          <span className="ml-[5px] font-black" style={{ color: teinte }}>
+            Plusieurs réponses possibles.
+          </span>
+        )}
+      </p>
+      <div className="sas-cascade mt-[18px] flex flex-col gap-[9px]">
+        {question.choix.map((c) => {
+          const pris = choisis.includes(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onBasculer(c.id)}
+              aria-pressed={pris}
+              className="sas-choix"
+            >
+              {c.emoji && <span className="text-[22px] leading-none">{c.emoji}</span>}
+              <span className="min-w-0 flex-1">{c.libelle}</span>
+              {question.multiple && (
+                <span
+                  className="flex h-[24px] w-[24px] flex-none items-center justify-center rounded-[8px] text-[13px] font-black text-[#07121d]"
+                  style={{
+                    background: pris ? teinte : "transparent",
+                    border: `2px solid ${pris ? teinte : "rgba(255,255,255,0.18)"}`,
+                  }}
+                >
+                  {pris && "✓"}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** La saisie libre : facultative, et on le dit. */
+function EcranPrecision({
+  valeur,
+  onChange,
+  prenom,
+}: {
+  valeur: string;
+  onChange: (v: string) => void;
+  prenom: string;
+}) {
+  return (
+    <div className="sas-in">
+      <Dit
+        texte={`Autre chose que je devrais savoir${prenom.trim() ? `, ${prenom.trim()}` : ""} ?`}
+        humeur="pense"
+        teinte="var(--teinte)"
+      />
+      <p className="mt-[16px] text-[13px] font-semibold leading-[1.4] text-white/35">
+        Une contrainte, un objectif précis, un métier. Ou rien — c&apos;est facultatif.
+      </p>
+      <textarea
+        value={valeur}
+        onChange={(e) => onChange(e.target.value.slice(0, LONGUEUR_PRECISION))}
+        rows={4}
+        aria-label="Précision libre"
+        placeholder="Je bosse de nuit une semaine sur deux…"
+        className="mt-[14px] w-full resize-none rounded-[16px] px-[15px] py-[14px] text-[15px] font-semibold outline-none placeholder:text-white/20"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "2px solid rgba(255,255,255,0.1)",
+          color: "var(--color-fg)",
+        }}
+      />
+      <div className="mt-[6px] text-right font-mono text-[11px] font-bold text-white/25">
+        {valeur.length} / {LONGUEUR_PRECISION}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Le compte, en dernier.
+ *
+ * À ce stade la personne a répondu à sept écrans : elle est engagée, et le
+ * formulaire n'est plus un péage mais la dernière marche. Le nom d'OS arrive
+ * pré-rempli à partir du prénom — un champ de moins.
+ */
+function EcranCompte({
+  prenom,
+  nom,
+  mdp,
+  teinte,
+  onNom,
+  onMdp,
+}: {
+  prenom: string;
+  nom: string;
+  mdp: string;
+  teinte: string;
+  onNom: (v: string) => void;
+  onMdp: (v: string) => void;
+}) {
+  return (
+    <div className="sas-in">
+      <Dit
+        texte={`Dernière étape${prenom.trim() ? `, ${prenom.trim()}` : ""} !`}
+        humeur="content"
+        teinte={teinte}
+      />
+      <h1 className="sas-titre mt-[24px]">On garde tout ça où ?</h1>
+      <p className="mt-[9px] text-[13px] font-semibold leading-[1.4] text-white/40">
+        Un nom, un mot de passe, et ton OS est à toi.
+      </p>
+
+      <label className="mt-[18px] block">
+        <span className="mb-[6px] block text-[11px] font-black tracking-[0.1em] text-white/30">
+          NOM DE TON OS
+        </span>
+        <input
+          value={nom}
+          onChange={(e) => onNom(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
+          placeholder="nico"
+          className="w-full rounded-[16px] px-[16px] py-[15px] text-[16px] font-bold outline-none placeholder:text-white/20"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "2px solid rgba(255,255,255,0.1)",
+            color: "var(--color-fg)",
+          }}
+        />
+      </label>
+
+      <label className="mt-[12px] block">
+        <span className="mb-[6px] block text-[11px] font-black tracking-[0.1em] text-white/30">
+          MOT DE PASSE
+        </span>
+        <input
+          value={mdp}
+          onChange={(e) => onMdp(e.target.value)}
+          type="password"
+          placeholder="8 caractères minimum"
+          className="w-full rounded-[16px] px-[16px] py-[15px] text-[16px] font-bold outline-none placeholder:text-white/20"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "2px solid rgba(255,255,255,0.1)",
+            color: "var(--color-fg)",
+          }}
+        />
+      </label>
+
+      {/* Il n'y a pas de « mot de passe oublié » : on le dit AVANT. */}
+      <p className="mt-[12px] text-[12px] font-bold leading-[1.4] text-white/30">
+        Note-le quelque part : il n&apos;y a aucun moyen de le retrouver.
+      </p>
+    </div>
+  );
+}
+
+/** L'attente. Le compagnon réfléchit, la barre avance toute seule. */
+function EnConstruction({ teinte, prenom }: { teinte: string; prenom: string }) {
+  return (
+    <div className="sas-corps sas-sans-barre items-center justify-center text-center">
+      <Mascotte humeur="pense" couleur={teinte} taille={128} />
+      <p className="mt-[24px] text-[19px] font-black leading-[1.2]">
+        Je monte ton espace{prenom.trim() ? `, ${prenom.trim()}` : ""}…
+      </p>
+      <p className="mt-[8px] max-w-[290px] text-[13.5px] font-semibold leading-[1.4] text-white/40">
+        Journée type, habitudes, objectifs et compétences. Quelques secondes.
+      </p>
+      <div className="lancement-piste mt-[26px]" />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* L'aperçu                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ce qui va être posé, en six lignes.
+ *
+ * La version précédente dépliait tout : une trentaine de cases à cocher sur un
+ * seul écran, juste avant la ligne d'arrivée. On en lit trois et on appuie
+ * sans regarder — ce qui rend le tri inutile ET donne l'impression d'avoir
+ * accepté quelque chose qu'on n'a pas lu.
+ *
+ * Ici chaque partie tient sur une ligne : un emoji, un compte, les premiers
+ * noms. Qui veut trier ouvre la section. Le bouton reste en bas, seul, comme
+ * sur tous les autres écrans.
+ */
 function Apercu({
   plan,
   garde,
   secours,
   erreur,
-  retenus,
+  teinte,
+  prenom,
   onBasculer,
   onModifierBloc,
   onAppliquer,
@@ -680,50 +864,40 @@ function Apercu({
   garde: Record<string, boolean>;
   secours: boolean;
   erreur: string | null;
-  retenus: number;
+  teinte: string;
+  prenom: string;
   onBasculer: (cle: string) => void;
   onModifierBloc: (i: number, champ: "debut" | "fin" | "titre", valeur: string) => void;
   onAppliquer: () => void;
 }) {
+  const compte = (prefixe: string, n: number) =>
+    Array.from({ length: n }, (_, i) => i).filter((i) => garde[`${prefixe}:${i}`]).length;
+
   return (
-    <div className="view-in flex flex-1 flex-col">
-      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em]">
-        Choisis ce que tu gardes.
-      </h1>
-      {plan.resume && (
-        <p className="mt-[8px] text-[13px] font-semibold leading-[1.5] text-white/55">
-          {plan.resume}
+    <>
+      <div className="sas-corps sas-in sas-sans-barre">
+        <Dit
+          texte={`C'est prêt${prenom.trim() ? `, ${prenom.trim()}` : ""} !`}
+          humeur="bravo"
+          teinte={teinte}
+        />
+        <h1 className="sas-titre mt-[22px]">Voilà ton OS.</h1>
+        <p className="mt-[9px] text-[13.5px] font-semibold leading-[1.45] text-white/45">
+          {secours
+            ? "L'assistant n'a pas répondu : voici la base de ton profil. Tout se modifie."
+            : plan.resume || "Tout se modifie, maintenant comme plus tard."}
         </p>
-      )}
-      {secours && (
-        <p
-          className="mt-[10px] rounded-[10px] px-[11px] py-[8px] text-[11.5px] font-bold leading-[1.4]"
-          style={{ color: "var(--color-amb-soft)", background: "rgba(255,198,61,0.09)" }}
-        >
-          L&apos;assistant n&apos;a pas répondu : voici la base de ton profil. Elle se modifie
-          entièrement ici.
-        </p>
-      )}
 
-      <div className="mt-[18px] flex flex-col gap-[10px]">
-        {/*
-          L'espace de travail EN PREMIER.
-
-          C'est ce qui se voit avant tout le reste quand l'OS s'ouvre — le rail
-          d'onglets et les cartes de l'accueil. Le montrer après la journée type
-          revenait à faire choisir la décoration avant les murs.
-        */}
-        {plan.espace.modules.length > 0 && (
-          <Bloc
-            titre="TES ONGLETS"
-            nombre={plan.espace.modules.filter((_, i) => garde[`mod:${i}`]).length}
+        <div className="mt-[18px] flex flex-col gap-[8px]">
+          <Section
+            emoji="🧩"
+            titre="Tes onglets"
+            n={compte("mod", plan.espace.modules.length)}
+            apercu={plan.espace.modules.slice(0, 4).join(" · ")}
+            teinte={teinte}
           >
-            <p className="mb-[7px] text-[11px] leading-[1.4] text-white/35">
-              Les pages de ton OS. Tu pourras en ajouter ou en retirer quand tu veux.
-            </p>
-            <div className="flex flex-wrap gap-[5px]">
+            <div className="flex flex-wrap gap-[6px]">
               {plan.espace.modules.map((id, i) => {
-                const m = MODULE_PAR_ID.get(id);
                 const fixe = MODULES_COEUR.includes(id);
                 const actif = fixe || Boolean(garde[`mod:${i}`]);
                 return (
@@ -733,259 +907,279 @@ function Apercu({
                     onClick={() => !fixe && onBasculer(`mod:${i}`)}
                     disabled={fixe}
                     aria-pressed={actif}
-                    title={m?.description}
-                    className="min-h-[34px] cursor-pointer rounded-full px-[11px] text-[11.5px] font-extrabold transition-all hover:brightness-125 disabled:cursor-default"
+                    className="min-h-[40px] cursor-pointer rounded-full px-[13px] text-[13px] font-extrabold transition-all disabled:cursor-default"
                     style={
                       actif
-                        ? { color: "#07121d", background: "var(--color-ver)" }
+                        ? { color: "#07121d", background: teinte }
                         : {
                             color: "rgba(255,255,255,0.4)",
                             background: "rgba(255,255,255,0.04)",
-                            border: "1px dashed rgba(255,255,255,0.14)",
+                            border: "1.5px dashed rgba(255,255,255,0.15)",
                           }
                     }
                   >
-                    {m?.emoji} {id}
+                    {MODULE_PAR_ID.get(id)?.emoji} {id}
                   </button>
                 );
               })}
             </div>
-          </Bloc>
-        )}
+          </Section>
 
-        {plan.espace.blocs.length > 0 && (
-          <Bloc
-            titre="TON ACCUEIL"
-            nombre={plan.espace.blocs.filter((_, i) => garde[`carte:${i}`]).length}
+          <Section
+            emoji="🏠"
+            titre="Ton accueil"
+            n={compte("carte", plan.espace.blocs.length)}
+            apercu={plan.espace.blocs
+              .slice(0, 4)
+              .map((id) => BLOC_PAR_ID.get(id)?.titre ?? id)
+              .join(" · ")}
+            teinte={teinte}
           >
-            <p className="mb-[7px] text-[11px] leading-[1.4] text-white/35">
-              Les cartes que tu verras en ouvrant. L&apos;ordre se règle ensuite.
-            </p>
-            {plan.espace.blocs.map((id, i) => {
-              const b = BLOC_PAR_ID.get(id);
-              const actif = Boolean(garde[`carte:${i}`]);
-              return (
-                <div
-                  key={id}
-                  className="flex items-center gap-[8px] border-b py-[7px] last:border-b-0"
-                  style={{ borderColor: "rgba(255,255,255,0.05)", opacity: actif ? 1 : 0.35 }}
+            {plan.espace.blocs.map((id, i) => (
+              <Ligne
+                key={id}
+                actif={Boolean(garde[`carte:${i}`])}
+                teinte={teinte}
+                onBasculer={() => onBasculer(`carte:${i}`)}
+              >
+                <span className="text-[14px] font-bold">
+                  {BLOC_PAR_ID.get(id)?.emoji} {BLOC_PAR_ID.get(id)?.titre ?? id}
+                </span>
+              </Ligne>
+            ))}
+          </Section>
+
+          {plan.blocs.length > 0 && (
+            <Section
+              emoji="🗓️"
+              titre="Ta journée type"
+              n={compte("bloc", plan.blocs.length)}
+              apercu={plan.blocs
+                .slice(0, 5)
+                .map((b) => b.debut)
+                .join(" · ")}
+              teinte={teinte}
+            >
+              {/*
+                Modifiable SUR PLACE. Un horaire qu'il faut aller changer
+                ailleurs après coup n'est jamais changé : la journée est
+                acceptée telle quelle, puis abandonnée parce qu'elle ne colle
+                pas.
+              */}
+              {plan.blocs.map((b, i) => {
+                const actif = Boolean(garde[`bloc:${i}`]);
+                return (
+                  <Ligne
+                    key={`bloc-${i}`}
+                    actif={actif}
+                    teinte={teinte}
+                    onBasculer={() => onBasculer(`bloc:${i}`)}
+                  >
+                    <span
+                      className="h-[8px] w-[8px] flex-none rounded-full"
+                      style={{ background: CATEGORIES_BLOC[b.categorie].couleur }}
+                    />
+                    <input
+                      type="time"
+                      value={b.debut}
+                      disabled={!actif}
+                      onChange={(e) => onModifierBloc(i, "debut", e.target.value)}
+                      aria-label={`Heure de ${b.titre}`}
+                      className="w-[72px] flex-none rounded-[9px] bg-transparent px-[5px] py-[6px] font-mono text-[12.5px] font-bold text-white/70 outline-none [color-scheme:dark]"
+                      style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                    />
+                    <input
+                      value={b.titre}
+                      disabled={!actif}
+                      onChange={(e) => onModifierBloc(i, "titre", e.target.value.slice(0, 60))}
+                      aria-label={`Intitulé du bloc de ${b.debut}`}
+                      className="min-w-0 flex-1 rounded-[9px] bg-transparent px-[8px] py-[6px] text-[14px] font-bold outline-none"
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        color: "var(--color-fg)",
+                      }}
+                    />
+                  </Ligne>
+                );
+              })}
+            </Section>
+          )}
+
+          {plan.habitudes.length > 0 && (
+            <Section
+              emoji="☑️"
+              titre="Tes habitudes"
+              n={compte("hab", plan.habitudes.length)}
+              apercu={plan.habitudes
+                .slice(0, 3)
+                .map((h) => h.nom)
+                .join(" · ")}
+              teinte={teinte}
+            >
+              {plan.habitudes.map((h, i) => (
+                <Ligne
+                  key={`hab-${i}`}
+                  actif={Boolean(garde[`hab:${i}`])}
+                  teinte={teinte}
+                  onBasculer={() => onBasculer(`hab:${i}`)}
                 >
-                  <Coche actif={actif} onClick={() => onBasculer(`carte:${i}`)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[12.5px] font-bold">
-                      {b?.emoji} {b?.titre ?? id}
-                    </span>
-                    <span className="block text-[10.5px] leading-[1.35] text-white/35">
-                      {b?.description}
-                    </span>
-                  </span>
-                </div>
-              );
-            })}
-          </Bloc>
-        )}
+                  <span className="text-[14px] font-bold">{h.nom}</span>
+                </Ligne>
+              ))}
+            </Section>
+          )}
 
-        {plan.blocs.length > 0 && (
-          <Bloc titre="TA JOURNÉE TYPE" nombre={plan.blocs.filter((_, i) => garde[`bloc:${i}`]).length}>
-            {/*
-              Modifiable SUR PLACE, pas dans un écran à part.
-              Un horaire qu'il faut aller changer ailleurs après coup n'est
-              jamais changé : la journée proposée est acceptée telle quelle,
-              puis abandonnée parce qu'elle ne colle pas.
-            */}
-            {plan.blocs.map((b, i) => {
-              const actif = Boolean(garde[`bloc:${i}`]);
-              return (
-                <div
-                  key={`bloc-${i}`}
-                  className="flex items-center gap-[8px] border-b py-[7px] last:border-b-0"
-                  style={{ borderColor: "rgba(255,255,255,0.05)", opacity: actif ? 1 : 0.35 }}
-                >
-                  <Coche actif={actif} onClick={() => onBasculer(`bloc:${i}`)} />
-                  <span
-                    className="h-[7px] w-[7px] flex-none rounded-full"
-                    style={{ background: CATEGORIES_BLOC[b.categorie].couleur }}
-                  />
-                  <input
-                    type="time"
-                    value={b.debut}
-                    disabled={!actif}
-                    onChange={(e) => onModifierBloc(i, "debut", e.target.value)}
-                    aria-label={`Heure de début de ${b.titre}`}
-                    className="w-[62px] flex-none rounded-[7px] bg-transparent px-[4px] py-[3px] font-mono text-[11px] font-bold text-white/60 outline-none"
-                    style={{ border: "1px solid rgba(255,255,255,0.09)" }}
-                  />
-                  <input
-                    value={b.titre}
-                    disabled={!actif}
-                    onChange={(e) => onModifierBloc(i, "titre", e.target.value.slice(0, 60))}
-                    aria-label={`Intitulé du bloc de ${b.debut}`}
-                    className="min-w-0 flex-1 rounded-[7px] bg-transparent px-[6px] py-[3px] text-[12.5px] font-bold outline-none"
-                    style={{ border: "1px solid rgba(255,255,255,0.09)", color: "var(--color-fg)" }}
-                  />
-                </div>
-              );
-            })}
-          </Bloc>
-        )}
-
-        {plan.habitudes.length > 0 && (
-          <Bloc titre="TES HABITUDES" nombre={plan.habitudes.filter((_, i) => garde[`hab:${i}`]).length}>
-            <Puces
-              items={plan.habitudes.map((h) => h.nom)}
-              prefixe="hab"
-              garde={garde}
-              onBasculer={onBasculer}
-            />
-          </Bloc>
-        )}
-
-        {plan.objectifs.length > 0 && (
-          <Bloc titre="TES OBJECTIFS" nombre={plan.objectifs.filter((_, i) => garde[`obj:${i}`]).length}>
-            {plan.objectifs.map((o, i) => {
-              const actif = Boolean(garde[`obj:${i}`]);
-              return (
-                <div
+          {plan.objectifs.length > 0 && (
+            <Section
+              emoji="🎯"
+              titre="Tes objectifs"
+              n={compte("obj", plan.objectifs.length)}
+              apercu={plan.objectifs
+                .slice(0, 2)
+                .map((o) => o.objectif)
+                .join(" · ")}
+              teinte={teinte}
+            >
+              {plan.objectifs.map((o, i) => (
+                <Ligne
                   key={`obj-${i}`}
-                  className="flex items-center gap-[8px] py-[4px]"
-                  style={{ opacity: actif ? 1 : 0.35 }}
+                  actif={Boolean(garde[`obj:${i}`])}
+                  teinte={teinte}
+                  onBasculer={() => onBasculer(`obj:${i}`)}
                 >
-                  <Coche actif={actif} onClick={() => onBasculer(`obj:${i}`)} />
-                  <span className="min-w-0 flex-1 text-[12.5px] font-bold">{o.objectif}</span>
-                  <span className="flex-none font-mono text-[10px] font-bold text-white/30">
+                  <span className="min-w-0 flex-1 text-[14px] font-bold">{o.objectif}</span>
+                  <span className="flex-none font-mono text-[11px] font-bold text-white/30">
                     {o.portee}
                   </span>
-                </div>
-              );
-            })}
-          </Bloc>
-        )}
+                </Ligne>
+              ))}
+            </Section>
+          )}
 
-        {plan.skills.length > 0 && (
-          <Bloc titre="TES COMPÉTENCES SUIVIES" nombre={plan.skills.filter((_, i) => garde[`skill:${i}`]).length}>
-            <Puces
-              items={plan.skills.map((s) => s.nom)}
-              prefixe="skill"
-              garde={garde}
-              onBasculer={onBasculer}
-            />
-          </Bloc>
-        )}
-      </div>
+          {plan.skills.length > 0 && (
+            <Section
+              emoji="📈"
+              titre="Tes compétences"
+              n={compte("skill", plan.skills.length)}
+              apercu={plan.skills
+                .slice(0, 3)
+                .map((s) => s.nom)
+                .join(" · ")}
+              teinte={teinte}
+            >
+              {plan.skills.map((s, i) => (
+                <Ligne
+                  key={`skill-${i}`}
+                  actif={Boolean(garde[`skill:${i}`])}
+                  teinte={teinte}
+                  onBasculer={() => onBasculer(`skill:${i}`)}
+                >
+                  <span className="text-[14px] font-bold">{s.nom}</span>
+                </Ligne>
+              ))}
+            </Section>
+          )}
+        </div>
 
-      {erreur && (
-        <p
-          className="mt-[14px] rounded-[11px] px-[12px] py-[9px] text-center text-[12px] font-bold"
-          style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.1)" }}
-        >
-          {erreur}
-        </p>
-      )}
-
-      <div className="mt-auto pt-[22px]">
-        <button
-          type="button"
-          onClick={onAppliquer}
-          disabled={retenus === 0}
-          className="flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-[14px] text-[15px] font-black text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-25"
-          style={{ background: "var(--grad)" }}
-        >
-          {retenus === 0 ? "Rien de sélectionné" : `Mettre en place (${retenus})`}
-        </button>
-        {/* Ce que « mettre en place » ne fait PAS : dit ici, avant le geste. */}
-        <p className="mt-[9px] text-center text-[11px] font-bold leading-[1.4] text-white/30">
-          Rien n&apos;est remplacé — tout s&apos;ajoute à ce que tu as déjà.
+        <p className="mt-[16px] text-center text-[12px] font-semibold leading-[1.4] text-white/25">
+          Rien n&apos;est remplacé : tout s&apos;ajoute, et tout se change après.
         </p>
       </div>
-    </div>
+
+      <PiedBouton libelle="C'est parti" actif teinte={teinte} erreur={erreur} onClic={onAppliquer} />
+    </>
   );
 }
 
-/** La case à cocher des éléments du plan : 32 px de haut au doigt. */
-function Coche({ actif, onClick }: { actif: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={actif}
-      aria-label={actif ? "Retirer cet élément" : "Garder cet élément"}
-      className="flex h-[32px] w-[26px] flex-none cursor-pointer items-center justify-center"
-    >
-      <span
-        className="flex h-[19px] w-[19px] items-center justify-center rounded-[6px] text-[11px] font-black"
-        style={{
-          background: actif ? "var(--color-ver)" : "transparent",
-          border: `2px solid ${actif ? "var(--color-ver)" : "rgba(255,255,255,0.18)"}`,
-          color: "#07121d",
-        }}
-      >
-        {actif ? "✓" : ""}
-      </span>
-    </button>
-  );
-}
-
-/** Les listes courtes — habitudes, compétences — en puces cochables. */
-function Puces({
-  items,
-  prefixe,
-  garde,
-  onBasculer,
-}: {
-  items: string[];
-  prefixe: string;
-  garde: Record<string, boolean>;
-  onBasculer: (cle: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-[6px]">
-      {items.map((nom, i) => {
-        const actif = Boolean(garde[`${prefixe}:${i}`]);
-        return (
-          <button
-            key={`${prefixe}-${i}`}
-            type="button"
-            onClick={() => onBasculer(`${prefixe}:${i}`)}
-            aria-pressed={actif}
-            className="flex min-h-[34px] cursor-pointer items-center gap-[6px] rounded-full px-[10px] py-[5px] text-[11.5px] font-bold transition-all"
-            style={{
-              background: actif ? "rgba(61,220,132,0.13)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${actif ? "rgba(61,220,132,0.4)" : "rgba(255,255,255,0.08)"}`,
-              color: actif ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.3)",
-            }}
-          >
-            <span style={{ color: actif ? "var(--color-ver)" : "rgba(255,255,255,0.2)" }}>
-              {actif ? "✓" : "+"}
-            </span>
-            {nom}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Bloc({
+/** Une partie de l'aperçu : refermée par défaut, dépliable d'un appui. */
+function Section({
+  emoji,
   titre,
-  nombre,
+  n,
+  apercu,
+  teinte,
   children,
 }: {
+  emoji: string;
   titre: string;
-  nombre: number;
+  n: number;
+  apercu: string;
+  teinte: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="panel-sm">
-      <div className="mb-[8px] flex items-baseline justify-between">
-        <span className="text-[10px] font-black tracking-[0.12em] text-white/35">{titre}</span>
-        <span className="font-mono text-[10.5px] font-bold text-white/25">{nombre}</span>
-      </div>
+    <details
+      className="overflow-hidden rounded-[16px]"
+      style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.07)" }}
+    >
+      <summary className="flex min-h-[62px] cursor-pointer list-none items-center gap-[12px] px-[14px] py-[11px]">
+        <span className="text-[22px] leading-none">{emoji}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-[7px]">
+            <span className="text-[14.5px] font-black">{titre}</span>
+            <span className="font-mono text-[12px] font-black" style={{ color: teinte }}>
+              {n}
+            </span>
+          </span>
+          <span className="mt-[2px] block truncate text-[11.5px] font-semibold text-white/35">
+            {apercu}
+          </span>
+        </span>
+        {/*
+          Un chevron, pas un crayon.
+          Le « ✎ » sortait en glyphe minuscule et illisible selon la police
+          système ; un chevron qui pivote à l'ouverture dit à la fois « ça
+          s'ouvre » et « c'est ouvert », sans dépendre d'aucun jeu d'emoji.
+        */}
+        <span className="chevron-section flex-none text-[17px] font-black text-white/25">›</span>
+      </summary>
+      <div className="flex flex-col gap-[6px] px-[14px] pb-[13px]">{children}</div>
+    </details>
+  );
+}
+
+/** Une ligne cochable de l'aperçu. */
+function Ligne({
+  actif,
+  teinte,
+  onBasculer,
+  children,
+}: {
+  actif: boolean;
+  teinte: string;
+  onBasculer: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-[10px]" style={{ opacity: actif ? 1 : 0.35 }}>
+      <button
+        type="button"
+        onClick={onBasculer}
+        aria-pressed={actif}
+        aria-label={actif ? "Retirer" : "Garder"}
+        className="flex h-[26px] w-[26px] flex-none cursor-pointer items-center justify-center rounded-[9px] text-[13px] font-black text-[#07121d] transition-all"
+        style={{
+          background: actif ? teinte : "transparent",
+          border: `2px solid ${actif ? teinte : "rgba(255,255,255,0.2)"}`,
+        }}
+      >
+        {actif && "✓"}
+      </button>
       {children}
     </div>
   );
 }
 
-function Termine({ bilan }: { bilan: Record<string, number> | null }) {
+/** L'arrivée. Une seule chose à faire : ouvrir son OS. */
+function Termine({
+  bilan,
+  teinte,
+  prenom,
+}: {
+  bilan: Record<string, number> | null;
+  teinte: string;
+  prenom: string;
+}) {
   const lignes = [
     ["onglets", bilan?.modules ?? 0],
     ["blocs d'accueil", bilan?.blocs ?? 0],
@@ -996,49 +1190,48 @@ function Termine({ bilan }: { bilan: Record<string, number> | null }) {
   ] as const;
 
   return (
-    <div className="view-in flex flex-1 flex-col items-center justify-center text-center">
-      <div className="text-[46px]">🎉</div>
-      <h1 className="mt-[10px] text-[25px] font-black leading-[1.15] tracking-[-0.02em]">
-        Ton OS est prêt.
-      </h1>
-      <p className="mt-[8px] max-w-[320px] text-[13px] font-semibold leading-[1.45] text-white/50">
-        Tout est en place. La première coche débloque le reste.
-      </p>
+    <>
+      <div className="sas-corps sas-in sas-sans-barre items-center justify-center text-center">
+        <Mascotte humeur="bravo" couleur={teinte} taille={128} />
+        <h1 className="mt-[22px] text-[30px] font-black leading-[1.1] tracking-[-0.03em]">
+          Ton OS est prêt{prenom.trim() ? `, ${prenom.trim()}` : ""}.
+        </h1>
+        <p className="mt-[10px] max-w-[300px] text-[14px] font-semibold leading-[1.45] text-white/50">
+          La première coche débloque tout le reste.
+        </p>
 
-      <div className="mt-[20px] flex flex-wrap justify-center gap-[7px]">
-        {lignes
-          .filter(([, n]) => n > 0)
-          .map(([nom, n]) => (
-            <span
-              key={nom}
-              className="rounded-full px-[10px] py-[5px] text-[11.5px] font-bold text-white/60"
-              style={{ background: "rgba(255,255,255,0.05)" }}
-            >
-              <span className="font-mono" style={{ color: "var(--color-ver-soft)" }}>
-                +{n}
-              </span>{" "}
-              {nom}
-            </span>
-          ))}
+        <div className="mt-[22px] flex flex-wrap justify-center gap-[7px]">
+          {lignes
+            .filter(([, n]) => n > 0)
+            .map(([nom, n]) => (
+              <span
+                key={nom}
+                className="rounded-full px-[11px] py-[6px] text-[12px] font-bold text-white/60"
+                style={{ background: "rgba(255,255,255,0.05)" }}
+              >
+                <span className="font-mono font-black" style={{ color: teinte }}>
+                  +{n}
+                </span>{" "}
+                {nom}
+              </span>
+            ))}
+        </div>
       </div>
 
       {/*
         Un rechargement COMPLET, pas une navigation interne.
-
         Le contexte de l'OS a déjà lu la base au démarrage ; une navigation
-        côté client le laisserait tel quel, et Twaylo arriverait sur un
-        tableau de bord qui ignore la journée type qu'on vient de lui poser.
+        côté client le laisserait tel quel, et on arriverait sur un tableau de
+        bord qui ignore la journée type qu'on vient de poser.
       */}
-      <button
-        type="button"
-        onClick={() => {
+      <PiedBouton
+        libelle="Ouvrir mon OS"
+        actif
+        teinte={teinte}
+        onClic={() => {
           window.location.href = "/";
         }}
-        className="mt-[26px] flex min-h-[52px] w-full max-w-[300px] cursor-pointer items-center justify-center rounded-[14px] text-[15px] font-black text-[#07121d] transition-all hover:brightness-110"
-        style={{ background: "var(--grad)" }}
-      >
-        Ouvrir mon OS
-      </button>
-    </div>
+      />
+    </>
   );
 }

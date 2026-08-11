@@ -154,6 +154,9 @@ export function Personnaliser({ onClose }: { onClose: () => void }) {
               <span className="eyebrow-dot" style={{ background: "var(--color-cya)" }} />
               AMBIANCE
             </div>
+            <p className="mb-[8px] text-[10.5px] leading-[1.4] text-white/35">
+              Une couleur unie, ou un dégradé. Cinq se débloquent en montant de niveau.
+            </p>
             <div className="grid grid-cols-2 gap-[8px]">
               {(Object.entries(AMBIANCES) as [AmbianceId, (typeof AMBIANCES)[AmbianceId]][]).map(
                 ([id, amb]) => {
