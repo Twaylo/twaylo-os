@@ -193,6 +193,7 @@ export const TEXTES = {
     agresseur: "Agresseur",
     dateInconnue: "Date inconnue",
     nonRenseigne: "non renseigné",
+    positionRelue: "Position lue dans le récit de la NGA, dont le champ numérique la contredisait.",
     recitTitre: "Récit d'origine",
     recitNote: "Texte d'origine de la NGA, en anglais — pas encore traduit.",
     recitTraduit: "Traduit de l'anglais. Le texte d'origine reste consultable.",
@@ -211,7 +212,7 @@ export const TEXTES = {
 
     aproposTitre: "D'où viennent ces données",
     apropos1:
-      "Toutes les attaques affichées proviennent de la base ASAM (Anti-Shipping Activity Messages) de la National Geospatial-Intelligence Agency américaine. Rien n'a été ajouté, complété ni corrigé : un champ absent de la source reste vide ici.",
+      "Toutes les attaques affichées proviennent de la base ASAM (Anti-Shipping Activity Messages) de la National Geospatial-Intelligence Agency américaine. Rien n'a été ajouté ni complété : un champ absent de la source reste vide ici.",
     aproposCapture:
       "La NGA ne diffuse plus cette base publiquement. Les données affichées sont sa réponse officielle telle qu'archivée le {date} : elles s'arrêtent donc à cette date.",
     aproposDirect: "Données récupérées le {date} depuis l'API de la NGA.",
@@ -219,6 +220,8 @@ export const TEXTES = {
       "Les catégories des filtres regroupent les libellés d'origine, que la base ne normalise pas — PIRATES et Pirates y comptent séparément. Chaque fiche affiche toujours le libellé exact enregistré par la NGA.",
     apropos3:
       "La gravité est un classement, pas une donnée de la NGA. La base ne hiérarchise pas ses incidents : elle range côte à côte un équipage tué et une barque qui s'approche puis repart. Les quatre niveaux sont déduits de mots présents dans le récit officiel, appliqués du plus grave au moins grave. Un incident sans récit n'est pas classé. Le récit intégral figure sur chaque fiche : le classement s'y vérifie sur pièce.",
+    apropos4:
+      "Les positions sont vérifiées contre les récits. Un enregistrement ASAM dit souvent deux fois où l'attaque a eu lieu : dans ses coordonnées, et dans son propre récit — « boarded at 22-15N 091-44E ». La NGA a parfois frappé un chiffre de travers, et un abordage du golfe d'Aden se retrouvait alors dans le Pacifique. Quand les deux se contredisent, c'est le récit qui fait foi, et la fiche l'annonce. Sur {recus} incidents reçus, {corrigees} ont été replacés d'après leur récit et {ecartees} ne sont pas affichés faute de pouvoir les situer honnêtement.",
 
     gravites: {
       3: ["Attaque mortelle", "Morts"],
@@ -330,6 +333,7 @@ export const TEXTES = {
     agresseur: "Attackers",
     dateInconnue: "Date unknown",
     nonRenseigne: "not recorded",
+    positionRelue: "Position read from the NGA account, which its own numeric field contradicted.",
     recitTitre: "Original account",
     recitNote: "Original NGA text, in English — the source record.",
     recitTraduit: "Translated from English. The source text remains available.",
@@ -348,7 +352,7 @@ export const TEXTES = {
 
     aproposTitre: "Where this data comes from",
     apropos1:
-      "Every attack shown comes from the ASAM database (Anti-Shipping Activity Messages) of the US National Geospatial-Intelligence Agency. Nothing has been added, completed or corrected: a field missing from the source stays empty here.",
+      "Every attack shown comes from the ASAM database (Anti-Shipping Activity Messages) of the US National Geospatial-Intelligence Agency. Nothing has been added or filled in: a field missing from the source stays empty here.",
     aproposCapture:
       "The NGA no longer publishes this database. The data shown is its official response as archived on {date}: it therefore stops at that date.",
     aproposDirect: "Data retrieved on {date} from the NGA API.",
@@ -356,6 +360,8 @@ export const TEXTES = {
       "Filter categories group the original labels, which the database does not normalise — PIRATES and Pirates count separately there. Every record still shows the exact label recorded by the NGA.",
     apropos3:
       "Severity is a classification, not NGA data. The database does not rank its incidents: it files a murdered crew next to a skiff that approaches and leaves. The four levels are inferred from words present in the official account, applied from most to least severe. An incident without an account is left unclassified. The full account appears on every record: the classification can be checked against it.",
+    apropos4:
+      "Positions are checked against the accounts. An ASAM record often states where the attack happened twice: in its coordinates, and in its own account — “boarded at 22-15N 091-44E”. The NGA sometimes mistyped a digit, and a Gulf of Aden boarding ended up in the Pacific. When the two contradict each other, the account prevails, and the record says so. Of {recus} incidents received, {corrigees} were moved back according to their account and {ecartees} are not shown because they cannot be placed honestly.",
 
     gravites: {
       3: ["Fatal attack", "Fatal"],

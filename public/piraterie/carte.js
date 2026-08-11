@@ -23,7 +23,7 @@ import {
   Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
-import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=6";
+import { EQUIVALENTS, TEXTES } from "/piraterie/i18n.js?v=7";
 
 const CHEMIN = "/piraterie";
 const $ = (id) => document.getElementById(id);
@@ -269,12 +269,35 @@ function preparer(source) {
   const catAgresseur = dico.agresseurs.map((v) => categoriser(v, REGLES_TYPE));
   const catNavire = dico.navires.map((v) => categoriser(v, REGLES_NAVIRE));
 
-  const incidents = new Array(total);
+  /*
+   * Les incidents dont la position est contredite par leur propre récit.
+   *
+   * La NGA a parfois frappé un chiffre de travers : un abordage du golfe
+   * d'Aden se retrouvait près des Mariannes, cinq abordages de Chittagong
+   * dans la rade de Cochin. La construction des données confronte chaque
+   * position au récit du même enregistrement (voir
+   * `scripts/positions-verifier.mjs`) ; ce qu'elle n'a pas pu réparer est
+   * listé ici et n'est PAS dessiné. Un point faux vaut moins qu'un point
+   * absent — c'est précisément ce qu'un lecteur nous a reproché.
+   *
+   * Les récits, eux, restent en place : les rangs ne bougent pas, et les
+   * traductions rangées par rang restent alignées.
+   */
+  const horsCarte = new Set(source.meta?.positionsEcartees ?? []);
+  const corrigees = new Set(source.meta?.positionsCorrigees ?? []);
+
+  // Deux vues sur la même chose : `parIndex` retrouve un incident par son
+  // rang d'origine (c'est ce que porte chaque point de la carte), `incidents`
+  // est ce qu'on parcourt pour dessiner et compter.
+  const parIndex = new Array(total);
+  const incidents = [];
   let anneeMin = Infinity;
   let anneeMax = -Infinity;
   const lons = Float64Array.from(col.longitude).sort();
 
   for (let i = 0; i < total; i += 1) {
+    if (horsCarte.has(i)) continue;
+
     const date = col.date[i];
     const annee = date ? Number(date.slice(0, 4)) : null;
     if (annee !== null) {
@@ -286,10 +309,13 @@ function preparer(source) {
     const codeNv = col.navire[i];
     const codeZone = col.zone[i];
 
-    incidents[i] = {
+    parIndex[i] = {
       i,
       lon: col.longitude[i],
       lat: col.latitude[i],
+      // Position relue dans le récit de la NGA parce que son champ numérique
+      // la contredisait. La fiche le dit, plutôt que de faire comme si.
+      positionRelue: corrigees.has(i),
       date,
       annee,
       reference: col.reference[i],
@@ -303,12 +329,14 @@ function preparer(source) {
       catAgresseur: codeAg < 0 ? INCONNU : catAgresseur[codeAg],
       catNavire: codeNv < 0 ? INCONNU : catNavire[codeNv],
     };
+    incidents.push(parIndex[i]);
   }
 
   return {
     meta: source.meta,
     incidents,
-    total,
+    parIndex,
+    total: incidents.length,
     anneeMin: Number.isFinite(anneeMin) ? anneeMin : 1978,
     anneeMax: Number.isFinite(anneeMax) ? anneeMax : new Date().getUTCFullYear(),
     /*
@@ -1149,7 +1177,7 @@ function ouvrirEncart(incident) {
 carteGL.on("click", "navires", (evenement) => {
   const forme = evenement.features?.[0];
   if (!forme) return;
-  const incident = base.incidents[Number(forme.properties.i)];
+  const incident = base.parIndex[Number(forme.properties.i)];
   if (incident) ouvrirEncart(incident);
 });
 
@@ -1164,7 +1192,7 @@ carteGL.on("mouseleave", "navires", () => {
    Fiche complète
    ═══════════════════════════════════════════════════════════════════════ */
 
-function ligneFiche(liste, intitule, valeur) {
+function ligneFiche(liste, intitule, valeur, precision = "") {
   const dt = document.createElement("dt");
   dt.textContent = intitule;
   const dd = document.createElement("dd");
@@ -1174,6 +1202,12 @@ function ligneFiche(liste, intitule, valeur) {
     // Le champ est absent de la source : on le dit, on ne le devine pas.
     dd.textContent = t("nonRenseigne");
     dd.dataset.vide = "";
+  }
+  if (precision) {
+    const note = document.createElement("small");
+    note.className = "fiche-precision";
+    note.textContent = precision;
+    dd.append(note);
   }
   liste.append(dt, dd);
 }
@@ -1214,7 +1248,7 @@ function remplirDescription(index) {
 }
 
 function ouvrirFiche(index) {
-  const incident = base.incidents[index];
+  const incident = base.parIndex[index];
   if (!incident) return;
   ficheOuverte = index;
 
@@ -1222,7 +1256,15 @@ function ouvrirFiche(index) {
 
   const champs = $("fiche-champs");
   champs.innerHTML = "";
-  ligneFiche(champs, t("position"), formaterCoordonnees(incident.lat, incident.lon));
+  ligneFiche(
+    champs,
+    t("position"),
+    formaterCoordonnees(incident.lat, incident.lon),
+    // Le champ numérique de la NGA disait autre chose que son propre récit.
+    // C'est le récit qui a été suivi, et la fiche l'annonce : le lecteur voit
+    // la position ET d'où elle vient.
+    incident.positionRelue ? t("positionRelue") : "",
+  );
   ligneFiche(
     champs,
     t("zoneFiche"),
@@ -1404,6 +1446,14 @@ function rafraichirTextesDynamiques() {
   $("apropos-capture").textContent = capture
     ? t("aproposCapture", { date: jourDe(capture) })
     : t("aproposDirect", { date: base.meta?.genereLe ?? "—" });
+
+  // Les trois nombres de la vérification des positions viennent des données,
+  // jamais du texte : s'ils changent, la phrase change avec eux.
+  $("apropos-positions").textContent = t("apropos4", {
+    recus: nombreLocal.format(base.meta?.recus ?? base.total),
+    corrigees: nombreLocal.format(base.meta?.positionsCorrigees?.length ?? 0),
+    ecartees: nombreLocal.format(base.meta?.positionsEcartees?.length ?? 0),
+  });
 
   construireTousLesJetons();
   majCompteur();

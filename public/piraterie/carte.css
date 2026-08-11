@@ -951,6 +951,20 @@ body {
   color: var(--texte-faible);
   font-style: italic;
 }
+/*
+ * D'où vient la valeur, quand ce n'est pas du champ attendu.
+ *
+ * Sert aux positions relues dans le récit parce que le champ numérique de la
+ * NGA les contredisait : la fiche montre la position ET son origine, plutôt
+ * que de corriger en silence.
+ */
+.fiche-precision {
+  display: block;
+  margin-top: 3px;
+  color: var(--texte-faible);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
 .fiche-recit h3 {
   margin: 16px 0 5px;
   font-size: 11px;

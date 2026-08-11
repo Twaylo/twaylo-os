@@ -6,7 +6,7 @@
     <title>Pirats Attack ! — Tway'tools</title>
     <meta
       name="description"
-      content="8 897 attaques contre des navires recensées par la NGA entre 1978 et 2023, situées sur une carte du monde."
+      content="8 885 attaques contre des navires recensées par la NGA entre 1978 et 2023, situées sur une carte du monde."
     />
     <meta name="theme-color" content="#05090f" />
     <!--
@@ -104,7 +104,7 @@
       effet qu'une fois le nouveau service worker installé. Changer l'adresse
       libère immédiatement les navigateurs encore tenus par l'ancien.
     -->
-    <link rel="stylesheet" href="/piraterie/carte.css?v=6" />
+    <link rel="stylesheet" href="/piraterie/carte.css?v=7" />
   </head>
 
   <body>
@@ -153,7 +153,7 @@
     <noscript>
       <div class="sans-script">
         <p>
-          Cette carte a besoin de JavaScript pour dessiner 8 897 navires et les
+          Cette carte a besoin de JavaScript pour dessiner 8 885 navires et les
           filtrer. Les données brutes restent consultables&nbsp;:<br />
           <i lang="en">This map needs JavaScript. The raw data remains available:</i>
         </p>
@@ -201,6 +201,9 @@
         <p id="apropos-capture"></p>
         <p data-i18n="apropos2"></p>
         <p data-i18n="apropos3"></p>
+        <!-- Rempli par le script : le texte porte les nombres de la
+             vérification des positions, qui viennent des données. -->
+        <p id="apropos-positions"></p>
       </div>
     </aside>
 
@@ -305,13 +308,13 @@
             Un téléphone garde parfois l'ancienne, et on cherche alors un
             défaut déjà corrigé. Une mention à lire, et on sait.
           -->
-          <span class="version">v6</span>
+          <span class="version">v7</span>
         </p>
       </div>
     </section>
 
     <div class="souffle" id="souffle" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="/piraterie/carte.js?v=6"></script>
+    <script type="module" src="/piraterie/carte.js?v=7"></script>
   </body>
 </html>
