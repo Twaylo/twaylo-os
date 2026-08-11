@@ -17,8 +17,8 @@
  */
 import {
   Map as CarteGL,
-  Marker,
   NavigationControl,
+  Popup,
   ScaleControl,
 } from "/piraterie/vendeur/maplibre-gl.mjs";
 
@@ -122,6 +122,7 @@ const etat = {
   zones: new Set(),
   types: new Set(),
   navires: new Set(),
+  gravites: new Set(),
   recherche: "",
 };
 
@@ -206,6 +207,9 @@ function preparer(source) {
       sousRegion: col.sousRegion[i] < 0 ? "" : dico.sousRegions[col.sousRegion[i]],
       agresseur: codeAg < 0 ? "" : dico.agresseurs[codeAg],
       navire: codeNv < 0 ? "" : dico.navires[codeNv],
+      // -1 quand la source ne fournit aucun récit : l'incident n'est pas
+      // classé plutôt que rangé au hasard dans le niveau le plus bas.
+      gravite: col.gravite ? col.gravite[i] : -1,
       catAgresseur: codeAg < 0 ? NON_PRECISE : catAgresseur[codeAg],
       catNavire: codeNv < 0 ? NON_PRECISE : catNavire[codeNv],
     };
@@ -326,112 +330,117 @@ carteGL.keyboard.enable();
 
 await new Promise((resoudre) => carteGL.on("load", resoudre));
 
+/*
+ * Chaque attaque est un bateau, et aucune n'est regroupée.
+ *
+ * Les regroupements chiffrés disaient « 2 716 attaques ici » — un nombre, pas
+ * une flotte. Huit mille huit cent quatre-vingt-dix-sept coques dessinées
+ * ensemble donnent à voir ce qu'un nombre ne dit pas : la densité, la forme
+ * des couloirs maritimes, les mers vides. Et chacune s'ouvre d'un toucher,
+ * sans qu'il faille d'abord démonter un tas.
+ */
 carteGL.addSource("incidents", {
   type: "geojson",
   data: { type: "FeatureCollection", features: [] },
-  cluster: true,
-  clusterRadius: 46,
-  // Au-delà, les points se séparent : c'est là qu'on veut lire les incidents
-  // un par un plutôt que leur nombre. Huit et non douze — le regroupement ne
-  // doit pas survivre jusqu'au zoom maximal, sans quoi on ne peut plus
-  // atteindre un incident précis.
-  clusterMaxZoom: 8,
 });
 
+/**
+ * Les icônes de bateau, dessinées ici et non chargées comme images.
+ *
+ * Une par niveau de gravité, plus une pour les incidents sans récit. Les
+ * dessiner évite un fichier de plus à télécharger, et surtout garde les
+ * couleurs au même endroit que le reste de la gamme.
+ *
+ * Un contour sombre entoure chaque coque : sans lui, les bateaux se fondent
+ * les uns dans les autres dès que la carte est dense, et le tas redevient
+ * une tache.
+ */
+function dessinerBateau(couleur) {
+  const L = 30;
+  const H = 19;
+  const ECHELLE = 3; // Rendu net sur les écrans à forte densité.
+
+  const toile = document.createElement("canvas");
+  toile.width = L * ECHELLE;
+  toile.height = H * ECHELLE;
+  const c = toile.getContext("2d");
+  c.scale(ECHELLE, ECHELLE);
+
+  const silhouette = () => {
+    c.beginPath();
+    // Coque : large sur le pont, effilée sous la ligne de flottaison.
+    c.moveTo(1.5, 11.5);
+    c.lineTo(28.5, 11.5);
+    c.lineTo(24.5, 17);
+    c.lineTo(5.5, 17);
+    c.closePath();
+    // Château arrière et cheminée : ce qui fait lire « navire » et non « barque ».
+    c.rect(17.5, 5.5, 7, 6);
+    c.rect(19.5, 2.5, 3, 3.2);
+  };
+
+  c.lineJoin = "round";
+  c.strokeStyle = "rgba(0,0,0,0.85)";
+  c.lineWidth = 2.2;
+  silhouette();
+  c.stroke();
+
+  c.fillStyle = couleur;
+  silhouette();
+  c.fill();
+
+  return { donnees: c.getImageData(0, 0, toile.width, toile.height), echelle: ECHELLE };
+}
+
+/*
+ * L'échelle de gravité : du jaune pâle au rouge vif.
+ *
+ * La plus grave est la plus lumineuse, pas la plus sombre — un rouge foncé
+ * sur fond de nuit disparaîtrait, et ce sont justement les 250 attaques
+ * meurtrières qu'il faut voir en premier.
+ */
+const GRAVITE = [
+  { code: 0, nom: "Tentative ou approche", court: "Tentative", couleur: "#ffd97a" },
+  { code: 1, nom: "Abordage et vol", court: "Vol", couleur: "#ffa524" },
+  { code: 2, nom: "Violence ou enlèvement", court: "Violence", couleur: "#ff6b1f" },
+  { code: 3, nom: "Mort d'homme", court: "Morts", couleur: "#ff2f2f" },
+  { code: -1, nom: "Sans récit dans la source", court: "Sans récit", couleur: "#6b7c8c" },
+];
+
+for (const niveau of GRAVITE) {
+  const { donnees, echelle } = dessinerBateau(niveau.couleur);
+  carteGL.addImage(`bateau${niveau.code}`, donnees, { pixelRatio: echelle });
+}
+
 carteGL.addLayer({
-  id: "grappes",
-  type: "circle",
+  id: "bateaux",
+  type: "symbol",
   source: "incidents",
-  filter: ["has", "point_count"],
-  paint: {
-    // La couleur monte de l'ambre au rouge sombre avec le nombre : on repère
-    // les foyers d'un coup d'œil, sans lire un seul chiffre.
-    "circle-color": [
-      "step",
-      ["get", "point_count"],
-      "#ffb02e",
-      25,
-      "#ff7a1a",
-      100,
-      "#f4471f",
-      400,
-      "#c2160f",
+  layout: {
+    "icon-image": ["concat", "bateau", ["get", "g"]],
+    // Petits de loin, lisibles de près. Assez gros au premier écran pour que
+    // la flotte se voie, assez petits pour qu'elle ne devienne pas un aplat.
+    "icon-size": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      0, 0.34,
+      3, 0.44,
+      6, 0.62,
+      10, 0.9,
     ],
-    "circle-radius": ["step", ["get", "point_count"], 15, 25, 19, 100, 24, 400, 30],
-    "circle-opacity": 0.88,
-    "circle-stroke-width": 1.5,
-    "circle-stroke-color": "rgba(255,255,255,0.28)",
+    /*
+     * Tous affichés, sans exception. Par défaut MapLibre écarte les symboles
+     * qui se chevauchent — il n'en resterait qu'une poignée là où l'histoire
+     * se joue, et la carte mentirait par omission.
+     */
+    "icon-allow-overlap": true,
+    "icon-ignore-placement": true,
+    // Les plus graves passent au-dessus : dans un amas, c'est le mort qu'on
+    // doit voir, pas la tentative qui le recouvre.
+    "symbol-sort-key": ["get", "g"],
   },
 });
-
-carteGL.addLayer({
-  id: "points",
-  type: "circle",
-  source: "incidents",
-  filter: ["!", ["has", "point_count"]],
-  paint: {
-    "circle-color": "#ff7a1a",
-    "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 7, 5, 12, 8],
-    "circle-opacity": 0.9,
-    "circle-stroke-width": 1,
-    "circle-stroke-color": "rgba(255,220,180,0.45)",
-  },
-});
-
-/* ═══════════════════════════════════════════════════════════════════════
-   Nombres des regroupements
-
-   MapLibre ne sait pas écrire de texte sans serveur de polices, et en appeler
-   un ferait joindre un domaine tiers à chaque spectateur — exactement ce que
-   la page s'interdit. Les cercles sont donc dessinés par la carte, et les
-   nombres posés par-dessus en HTML.
-
-   Les étiquettes sont des marqueurs MapLibre : elles suivent la carte
-   d'elles-mêmes pendant les déplacements. On ne recalcule la liste qu'à
-   l'arrêt, et on réconcilie par identifiant pour éviter que tout clignote.
-   ═══════════════════════════════════════════════════════════════════════ */
-
-const etiquettes = new Map();
-
-function rafraichirEtiquettes() {
-  if (!carteGL.getLayer("grappes")) return;
-
-  const vues = carteGL.queryRenderedFeatures({ layers: ["grappes"] });
-  const presents = new Set();
-
-  for (const forme of vues) {
-    const id = forme.properties.cluster_id;
-    presents.add(id);
-    if (etiquettes.has(id)) continue;
-
-    const element = document.createElement("span");
-    element.className = "grappe-etiquette";
-    element.textContent = nombreFr.format(forme.properties.point_count);
-    // Le nombre double une information déjà portée par la couleur et la
-    // taille du cercle ; le lire à voix haute n'apporterait rien, et la liste
-    // des incidents offre un chemin complet au clavier.
-    element.setAttribute("aria-hidden", "true");
-
-    etiquettes.set(
-      id,
-      new Marker({ element }).setLngLat(forme.geometry.coordinates).addTo(carteGL),
-    );
-  }
-
-  for (const [id, marqueur] of etiquettes) {
-    if (!presents.has(id)) {
-      marqueur.remove();
-      etiquettes.delete(id);
-    }
-  }
-}
-
-function viderEtiquettes() {
-  for (const marqueur of etiquettes.values()) marqueur.remove();
-  etiquettes.clear();
-}
-
-carteGL.on("idle", rafraichirEtiquettes);
 
 /* ═══════════════════════════════════════════════════════════════════════
    Filtrage et rendu
@@ -444,6 +453,7 @@ function passeLesFiltres(incident, recherche) {
   if (etat.zones.size && !etat.zones.has(incident.zone)) return false;
   if (etat.types.size && !etat.types.has(incident.catAgresseur)) return false;
   if (etat.navires.size && !etat.navires.has(incident.catNavire)) return false;
+  if (etat.gravites.size && !etat.gravites.has(String(incident.gravite))) return false;
 
   if (recherche) {
     // La recherche porte sur les descriptions ; tant qu'elles ne sont pas
@@ -466,18 +476,13 @@ function appliquer() {
     formes.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: [incident.lon, incident.lat] },
-      properties: { i: incident.i },
+      // `g` porte la gravité, qui choisit la couleur du bateau ; `i` retrouve
+      // l'incident complet au moment du toucher.
+      properties: { i: incident.i, g: incident.gravite },
     });
   }
 
-  /*
-   * On remplace les données de la source plutôt que d'appliquer un filtre de
-   * couche. Sur une source regroupée, un filtre s'applique APRÈS le
-   * regroupement : les cercles garderaient le compte de tous les incidents,
-   * filtrés compris, et les nombres affichés contrediraient le compteur.
-   */
   carteGL.getSource("incidents").setData({ type: "FeatureCollection", features: formes });
-  viderEtiquettes();
 
   const compteur = $("compteur");
   compteur.innerHTML = "";
@@ -485,8 +490,56 @@ function appliquer() {
   fort.textContent = nombreFr.format(visibles.length);
   compteur.append(fort, ` incident${visibles.length > 1 ? "s" : ""} affiché${visibles.length > 1 ? "s" : ""}`);
 
+  majStats();
   majPastilleFiltres();
   majUrl();
+}
+
+/**
+ * Ce que la sélection en cours raconte, en une ligne.
+ *
+ * Trois repères recalculés sur les incidents visibles : l'année la plus
+ * chargée, la zone la plus touchée, et le nombre d'attaques ayant fait des
+ * morts. Un compteur seul dit « combien » ; ces trois-là disent « quand,
+ * où, et à quel point ».
+ */
+function majStats() {
+  const cible = $("stats");
+  if (visibles.length === 0) {
+    cible.textContent = "Aucun incident ne correspond à ces filtres.";
+    return;
+  }
+
+  const parAnnee = new Map();
+  const parZone = new Map();
+  let morts = 0;
+
+  for (const incident of visibles) {
+    if (incident.annee !== null) {
+      parAnnee.set(incident.annee, (parAnnee.get(incident.annee) ?? 0) + 1);
+    }
+    if (incident.zone) parZone.set(incident.zone, (parZone.get(incident.zone) ?? 0) + 1);
+    if (incident.gravite === 3) morts += 1;
+  }
+
+  const sommet = (table) =>
+    [...table.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  const [anneeHaute, nombreAnnee] = sommet(parAnnee);
+  const [zoneHaute, nombreZone] = sommet(parZone);
+
+  const morceaux = [];
+  if (anneeHaute) morceaux.push(`Pic en ${anneeHaute} (${nombreFr.format(nombreAnnee)})`);
+  if (zoneHaute) {
+    const nom = NOMS_ZONES[zoneHaute] ?? `zone ${zoneHaute}`;
+    morceaux.push(`${nom} (${nombreFr.format(nombreZone)})`);
+  }
+  morceaux.push(
+    morts === 0
+      ? "aucune attaque mortelle"
+      : `${nombreFr.format(morts)} attaque${morts > 1 ? "s" : ""} mortelle${morts > 1 ? "s" : ""}`,
+  );
+
+  cible.textContent = morceaux.join(" · ");
 }
 
 /* Le curseur peut bouger vite ; on ne recalcule qu'une fois par image. */
@@ -654,10 +707,64 @@ function construireTousLesJetons() {
   );
   construireJetons($("filtre-types"), entreesTypes, etat.types);
   construireJetons($("filtre-navires"), entreesNavires, etat.navires);
+  construireGravites();
+}
+
+/**
+ * Les jetons de gravité : légende et filtre à la fois.
+ *
+ * Chacun porte la couleur exacte du bateau qu'il décrit — c'est ce qui rend
+ * la carte lisible sans notice. Les niveaux absents de la base ne sont pas
+ * affichés : une catégorie vide n'apprend rien et occupe une ligne.
+ */
+function construireGravites() {
+  const compte = new Map();
+  for (const incident of base.incidents) {
+    compte.set(incident.gravite, (compte.get(incident.gravite) ?? 0) + 1);
+  }
+
+  const conteneur = $("filtre-gravites");
+  conteneur.innerHTML = "";
+
+  // Du plus grave au moins grave : c'est l'ordre dans lequel on lit une
+  // échelle de danger, et le premier jeton est celui qu'on cherche.
+  for (const niveau of [...GRAVITE].sort((a, b) => b.code - a.code)) {
+    const nombre = compte.get(niveau.code) ?? 0;
+    if (!nombre) continue;
+
+    const cle = String(niveau.code);
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "jeton jeton-gravite";
+    bouton.setAttribute("aria-pressed", etat.gravites.has(cle) ? "true" : "false");
+    bouton.title = `${niveau.nom} — ${nombreFr.format(nombre)} incidents`;
+
+    const puce = document.createElement("i");
+    puce.style.background = niveau.couleur;
+    puce.setAttribute("aria-hidden", "true");
+
+    const texte = document.createElement("span");
+    texte.textContent = niveau.court;
+
+    const chiffre = document.createElement("span");
+    chiffre.className = "jeton-compte";
+    chiffre.textContent = nombreFr.format(nombre);
+
+    bouton.append(puce, texte, chiffre);
+    bouton.addEventListener("click", () => {
+      if (etat.gravites.has(cle)) etat.gravites.delete(cle);
+      else etat.gravites.add(cle);
+      bouton.setAttribute("aria-pressed", etat.gravites.has(cle) ? "true" : "false");
+      arreterLecture();
+      appliquer();
+    });
+
+    conteneur.append(bouton);
+  }
 }
 
 function majPastilleFiltres() {
-  const nombre = etat.zones.size + etat.types.size + etat.navires.size;
+  const nombre = etat.zones.size + etat.types.size + etat.navires.size + etat.gravites.size;
   const pastille = $("pastille-filtres");
   pastille.textContent = String(nombre);
   pastille.hidden = nombre === 0;
@@ -667,6 +774,7 @@ $("bouton-effacer").addEventListener("click", () => {
   etat.zones.clear();
   etat.types.clear();
   etat.navires.clear();
+  etat.gravites.clear();
   etat.recherche = "";
   $("recherche").value = "";
   etat.debut = base.anneeMin;
@@ -800,41 +908,115 @@ function fermerFiche() {
 
 $("fiche-fermer").addEventListener("click", fermerFiche);
 
-carteGL.on("click", "points", (evenement) => {
-  const index = evenement.features?.[0]?.properties?.i;
-  if (index !== undefined) ouvrirFiche(Number(index));
+/* ═══════════════════════════════════════════════════════════════════════
+   La carte de visite d'une attaque
+
+   Au toucher d'un bateau, un encart s'ouvre à côté de lui : la date, le
+   navire, l'agresseur, la gravité et les premières lignes du récit. De quoi
+   comprendre en deux secondes sans quitter la carte des yeux, et un bouton
+   pour lire l'intégralité si l'on veut aller plus loin.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const encart = new Popup({
+  closeButton: false,
+  closeOnClick: true,
+  maxWidth: "290px",
+  offset: 14,
+  className: "encart",
 });
 
-carteGL.on("click", "grappes", async (evenement) => {
-  const forme = evenement.features?.[0];
-  if (!forme) return;
-  const source = carteGL.getSource("incidents");
-  const separation = await source.getClusterExpansionZoom(forme.properties.cluster_id);
+/**
+ * Une ligne « intitulé — valeur », omise si la source ne dit rien.
+ *
+ * En `dt`/`dd` plutôt qu'en paragraphe : c'est une liste de définitions, et
+ * la grille qui les aligne a besoin de deux éléments distincts. Collés dans
+ * un même paragraphe, « AGRESSEUR » et « Robbers » se touchaient dès que
+ * l'intitulé dépassait la colonne.
+ */
+function ligneEncart(parent, intitule, valeur) {
+  if (!valeur) return;
+  const cle = document.createElement("dt");
+  cle.textContent = intitule;
+  const val = document.createElement("dd");
+  val.textContent = valeur;
+  parent.append(cle, val);
+}
+
+function ouvrirEncart(incident, position) {
+  const boite = document.createElement("div");
+  boite.className = "encart-corps";
+
+  const tete = document.createElement("div");
+  tete.className = "encart-tete";
+  const reference = document.createElement("span");
+  reference.className = "encart-ref";
+  reference.textContent = incident.reference || "sans référence";
+  const date = document.createElement("span");
+  date.className = "encart-date";
+  date.textContent = incident.date
+    ? dateFr.format(new Date(`${incident.date}T00:00:00Z`))
+    : "date inconnue";
+  tete.append(reference, date);
+  boite.append(tete);
+
+  const niveau = GRAVITE.find((g) => g.code === incident.gravite) ?? GRAVITE[4];
+  const etiquette = document.createElement("p");
+  etiquette.className = "encart-gravite";
+  const pastille = document.createElement("i");
+  pastille.style.background = niveau.couleur;
+  etiquette.append(pastille, niveau.nom);
+  boite.append(etiquette);
+
+  const champs = document.createElement("dl");
+  champs.className = "encart-champs";
+  ligneEncart(champs, "Navire", incident.navire);
+  ligneEncart(champs, "Agresseur", incident.agresseur);
+  ligneEncart(champs, "Position", formaterCoordonnees(incident.lat, incident.lon));
+  boite.append(champs);
 
   /*
-   * Au moins deux crans de zoom par toucher.
-   *
-   * Le zoom de séparation rendu par la bibliothèque est le minimum auquel le
-   * regroupement se scinde — souvent un demi-cran. Sur les foyers denses, le
-   * détroit de Malacca en tête, il fallait une dizaine de touchers pour
-   * atteindre les incidents un par un : mesuré en essai, neuf touchers ne
-   * suffisaient pas à descendre sous 784 incidents groupés.
-   *
-   * En sautant plus loin, trois ou quatre touchers suffisent. On ne dépasse
-   * jamais le zoom maximal de la carte.
+   * Le récit est tronqué ici, jamais réécrit. La fiche complète, elle,
+   * l'affiche en entier — c'est la pièce sur laquelle le lecteur peut
+   * vérifier le classement de gravité.
    */
-  const zoom = Math.min(carteGL.getMaxZoom(), Math.max(separation, carteGL.getZoom() + 2));
-  carteGL.easeTo({ center: forme.geometry.coordinates, zoom });
+  const recit = descriptions ? descriptions[incident.i] : null;
+  const extrait = document.createElement("p");
+  extrait.className = "encart-extrait";
+  if (recit) {
+    extrait.textContent = recit.length > 180 ? `${recit.slice(0, 180).trimEnd()}…` : recit;
+  } else {
+    extrait.textContent = descriptions ? "Aucun récit dans la source." : "Chargement du récit…";
+    extrait.dataset.attente = "";
+  }
+  boite.append(extrait);
+
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "encart-bouton";
+  bouton.textContent = "Lire le récit complet";
+  bouton.addEventListener("click", () => {
+    encart.remove();
+    ouvrirFiche(incident.i);
+  });
+  boite.append(bouton);
+
+  encart.setLngLat(position).setDOMContent(boite).addTo(carteGL);
+}
+
+carteGL.on("click", "bateaux", (evenement) => {
+  const forme = evenement.features?.[0];
+  if (!forme) return;
+  const incident = base.incidents[Number(forme.properties.i)];
+  if (!incident) return;
+  ouvrirEncart(incident, [incident.lon, incident.lat]);
 });
 
-for (const couche of ["points", "grappes"]) {
-  carteGL.on("mouseenter", couche, () => {
-    carteGL.getCanvas().style.cursor = "pointer";
-  });
-  carteGL.on("mouseleave", couche, () => {
-    carteGL.getCanvas().style.cursor = "";
-  });
-}
+carteGL.on("mouseenter", "bateaux", () => {
+  carteGL.getCanvas().style.cursor = "pointer";
+});
+carteGL.on("mouseleave", "bateaux", () => {
+  carteGL.getCanvas().style.cursor = "";
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
    Panneaux et raccourcis
@@ -887,6 +1069,7 @@ function majUrl() {
   if (etat.zones.size) p.set("zone", [...etat.zones].join("|"));
   if (etat.types.size) p.set("type", [...etat.types].join("|"));
   if (etat.navires.size) p.set("navire", [...etat.navires].join("|"));
+  if (etat.gravites.size) p.set("gravite", [...etat.gravites].join("|"));
   if (etat.recherche.trim()) p.set("q", etat.recherche.trim());
 
   const suite = p.toString();
@@ -916,6 +1099,7 @@ function lireUrl() {
   ensemble("zone", etat.zones);
   ensemble("type", etat.types);
   ensemble("navire", etat.navires);
+  ensemble("gravite", etat.gravites);
 
   const q = p.get("q");
   if (q) {
