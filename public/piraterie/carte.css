@@ -1260,3 +1260,34 @@ body {
   font-size: 10px;
   letter-spacing: 0.08em;
 }
+
+/* Couleur allumée par un filtre plutôt que par le bouton : le bouton le
+   montre, en retenue — c'est un état constaté, pas un réglage choisi. */
+.bascule[data-auto] {
+  color: var(--jaune);
+  border-color: var(--bord-net);
+}
+
+/* Le bouton qui montre le texte d'origine sous une traduction : discret, mais
+   toujours là — c'est la garantie que rien n'a été réécrit en douce. */
+.fiche-original {
+  margin-top: 9px;
+  padding: 5px 9px;
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texte-doux);
+  background: transparent;
+  border: 1px solid var(--bord);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.fiche-original:hover {
+  color: var(--texte);
+  border-color: var(--bord-net);
+}
+.fiche-original[aria-pressed="true"] {
+  color: var(--jaune);
+  border-color: var(--jaune);
+}

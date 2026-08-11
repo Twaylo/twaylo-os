@@ -186,7 +186,19 @@ const etat = {
 };
 
 let base = null;
-let descriptions = null;
+/*
+ * Les récits, en deux jeux.
+ *
+ * `recitsVo` porte le texte d'origine de la NGA, en anglais : c'est la pièce,
+ * elle ne bouge jamais. `recitsFr` porte les traductions disponibles, rangées
+ * par index — un objet creux, pas un tableau, parce que la traduction avance
+ * par lots et que les entrées absentes ne doivent rien peser.
+ *
+ * Quand la traduction manque, on affiche l'original et on le dit. Jamais de
+ * texte inventé pour combler un trou.
+ */
+let recitsVo = null;
+let recitsFr = null;
 let carteGL = null;
 let visibles = [];
 let parAnneeVisible = new Map();
@@ -438,12 +450,30 @@ carteGL.addLayer({
   },
 });
 
+/**
+ * La couleur de la flotte.
+ *
+ * Uniforme par défaut : c'est la densité qu'on regarde d'abord.
+ *
+ * Mais dès qu'on isole une gravité, la couleur suit d'elle-même. Cliquer
+ * « Morts » et voir rester 250 navires jaunes, c'est perdre le lien entre le
+ * jeton rouge qu'on vient d'enfoncer et ce qui s'affiche : les navires
+ * passent au rouge, et le rapport se lit sans explication. Relâcher le filtre
+ * remet la flotte au jaune.
+ *
+ * Le bouton « Colorer » garde son rôle : allumer l'échelle sans rien filtrer,
+ * pour comparer les quatre niveaux d'un seul regard.
+ */
 function majCouleurNavires() {
+  const parGravite = etat.colorer || etat.gravites.size > 0;
   carteGL.setLayoutProperty(
     "navires",
     "icon-image",
-    etat.colorer ? ["concat", "navire", ["get", "g"]] : "navire-uni",
+    parGravite ? ["concat", "navire", ["get", "g"]] : "navire-uni",
   );
+  // Le bouton se montre allumé quand la couleur est en service, même
+  // lorsqu'elle vient d'un filtre plutôt que de lui.
+  $("bascule-couleur").toggleAttribute("data-auto", !etat.colorer && parGravite);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -460,9 +490,12 @@ function passeSaufTemps(incident, recherche) {
   if (recherche) {
     // La recherche porte sur les récits ; tant qu'ils ne sont pas arrivés,
     // le champ reste désactivé et on n'entre jamais ici.
-    const recit = descriptions ? descriptions[incident.i] : "";
+    // On cherche dans les deux versions : « otage » doit trouver un récit
+    // traduit, « hostage » doit trouver le même dans son texte d'origine.
+    const recit = recitDe(incident.i);
     const ailleurs = `${incident.navire} ${incident.agresseur} ${incident.reference}`;
-    if (!`${recit} ${ailleurs}`.toLowerCase().includes(recherche)) return false;
+    const gisement = `${recit.texte} ${recit.vo} ${ailleurs}`.toLowerCase();
+    if (!gisement.includes(recherche)) return false;
   }
   return true;
 }
@@ -499,6 +532,7 @@ function appliquer() {
 
   carteGL.getSource("incidents").setData({ type: "FeatureCollection", features: formes });
 
+  majCouleurNavires();
   majCompteur();
   majStats();
   majHistogramme();
@@ -831,20 +865,52 @@ $("recherche").addEventListener("input", (evenement) => {
   }, 180);
 });
 
+/**
+ * Le récit d'un incident, traduit si la traduction existe.
+ *
+ * Rend toujours l'original à côté : la fiche propose de le consulter, et
+ * c'est sur lui que le classement de gravité se vérifie.
+ */
+function recitDe(index) {
+  const vo = recitsVo ? recitsVo[index] : null;
+  const traduction = langue === "fr" && recitsFr ? recitsFr[index] : null;
+  return {
+    texte: traduction || vo || "",
+    vo: vo || "",
+    traduit: Boolean(traduction),
+    charge: recitsVo !== null,
+  };
+}
+
 /*
  * Les récits pèsent l'essentiel du poids et la carte n'en a besoin d'aucun
  * pour s'afficher. Ils partent donc après le premier rendu : la recherche
  * s'active à leur arrivée.
+ *
+ * La traduction française est un second fichier, chargé seulement si la
+ * langue le demande — un lecteur anglophone n'a aucune raison de la
+ * télécharger.
  */
-function chargerDescriptions() {
-  fetch(`${CHEMIN}/donnees/asam-descriptions.json`)
-    .then((reponse) => (reponse.ok ? reponse.json() : null))
-    .then((recits) => {
-      if (!recits) return;
-      descriptions = recits;
+function chargerRecits() {
+  const attendus = [
+    fetch(`${CHEMIN}/donnees/asam-descriptions.json`).then((r) => (r.ok ? r.json() : null)),
+    langue === "fr" && recitsFr === null
+      ? fetch(`${CHEMIN}/donnees/asam-recits-fr.json`)
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}))
+      : Promise.resolve(recitsFr),
+  ];
+
+  Promise.all(attendus)
+    .then(([vo, fr]) => {
+      if (vo) recitsVo = vo;
+      if (fr) recitsFr = fr;
+
       const champ = $("recherche");
-      champ.disabled = false;
-      champ.placeholder = t("recherchePlaceholder");
+      if (recitsVo) {
+        champ.disabled = false;
+        champ.placeholder = t("recherchePlaceholder");
+      }
       if (ficheOuverte !== null) remplirDescription(ficheOuverte);
       // Une recherche reçue par l'adresse n'a pu porter que sur les libellés
       // jusqu'ici : maintenant que les récits sont là, on la rejoue.
@@ -918,15 +984,18 @@ function ouvrirEncart(incident) {
    * l'affiche en entier — c'est la pièce sur laquelle le lecteur peut
    * vérifier le classement de gravité.
    */
-  const recit = descriptions ? descriptions[incident.i] : null;
+  const recit = recitDe(incident.i);
   const extrait = document.createElement("p");
   extrait.className = "encart-extrait";
-  extrait.lang = "en";
-  if (recit) {
-    extrait.textContent = recit.length > 175 ? `${recit.slice(0, 175).trimEnd()}…` : recit;
+  // La langue déclarée suit le texte réellement affiché : un lecteur d'écran
+  // doit prononcer l'anglais en anglais, et le français en français.
+  extrait.lang = recit.traduit ? langue : "en";
+  if (recit.texte) {
+    extrait.textContent =
+      recit.texte.length > 175 ? `${recit.texte.slice(0, 175).trimEnd()}…` : recit.texte;
   } else {
     extrait.lang = langue;
-    extrait.textContent = descriptions ? t("sansRecit") : t("recitAttente");
+    extrait.textContent = recit.charge ? t("sansRecit") : t("recitAttente");
     extrait.dataset.attente = "";
   }
   boite.append(extrait);
@@ -976,14 +1045,39 @@ function ligneFiche(liste, intitule, valeur) {
   liste.append(dt, dd);
 }
 
+/**
+ * Le récit dans la fiche, avec sa provenance annoncée.
+ *
+ * Trois cas, et chacun se dit : traduit — et l'original reste à un toucher ;
+ * pas encore traduit — c'est l'anglais d'origine, annoncé comme tel ; absent
+ * de la source — on le dit aussi, plutôt que de laisser un blanc.
+ */
 function remplirDescription(index) {
   const cible = $("fiche-description");
-  if (!descriptions) {
+  const note = $("fiche-recit-note");
+  const bouton = $("fiche-original");
+  const recit = recitDe(index);
+
+  if (!recit.charge) {
     cible.textContent = t("recitAttente");
+    cible.lang = langue;
+    note.hidden = true;
+    bouton.hidden = true;
     return;
   }
-  const recit = descriptions[index];
-  cible.textContent = recit || t("sansRecit");
+
+  const montrerVo = bouton.getAttribute("aria-pressed") === "true";
+  const traduitEtDisponible = recit.traduit && !montrerVo;
+
+  cible.textContent = recit.texte || t("sansRecit");
+  cible.lang = traduitEtDisponible ? langue : "en";
+  if (recit.traduit && montrerVo) cible.textContent = recit.vo;
+
+  note.hidden = !recit.texte;
+  note.textContent = recit.traduit ? t("recitTraduit") : t("recitNote");
+
+  bouton.hidden = !recit.traduit;
+  bouton.textContent = montrerVo ? t("voirTraduction") : t("voirOriginal");
 }
 
 function ouvrirFiche(index) {
@@ -1023,6 +1117,12 @@ function fermerFiche() {
 }
 
 $("fiche-fermer").addEventListener("click", fermerFiche);
+
+$("fiche-original").addEventListener("click", () => {
+  const bouton = $("fiche-original");
+  bouton.setAttribute("aria-pressed", bouton.getAttribute("aria-pressed") === "true" ? "false" : "true");
+  if (ficheOuverte !== null) remplirDescription(ficheOuverte);
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
    Panneaux et raccourcis
@@ -1126,6 +1226,9 @@ for (const bouton of document.querySelectorAll("#langues button")) {
     appliquerLangue();
     rafraichirTextesDynamiques();
     majUrl();
+    // Passer au français après coup demande un fichier qui n'a jamais été
+    // réclamé : on le récupère maintenant, sans bloquer l'affichage.
+    if (langue === "fr" && recitsFr === null) chargerRecits();
   });
 }
 
@@ -1136,7 +1239,7 @@ function rafraichirTextesDynamiques() {
     debut: base.anneeMin,
     fin: base.anneeMax,
   });
-  $("recherche").placeholder = descriptions ? t("recherchePlaceholder") : t("rechercheAttente");
+  $("recherche").placeholder = recitsVo ? t("recherchePlaceholder") : t("rechercheAttente");
   $("bouton-lecture").setAttribute("aria-label", lecture ? t("arreter") : t("lire"));
   $("bascule-couleur").title = etat.colorer ? t("colorerActif") : t("colorerInactif");
 
@@ -1246,4 +1349,4 @@ $("attente").dataset.fini = "";
 setTimeout(() => $("attente").remove(), 400);
 
 // Une fois la carte posée et le premier rendu fait, on va chercher les récits.
-carteGL.once("idle", chargerDescriptions);
+carteGL.once("idle", chargerRecits);

@@ -162,11 +162,15 @@
       <dl class="fiche-champs" id="fiche-champs"></dl>
       <div class="fiche-recit">
         <h3 data-i18n="recitTitre">Récit d'origine</h3>
-        <p class="fiche-recit-note" data-i18n="recitNote">
-          Texte de la NGA, en anglais. Il n'est pas traduit&nbsp;: c'est la pièce
-          d'origine.
-        </p>
+        <p class="fiche-recit-note" id="fiche-recit-note"></p>
         <p id="fiche-description" lang="en"></p>
+        <!--
+          La traduction ne remplace jamais la pièce : elle se double d'un accès
+          au texte d'origine, à un toucher. C'est sur lui que se vérifient le
+          classement de gravité et tout ce que la carte affirme.
+        -->
+        <button type="button" class="fiche-original" id="fiche-original"
+                aria-pressed="false" hidden></button>
       </div>
       <p class="fiche-source" id="fiche-reference"></p>
     </aside>
