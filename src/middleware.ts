@@ -78,6 +78,21 @@ const CHEMINS_PUBLICS = new Set([
   // elle-même et refuse tout si la variable manque.
   "/api/cron/brief-matin",
   "/api/cron/recap-soir",
+  /*
+   * Les trois fichiers d'un site publié : le plan, les règles pour les
+   * robots, et l'image de partage.
+   *
+   * Ils DOIVENT être ouverts. Un moteur qui reçoit la page de connexion à la
+   * place de `robots.txt` considère qu'il n'y a pas de règles et fait ce qu'il
+   * veut ; un réseau social qui reçoit du HTML à la place d'une image affiche
+   * un lien nu. Aucun ne présente le moindre cookie.
+   *
+   * Ce qu'on ouvre : une liste de trois adresses publiques, une consigne
+   * d'indexation, et une image dessinée à partir de rien.
+   */
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image",
   // La carte de la piraterie, servie à « /piraterie » par une réécriture.
   // Ses ressources sont ouvertes juste en dessous, par préfixe.
   "/piraterie",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CATEGORIES_BLOC } from "@/lib/journees";
 import { LONGUEUR_PRECISION, PROFILS, QUESTIONS, type Reponses } from "@/lib/sas";
@@ -53,6 +53,37 @@ export function Sas() {
   const [secours, setSecours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [bilan, setBilan] = useState<Record<string, number> | null>(null);
+
+  /*
+   * A-t-on déjà un OS ouvert dans ce navigateur ?
+   *
+   * La porte proposait « Continuer avec mon OS » à tout le monde, visiteur de
+   * passage compris. Celui-ci traversait les six écrans, répondait à tout, et
+   * recevait à la fin « Tu n'as pas encore d'OS » — la route de construction
+   * exige une session. Six écrans de travail perdus au dernier pas : c'est la
+   * façon la plus sûre de ne jamais revenir.
+   *
+   * `null` = on ne sait pas encore ; la porte attend plutôt que de proposer
+   * une option qui échouera. La question se pose à une route déjà derrière la
+   * porte, qui répond 401 sans session : pas de route nouvelle à ouvrir.
+   */
+  const [connecte, setConnecte] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let annule = false;
+    void fetch("/api/custom", { cache: "no-store" })
+      .then((r) => {
+        if (!annule) setConnecte(r.status !== 401);
+      })
+      .catch(() => {
+        // Hors ligne : on suppose le pire (pas de session) plutôt que de
+        // laisser quelqu'un s'engager dans un parcours qui ne peut pas finir.
+        if (!annule) setConnecte(false);
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
 
   const question = etape >= 1 && etape <= QUESTIONS.length ? QUESTIONS[etape - 1] : null;
 
@@ -243,6 +274,7 @@ export function Sas() {
       >
         {phase === "porte" && (
           <Porte
+            connecte={connecte}
             nom={nouveauNom}
             mdp={nouveauMdp}
             erreur={erreur}
@@ -410,6 +442,7 @@ export function Sas() {
  * l'application de quelqu'un d'autre ».
  */
 function Porte({
+  connecte,
   nom,
   mdp,
   erreur,
@@ -418,6 +451,8 @@ function Porte({
   onContinuer,
   onCreer,
 }: {
+  /** null tant qu'on ne sait pas encore s'il y a une session. */
+  connecte: boolean | null;
   nom: string;
   mdp: string;
   erreur: string | null;
@@ -426,41 +461,58 @@ function Porte({
   onContinuer: () => void;
   onCreer: () => void | Promise<void>;
 }) {
-  const [ouvre, setOuvre] = useState(false);
+  /*
+   * Sans session, le formulaire de création est ouvert d'emblée.
+   *
+   * C'est le cas de tous ceux qui arrivent de la page publique : leur unique
+   * chemin est de créer un OS, et le leur faire découvrir en dépliant un
+   * second bouton ajoute un geste pour rien.
+   */
+  const [ouvertManuel, setOuvertManuel] = useState(false);
+  const ouvre = ouvertManuel || connecte === false;
   const pret = nom.trim().length >= 2 && mdp.length >= 8;
 
   return (
     <div className="view-in flex flex-1 flex-col">
       <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em] sm:text-[27px]">
-        On part de quoi ?
+        {connecte === false ? "Commençons par ton OS." : "On part de quoi ?"}
       </h1>
       <p className="mt-[7px] text-[12.5px] font-semibold leading-[1.45] text-white/45">
-        Chaque OS est séparé : ses journées, ses tâches, ses objectifs n&apos;appartiennent
-        qu&apos;à lui.
+        {connecte === false
+          ? "Un nom, un mot de passe, et on enchaîne sur les questions. Rien d'autre à remplir."
+          : "Chaque OS est séparé : ses journées, ses tâches, ses objectifs n'appartiennent qu'à lui."}
       </p>
 
       <div className="mt-[20px] flex flex-col gap-[9px]">
-        <button
-          type="button"
-          onClick={onContinuer}
-          className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all"
-          style={{
-            background: "rgba(255,255,255,0.035)",
-            border: "1.5px solid rgba(255,255,255,0.09)",
-          }}
-        >
-          <span className="text-[22px]">🔑</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14.5px] font-black">Continuer avec mon OS</span>
-            <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
-              Ajoute des blocs, des habitudes et des objectifs à celui que tu as déjà.
+        {/*
+          « Continuer avec mon OS » n'apparaît QUE si l'on en a un.
+          Le proposer à un visiteur de passage lui faisait traverser six écrans
+          pour se heurter à « tu n'as pas encore d'OS » au tout dernier pas.
+        */}
+        {connecte !== false && (
+          <button
+            type="button"
+            onClick={onContinuer}
+            disabled={connecte === null}
+            className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all disabled:cursor-wait disabled:opacity-45"
+            style={{
+              background: "rgba(255,255,255,0.035)",
+              border: "1.5px solid rgba(255,255,255,0.09)",
+            }}
+          >
+            <span className="text-[22px]">🔑</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14.5px] font-black">Continuer avec mon OS</span>
+              <span className="mt-[2px] block text-[11.5px] font-semibold leading-[1.35] text-white/45">
+                Ajoute des blocs, des habitudes et des objectifs à celui que tu as déjà.
+              </span>
             </span>
-          </span>
-        </button>
+          </button>
+        )}
 
         <button
           type="button"
-          onClick={() => setOuvre((v) => !v)}
+          onClick={() => setOuvertManuel((v) => !v)}
           aria-expanded={ouvre}
           className="flex min-h-[64px] w-full cursor-pointer items-center gap-[12px] rounded-[14px] px-[14px] py-[12px] text-left transition-all"
           style={{
@@ -519,6 +571,16 @@ function Porte({
             Note ce mot de passe : il n&apos;y a aucun moyen de le retrouver.
           </p>
         </div>
+      )}
+
+      {/* La sortie pour qui a déjà un OS mais n'est pas connecté ici. */}
+      {connecte === false && (
+        <a
+          href="/login"
+          className="mt-[16px] flex min-h-[44px] items-center justify-center text-[12.5px] font-bold text-white/35 underline underline-offset-4 transition-colors hover:text-white/60"
+        >
+          J&apos;ai déjà un OS — me connecter
+        </a>
       )}
 
       {erreur && (

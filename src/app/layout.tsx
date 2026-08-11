@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+
+import { SITE } from "@/lib/site";
 import { Nunito, JetBrains_Mono } from "next/font/google";
 import { EcranLancement } from "@/components/EcranLancement";
 import { FinLancement } from "@/components/FinLancement";
@@ -30,9 +32,44 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Twaylo OS",
-  description: "Le système d'exploitation personnel de Twaylo.",
+  /*
+   * L'adresse de base, sans laquelle rien de ce qui suit ne fonctionne.
+   *
+   * Les images de partage et les URL canoniques doivent être ABSOLUES : sans
+   * `metadataBase`, Next émet des chemins relatifs, et une image relative est
+   * simplement ignorée par les réseaux sociaux — le lien partagé redevient une
+   * ligne de texte gris.
+   */
+  metadataBase: new URL(SITE),
+  title: "Twaylo OS — ton système d'exploitation personnel",
+  description:
+    "Un seul endroit qui tient ta journée, tes objectifs et ta progression. Construit autour de ta vie en deux minutes, gratuit.",
   applicationName: "Twaylo OS",
+  /*
+   * Rien n'est indexé PAR DÉFAUT, et c'est délibéré.
+   *
+   * Tout le site est un tableau de bord personnel derrière un mot de passe.
+   * Les trois pages publiques rouvrent l'indexation chacune de leur côté
+   * (`robots: { index: true }` dans leur propre `metadata`) : ouvrir page par
+   * page est un geste conscient, l'inverse laisse fuir la première page qu'on
+   * oublie de fermer.
+   */
+  robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    locale: "fr_FR",
+    siteName: "Twaylo OS",
+    url: SITE,
+    title: "Twaylo OS — ton système d'exploitation personnel",
+    description:
+      "Ta journée, tes objectifs et ta progression au même endroit. Construit autour de ta vie en deux minutes.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Twaylo OS — ton système d'exploitation personnel",
+    description:
+      "Ta journée, tes objectifs et ta progression au même endroit. Construit autour de ta vie en deux minutes.",
+  },
   /*
    * Les trois lignes qui font croire à iOS que c'est une application.
    *
