@@ -33,6 +33,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { verifierPositions } from "./positions-verifier.mjs";
 
 /* ------------------------------------------------------------------ */
 /* Réglages                                                            */
@@ -526,13 +527,105 @@ export function construireSortie(incidents, meta) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Vérification croisée des positions                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Confronte chaque position au récit du même enregistrement, applique les
+ * corrections, et rend la liste de ce qui reste inutilisable.
+ *
+ * Toute la logique est dans `positions-verifier.mjs` ; ici on ne fait que
+ * l'appeler et TOUT écrire dans le journal de construction. Ce journal est
+ * le seul endroit où l'on peut vérifier, à la main et sur pièce, que rien
+ * n'a été inventé : chaque ligne dit d'où vient la nouvelle position.
+ */
+function appliquerVerification(incidents) {
+  const { corriges, ecartes } = verifierPositions(incidents);
+
+  console.error("");
+  console.error("═══ VÉRIFICATION DES POSITIONS ═══════════════════════════");
+  console.error(`Positions corrigées d'après le récit : ${corriges.length}`);
+  for (const k of corriges) {
+    console.error(
+      `  ${k.reference.padEnd(9)} ${k.avant[0]},${k.avant[1]} → ${k.apres[0]},${k.apres[1]}` +
+        `  (le récit dit « ${k.lu} », ${k.ecartKm} km d'écart)`,
+    );
+  }
+  console.error(`Incidents écartés de la carte        : ${ecartes.length}`);
+  for (const e of ecartes) {
+    console.error(`  ${e.reference.padEnd(9)} ${e.date}  ${e.position[0]},${e.position[1]}`);
+    console.error(`      ${e.preuve}`);
+    console.error(`      ${e.debut}`);
+  }
+  console.error("══════════════════════════════════════════════════════════");
+
+  return {
+    positionsCorrigees: corriges.map((k) => k.rang),
+    positionsEcartees: ecartes.map((e) => e.rang),
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Programme                                                           */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Rejoue la vérification sur les fichiers déjà écrits, sans rien
+ * retélécharger.
+ *
+ * Utile pour deux raisons : la NGA ne sert plus ASAM, et l'opération est
+ * idempotente — une position déjà corrigée s'accorde désormais avec son
+ * récit, donc plus rien ne bouge. On peut la relancer autant de fois qu'on
+ * veut sans dériver.
+ */
+async function reverifier() {
+  const fichierCarte = path.join(DOSSIER_SORTIE, "asam-carte.json");
+  const fichierDescriptions = path.join(DOSSIER_SORTIE, "asam-descriptions.json");
+  const carte = JSON.parse(await readFile(fichierCarte, "utf8"));
+  const descriptions = JSON.parse(await readFile(fichierDescriptions, "utf8"));
+  const col = carte.colonnes;
+
+  const incidents = descriptions.map((description, i) => ({
+    reference: col.reference[i],
+    date: col.date[i],
+    latitude: col.latitude[i],
+    longitude: col.longitude[i],
+    description,
+  }));
+
+  const verif = appliquerVerification(incidents);
+
+  col.latitude = incidents.map((i) => i.latitude);
+  col.longitude = incidents.map((i) => i.longitude);
+
+  /*
+   * Les corrections déjà appliquées sont CONSERVÉES.
+   *
+   * C'est ce qui rend l'opération rejouable : au deuxième passage, une
+   * position corrigée s'accorde avec son récit, donc plus rien ne bouge —
+   * et sans cette réunion, la liste des corrections repartirait à zéro
+   * alors que les points, eux, resteraient corrigés.
+   */
+  const dejaCorriges = carte.meta.positionsCorrigees ?? [];
+  Object.assign(carte.meta, {
+    positionsCorrigees: [...new Set([...dejaCorriges, ...verif.positionsCorrigees])].sort(
+      (a, b) => a - b,
+    ),
+    positionsEcartees: verif.positionsEcartees,
+    total: incidents.length - verif.positionsEcartees.length,
+    recus: incidents.length,
+  });
+
+  await writeFile(fichierCarte, JSON.stringify(carte), "utf8");
+  console.error(`\nRéécrit : ${path.relative(RACINE, fichierCarte)}`);
+}
 
 async function principal() {
   const options = new Set(process.argv.slice(2));
   const seulementChiffres = options.has("--chiffres");
   const horsLigne = options.has("--hors-ligne");
+
+  if (options.has("--reverifier")) return reverifier();
 
   let enregistrements;
   let source;
@@ -570,6 +663,10 @@ async function principal() {
   // Ordre chronologique : le curseur temporel et l'animation de lecture
   // parcourent ensuite les incidents par tranches contiguës.
   incidents.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  // La vérification vient APRÈS le tri : elle rend des rangs, et ces rangs
+  // doivent être ceux du fichier final, pas ceux d'un ordre intermédiaire.
+  const verif = appliquerVerification(incidents);
 
   const datees = incidents.filter((i) => i.date);
   const plusAncien = datees.length ? datees[0].date : "";
@@ -636,7 +733,13 @@ async function principal() {
     // laisser croire qu'elle est à jour.
     captureDu: source.capture ?? null,
     genereLe: new Date().toISOString().slice(0, 10),
-    total: incidents.length,
+    // `total` est ce que la carte peut MONTRER ; `recus` ce que la source
+    // fournit. Les deux diffèrent des incidents dont la position est
+    // contredite par leur propre récit, et il faut que les deux soient
+    // lisibles pour que l'écart soit vérifiable.
+    total: incidents.length - verif.positionsEcartees.length,
+    recus: incidents.length,
+    ...verif,
     ecartes: [...rejets.entries()].map(([motif, nombre]) => ({ motif, nombre })),
     plusAncien,
     plusRecent,
