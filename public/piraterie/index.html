@@ -20,6 +20,40 @@
     -->
     <meta name="robots" content="index, follow" />
 
+    <script>
+      /*
+       * Congédie cette page du cache hors-ligne de l'OS.
+       *
+       * L'OS installe un service worker sur tout le domaine, qui gardait
+       * `carte.js` et `carte.css` à vie sans jamais revérifier — et la page
+       * elle-même en secours. Résultat : la toute première carte publiée
+       * restait affichée sur les téléphones, quel que soit le déploiement.
+       *
+       * Le service worker ignore désormais ce dossier, mais le correctif ne
+       * s'applique qu'une fois la nouvelle version installée. Ces quelques
+       * lignes vident ce qu'il a déjà mis de côté ici — et seulement ici.
+       *
+       * On ne le désinscrit PAS : ce serait priver l'OS de son mode hors
+       * réseau depuis une page qui ne le concerne pas. On retire uniquement
+       * les entrées de /piraterie, chirurgicalement.
+       */
+      if (window.caches) {
+        caches.keys().then((noms) => {
+          for (const nom of noms) {
+            caches.open(nom).then((cache) =>
+              cache.keys().then((requetes) => {
+                for (const requete of requetes) {
+                  if (new URL(requete.url).pathname.startsWith("/piraterie")) {
+                    cache.delete(requete);
+                  }
+                }
+              }),
+            );
+          }
+        });
+      }
+    </script>
+
     <!--
       Les ressources du premier affichage, demandées dès la lecture de
       l'en-tête plutôt qu'à la fin du script. Le navigateur les télécharge en
@@ -236,6 +270,15 @@
           <a href="https://msi.nga.mil/Piracy" rel="noreferrer" data-i18n="source">Source : NGA — base ASAM</a>
           <span aria-hidden="true">·</span>
           <a class="lien-video" href="[URL_VIDEO]" data-i18n="video">▶ Voir le documentaire</a>
+          <!--
+            Le numéro de version, visible.
+
+            Sans lui, impossible de trancher la seule question qui bloque tout
+            dépannage : « est-ce que tu regardes bien la dernière version ? »
+            Un téléphone garde parfois l'ancienne, et on cherche alors un
+            défaut déjà corrigé. Une mention à lire, et on sait.
+          -->
+          <span class="version">v3</span>
         </p>
       </div>
     </section>

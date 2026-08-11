@@ -1168,3 +1168,14 @@ body {
 .bouton-lecture {
   border-radius: var(--r);
 }
+
+/* Le numéro de version : discret, mais lisible quand on le cherche. */
+.version {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--bord);
+  border-radius: 1px;
+  color: var(--texte-faible);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}

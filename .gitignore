@@ -28,12 +28,17 @@
 # retélécharger. Plusieurs mégaoctets, régénérables : hors du dépôt.
 /.cache
 
-# Ressources de la carte reconstruites avant chaque build par
-# `scripts/carte-preparer.mjs` : la copie de MapLibre et le fond de carte,
-# tous deux tirés de node_modules. Les commiter, ce serait dupliquer une
-# dépendance et risquer qu'elle se désynchronise de sa version.
-/public/piraterie/vendeur
-/public/piraterie/monde.json
+# NOTE : les ressources de la carte (copie de MapLibre, polices, fond de
+# carte) étaient ignorées ici et reconstruites avant chaque build par
+# `scripts/carte-preparer.mjs`. Elles sont désormais commitées.
+#
+# La raison est un mode de panne, pas une préférence : un site public dont
+# l'affichage dépend d'une étape de construction ne s'affiche plus du tout si
+# cette étape échoue — et Vercel garde alors l'ancien déploiement en ligne,
+# sans que rien ne le signale. On ne le découvre qu'en regardant le site et en
+# se demandant pourquoi il n'a pas changé.
+#
+# Le script reste là pour les régénérer ; il ne conditionne plus l'affichage.
 
 # debug
 npm-debug.log*
