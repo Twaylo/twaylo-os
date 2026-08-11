@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { CATEGORIES_BLOC } from "@/lib/journees";
 import { LONGUEUR_PRECISION, PROFILS, QUESTIONS, type Reponses } from "@/lib/sas";
+import { BLOC_PAR_ID, MODULES_COEUR, MODULE_PAR_ID } from "@/lib/modules";
 import type { PlanOs } from "@/lib/sas-plan";
 import { purgerCachesLocaux } from "@/lib/storage";
 
@@ -112,6 +113,8 @@ export function Sas() {
         ["hab", d.plan.habitudes.length],
         ["obj", d.plan.objectifs.length],
         ["skill", d.plan.skills.length],
+        ["mod", d.plan.espace.modules.length],
+        ["carte", d.plan.espace.blocs.length],
       ] as const) {
         for (let i = 0; i < n; i++) coches[`${type}:${i}`] = true;
       }
@@ -133,12 +136,29 @@ export function Sas() {
   /** Le plan réellement appliqué : seulement ce qui est resté coché. */
   const planRetenu = useMemo(() => {
     if (!plan) return null;
+    const modules = plan.espace.modules.filter((_, i) => garde[`mod:${i}`]);
     return {
       resume: plan.resume,
+      profil: plan.profil,
       blocs: plan.blocs.filter((_, i) => garde[`bloc:${i}`]),
       habitudes: plan.habitudes.filter((_, i) => garde[`hab:${i}`]),
       objectifs: plan.objectifs.filter((_, i) => garde[`obj:${i}`]),
       skills: plan.skills.filter((_, i) => garde[`skill:${i}`]),
+      espace: {
+        modules,
+        /*
+         * Une carte dont l'onglet vient d'être décoché ne part pas.
+         *
+         * Le filtre existe aussi à l'affichage, mais l'enregistrer quand même
+         * donnerait un accueil qui se remplit tout seul le jour où l'onglet
+         * est réinstallé, sans que personne ne l'ait demandé.
+         */
+        blocs: plan.espace.blocs.filter((id, i) => {
+          if (!garde[`carte:${i}`]) return false;
+          const requis = BLOC_PAR_ID.get(id)?.module;
+          return !requis || modules.includes(requis);
+        }),
+      },
     };
   }, [plan, garde]);
 
@@ -624,6 +644,85 @@ function Apercu({
       )}
 
       <div className="mt-[18px] flex flex-col gap-[10px]">
+        {/*
+          L'espace de travail EN PREMIER.
+
+          C'est ce qui se voit avant tout le reste quand l'OS s'ouvre — le rail
+          d'onglets et les cartes de l'accueil. Le montrer après la journée type
+          revenait à faire choisir la décoration avant les murs.
+        */}
+        {plan.espace.modules.length > 0 && (
+          <Bloc
+            titre="TES ONGLETS"
+            nombre={plan.espace.modules.filter((_, i) => garde[`mod:${i}`]).length}
+          >
+            <p className="mb-[7px] text-[11px] leading-[1.4] text-white/35">
+              Les pages de ton OS. Tu pourras en ajouter ou en retirer quand tu veux.
+            </p>
+            <div className="flex flex-wrap gap-[5px]">
+              {plan.espace.modules.map((id, i) => {
+                const m = MODULE_PAR_ID.get(id);
+                const fixe = MODULES_COEUR.includes(id);
+                const actif = fixe || Boolean(garde[`mod:${i}`]);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => !fixe && onBasculer(`mod:${i}`)}
+                    disabled={fixe}
+                    aria-pressed={actif}
+                    title={m?.description}
+                    className="min-h-[34px] cursor-pointer rounded-full px-[11px] text-[11.5px] font-extrabold transition-all hover:brightness-125 disabled:cursor-default"
+                    style={
+                      actif
+                        ? { color: "#07121d", background: "var(--color-ver)" }
+                        : {
+                            color: "rgba(255,255,255,0.4)",
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px dashed rgba(255,255,255,0.14)",
+                          }
+                    }
+                  >
+                    {m?.emoji} {id}
+                  </button>
+                );
+              })}
+            </div>
+          </Bloc>
+        )}
+
+        {plan.espace.blocs.length > 0 && (
+          <Bloc
+            titre="TON ACCUEIL"
+            nombre={plan.espace.blocs.filter((_, i) => garde[`carte:${i}`]).length}
+          >
+            <p className="mb-[7px] text-[11px] leading-[1.4] text-white/35">
+              Les cartes que tu verras en ouvrant. L&apos;ordre se règle ensuite.
+            </p>
+            {plan.espace.blocs.map((id, i) => {
+              const b = BLOC_PAR_ID.get(id);
+              const actif = Boolean(garde[`carte:${i}`]);
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-[8px] border-b py-[7px] last:border-b-0"
+                  style={{ borderColor: "rgba(255,255,255,0.05)", opacity: actif ? 1 : 0.35 }}
+                >
+                  <Coche actif={actif} onClick={() => onBasculer(`carte:${i}`)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12.5px] font-bold">
+                      {b?.emoji} {b?.titre ?? id}
+                    </span>
+                    <span className="block text-[10.5px] leading-[1.35] text-white/35">
+                      {b?.description}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </Bloc>
+        )}
+
         {plan.blocs.length > 0 && (
           <Bloc titre="TA JOURNÉE TYPE" nombre={plan.blocs.filter((_, i) => garde[`bloc:${i}`]).length}>
             {/*
@@ -826,6 +925,8 @@ function Bloc({
 
 function Termine({ bilan }: { bilan: Record<string, number> | null }) {
   const lignes = [
+    ["onglets", bilan?.modules ?? 0],
+    ["blocs d'accueil", bilan?.blocs ?? 0],
     ["blocs de journée", bilan?.journee ?? 0],
     ["habitudes", bilan?.habitudes ?? 0],
     ["objectifs", bilan?.objectifs ?? 0],

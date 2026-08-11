@@ -5,6 +5,9 @@ import { ecrireJournees, lireJournees } from "@/lib/journees-db";
 import { nettoyerPlan, planUtilisable, type PlanOs } from "@/lib/sas-plan";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { cleSemaine } from "@/lib/skills-suivi";
+import { ecrireCustom, lireCustom } from "@/lib/custom-db";
+import { bornerCustom } from "@/lib/custom";
+import { PROFILS } from "@/lib/sas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,8 +52,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Plan vide." }, { status: 400 });
   }
 
-  const pose = { journee: 0, habitudes: 0, objectifs: 0, skills: 0 };
+  const pose = { journee: 0, habitudes: 0, objectifs: 0, skills: 0, modules: 0, blocs: 0 };
   const rates: string[] = [];
+
+  /*
+   * La FORME de l'OS d'abord : les onglets et les cartes de l'accueil.
+   *
+   * En premier parce que c'est ce qui se voit à la seconde où l'OS s'ouvre.
+   * Un étudiant qui arrivait sur un rail de treize onglets — Sponsors,
+   * Pipeline contenu, Revenus YouTube — refermait avant d'avoir vu sa journée
+   * type. Il n'y avait rien à corriger dans le contenu : c'était le contenant
+   * qui n'était pas le sien.
+   *
+   * Le nom déjà choisi n'est jamais écrasé : quelqu'un qui relance le sas par
+   * curiosité ne doit pas y perdre son identité.
+   */
+  if (plan.espace.modules.length > 0 || plan.espace.blocs.length > 0) {
+    try {
+      const actuel = await lireCustom();
+      const titre = PROFILS.find((p) => p.id === plan.profil)?.titre ?? "";
+      await ecrireCustom(
+        bornerCustom({
+          ...actuel,
+          modules: plan.espace.modules.length > 0 ? plan.espace.modules : actuel.modules,
+          blocs: plan.espace.blocs.length > 0 ? plan.espace.blocs : actuel.blocs,
+          role: actuel.role || titre,
+        }),
+      );
+      pose.modules = plan.espace.modules.length;
+      pose.blocs = plan.espace.blocs.length;
+    } catch (err) {
+      console.error("[sas] espace de travail impossible :", err);
+      rates.push("les onglets et les blocs");
+    }
+  }
 
   /*
    * Chaque partie est posée séparément, et un échec n'arrête pas les autres.

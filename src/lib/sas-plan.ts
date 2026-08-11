@@ -1,5 +1,8 @@
 import { CATEGORIES_BLOC, type CategorieBloc } from "./journees";
-import { BLOCS_PAR_PROFIL, HABITUDES_PAR_PROFIL, type Reponses } from "./sas";
+import { BLOCS_PAR_PROFIL, HABITUDES_PAR_PROFIL, PROFILS, type Reponses } from "./sas";
+import { BLOCS, TABS, blocsDuProfil, modulesDuProfil, ordonner } from "./modules";
+
+const CATALOGUE_BLOCS = BLOCS.map((b) => b.id);
 
 /**
  * Le plan que l'IA propose, et sa mise en forme.
@@ -17,10 +20,22 @@ import { BLOCS_PAR_PROFIL, HABITUDES_PAR_PROFIL, type Reponses } from "./sas";
 export type PlanOs = {
   /** Une phrase qui dit ce qui a été construit, montrée avant d'appliquer. */
   resume: string;
+  /** Le profil choisi au premier écran — sert au rôle affiché et aux défauts. */
+  profil: string;
   blocs: { debut: string; fin: string; titre: string; categorie: CategorieBloc }[];
   habitudes: { nom: string; categorie: string; options: string[] }[];
   objectifs: { objectif: string; portee: "semaine" | "mois" | "trimestre" | "annee" }[];
   skills: { nom: string; categorie: string; niveau: number }[];
+  /**
+   * La FORME de l'OS : quels onglets, quelles cartes sur l'accueil.
+   *
+   * Ce n'est pas l'IA qui décide — c'est le catalogue, à partir du profil. Un
+   * modèle de langage qui invente des noms d'onglets produirait des modules
+   * inexistants une fois sur dix, et le rail se retrouverait vide. Ici la
+   * proposition est déterministe, et la personne la corrige à l'écran suivant :
+   * c'est la partie du sas qui se voit le plus, elle ne doit pas être un pari.
+   */
+  espace: { modules: string[]; blocs: string[] };
 };
 
 const PORTEES = new Set(["semaine", "mois", "trimestre", "annee"]);
@@ -120,13 +135,38 @@ export function nettoyerPlan(brut: unknown): PlanOs {
     .filter((s): s is PlanOs["skills"][number] => s !== null)
     .slice(0, MAX.skills);
 
+  /*
+   * L'espace est borné contre le catalogue, comme le reste.
+   *
+   * Il fait l'aller-retour par le navigateur : ce qui revient peut contenir
+   * n'importe quoi. `ordonner` ne garde que les identifiants connus, sans
+   * doublon, et dans l'ordre où ils arrivent.
+   */
+  const brutEspace = (p.espace ?? {}) as { modules?: unknown; blocs?: unknown };
+  const modules = ordonner(liste(brutEspace.modules).map((x) => texte(x, 30)), TABS);
+  const espace = {
+    // Accueil n'est pas négociable : sans lui, l'OS s'ouvre sur rien.
+    modules: modules.length > 0 && !modules.includes("Accueil") ? ["Accueil", ...modules] : modules,
+    blocs: ordonner(liste(brutEspace.blocs).map((x) => texte(x, 30)), CATALOGUE_BLOCS),
+  };
+
+  const profil = texte(p.profil, 20);
+
   return {
     resume: texte(p.resume, 240),
+    profil: PROFILS.some((x) => x.id === profil) ? profil : "autre",
     blocs,
     habitudes,
     objectifs,
     skills,
+    espace,
   };
+}
+
+/** La forme d'OS proposée à un profil : modules du catalogue, puis leurs blocs. */
+export function espaceDuProfil(profil: string): PlanOs["espace"] {
+  const modules = modulesDuProfil(profil);
+  return { modules, blocs: blocsDuProfil(profil, modules) };
 }
 
 /** Un plan vide ne vaut pas la peine d'être appliqué. */
@@ -183,6 +223,8 @@ export function planDeSecours(reponses: Reponses): PlanOs {
   return nettoyerPlan({
     resume:
       "Une base tirée de ton profil, sans l'assistant. Coche ce que tu gardes et ajuste les horaires : tout est modifiable ici.",
+    profil: reponses.profil,
+    espace: espaceDuProfil(reponses.profil),
     blocs,
     habitudes: (HABITUDES_PAR_PROFIL[reponses.profil] ?? HABITUDES_PAR_PROFIL.autre).map((h) => ({
       ...h,

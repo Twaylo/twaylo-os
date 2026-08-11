@@ -163,18 +163,22 @@ function DemoToggle() {
  * qui est connecté, où vivent les données, et la déconnexion.
  */
 function Compte() {
-  const { data, sync, custom, demoMode } = useOs();
+  const { data, sync, identite, demoMode } = useOs();
   const { serie: serieVive, pret } = useProgression();
   const serie = !demoMode && pret ? serieVive : data.operator.streakDays;
   const [ouvert, setOuvert] = useState(false);
   const [reglages, setReglages] = useState(false);
 
   /*
-   * L'identité personnalisée s'affiche partout où le nom apparaît — sauf en
-   * démo, qui doit rester le personnage factice du jeu de démonstration.
+   * L'identité vient du contexte, qui sait DE QUI il parle.
+   *
+   * Elle était calculée ici à partir de `data.operator`, la constante qui
+   * décrit Twaylo : un autre compte voyait son nom tant qu'il n'avait pas
+   * rempli le champ lui-même. Le contexte prend le nom choisi, sinon celui du
+   * compte, et ne ressort l'identité d'origine que chez son propriétaire.
    */
-  const nom = !demoMode && custom.nom ? custom.nom : data.operator.name;
-  const role = !demoMode && custom.role ? custom.role : data.operator.role;
+  const nom = identite.nom;
+  const role = identite.role;
 
   // Fermer sur Échap : un panneau qu'on ne sait pas fermer est une impasse.
   useEffect(() => {
@@ -185,7 +189,7 @@ function Compte() {
   }, [ouvert]);
 
   const lignes: { label: string; valeur: string }[] = [
-    { label: "Rôle", valeur: role },
+    ...(role ? [{ label: "Rôle", valeur: role }] : []),
     {
       label: "Série en cours",
       // Même source que la carte Opérateur et la carte Progression : la
@@ -243,7 +247,9 @@ function Compte() {
             }}
           >
             <div className="text-[15px] font-black">{nom}</div>
-            <div className="mt-[2px] text-[11px] text-white/40">{data.operator.status}</div>
+            {identite.statut && (
+              <div className="mt-[2px] text-[11px] text-white/40">{identite.statut}</div>
+            )}
 
             <div className="mt-[11px] flex flex-col gap-[7px]">
               {lignes.map((l) => (

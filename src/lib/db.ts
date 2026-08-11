@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { uid, supabaseAdmin } from "./supabase";
+import { USER_ID, uid, supabaseAdmin } from "./supabase";
 import { archiverTachesOubliees, estOubliee, seuilOubli } from "./oublies-db";
 import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
@@ -158,6 +158,26 @@ async function tachesDejaSemees(): Promise<boolean> {
 }
 
 /**
+ * Ce semis initial ne concerne QUE l'OS historique.
+ *
+ * `REAL_DATA` n'est pas un jeu de démarrage neutre : ce sont les tâches, les
+ * idées de vidéo et les coéquipiers de Twaylo. Ils étaient semés à l'identique
+ * dans chaque OS créé — quelqu'un qui s'inscrivait trouvait « Créer le compte
+ * Snap Twaylo » dans sa liste et cinq inconnus dans ses contacts. Un OS neuf
+ * démarre donc vide, et c'est le sas qui le remplit à partir des réponses de
+ * son propriétaire.
+ *
+ * Le drapeau est posé quand même : sans lui, la question « faut-il semer ? »
+ * se reposerait à chaque lecture d'une liste vide, ce qui est le cas normal
+ * d'un OS qu'on vient d'ouvrir.
+ */
+async function semisInterdit(cle: string): Promise<boolean> {
+  if ((await uid()) === USER_ID) return false;
+  await majSentinelle({ [cle]: true });
+  return true;
+}
+
+/**
  * Au tout premier démarrage, la table est vide. Plutôt qu'un dashboard désert,
  * on y sème les tâches réelles de Twaylo (spec Partie 11).
  *
@@ -202,6 +222,8 @@ export async function lireTaches(): Promise<TacheDB[]> {
 
   // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
   if (await tachesDejaSemees()) return [];
+  // Et chez quelqu'un d'autre, il n'y a jamais eu de semis à faire.
+  if (await semisInterdit("tachesSemees")) return [];
 
   // Sorti de la boucle : un seul calcul, et un `.map()` reste synchrone.
   const moi = await uid();
@@ -677,6 +699,7 @@ export async function lireVideos(): Promise<VideoDB[]> {
    * suivant, encore et encore. Un pipeline vide était impossible à atteindre.
    */
   if (await dejaSeme("videosSemees")) return [];
+  if (await semisInterdit("videosSemees")) return [];
 
   // Même amorçage idempotent que les tâches : identifiant déduit du titre,
   // donc deux semis concurrents écrivent la même ligne.
@@ -789,6 +812,7 @@ export async function lireContacts(): Promise<ContactDB[]> {
   // Même garde que les tâches et les vidéos : une liste vidée à la main le
   // reste. Sans lui, les contacts d'amorçage revenaient à chaque chargement.
   if (await dejaSeme("contactsSemes")) return [];
+  if (await semisInterdit("contactsSemes")) return [];
 
   // Sorti de la boucle : un seul calcul, et le `.map()` reste synchrone.
   const moi = await uid();
@@ -1151,9 +1175,18 @@ export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
    */
   if (Array.isArray(definitions)) return definitions;
 
-  // Premier démarrage : on sème les habitudes par défaut.
-  await ecrireHabitudesDef(HABITUDES_DEFAUT);
-  return HABITUDES_DEFAUT;
+  /*
+   * Premier démarrage. Les habitudes de Twaylo chez Twaylo, rien ailleurs.
+   *
+   * « Communauté → DM / Stories » ou « Point finance » ne veulent rien dire
+   * pour quelqu'un qui vient d'arriver ; ce sont les siennes. Un OS neuf
+   * démarre sans habitude, et le sas y pose celles qui correspondent aux
+   * réponses données. La clé est écrite dans les deux cas, sinon la question
+   * se reposerait à chaque lecture.
+   */
+  const semees = (await uid()) === USER_ID ? HABITUDES_DEFAUT : [];
+  await ecrireHabitudesDef(semees);
+  return semees;
 }
 
 
@@ -1199,7 +1232,14 @@ export async function lireSkills(): Promise<Skill[]> {
   const skills = (data?.habitudes as { skills?: Skill[] } | null)?.skills;
   if (Array.isArray(skills)) return skills;
 
-  const semes: Skill[] = SKILLS_DEFAUT.map((s, i) => ({
+  /*
+   * « Maps GeoLayers », « Shorts », « Beauté » : ce sont les compétences de
+   * Twaylo. Servies à tout le monde, elles donnaient à un nouvel OS une liste
+   * de onze compétences qu'il n'a jamais choisies — et une courbe de
+   * progression sur des choses qu'il ne pratique pas.
+   */
+  const depart = (await uid()) === USER_ID ? SKILLS_DEFAUT : [];
+  const semes: Skill[] = depart.map((s, i) => ({
     id: `skill-${i}-${s.nom.toLowerCase().replace(/[^a-z]/g, "")}`,
     nom: s.nom,
     categorie: s.categorie,
