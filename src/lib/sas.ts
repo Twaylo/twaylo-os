@@ -180,3 +180,119 @@ export function resumerReponses(r: Reponses): string {
   if (r.precision?.trim()) lignes.push(`Précision libre : ${r.precision.trim()}`);
   return lignes.join("\n");
 }
+
+/* ------------------------------------------------------------------ */
+/* Le catalogue de blocs, par profil                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ce que chaque profil se voit proposer, avant même que l'IA n'intervienne.
+ *
+ * Deux rôles, et le second est le plus important :
+ *
+ * 1. il donne à l'IA une base reconnaissable, pour qu'un étudiant ne reçoive
+ *    pas la journée d'un indépendant repeinte ;
+ * 2. il sert de SECOURS. Si la clé d'IA manque ou si le modèle ne répond pas,
+ *    le sas propose quand même une journée complète au lieu d'un message
+ *    d'échec. Un accueil qui se termine sur « réessaie » est un accueil qu'on
+ *    ne recommence pas.
+ *
+ * Les horaires sont des points de départ : tout est modifiable à l'écran
+ * juste après.
+ */
+export type BlocCatalogue = {
+  debut: string;
+  fin: string;
+  titre: string;
+  categorie: string;
+  /** Proposé coché ? Les indispensables oui, les optionnels non. */
+  parDefaut: boolean;
+};
+
+const SOCLE: BlocCatalogue[] = [
+  { debut: "07:00", fin: "07:30", titre: "Réveil sans téléphone", categorie: "corps", parDefaut: true },
+  { debut: "22:30", fin: "23:00", titre: "Coupure écrans", categorie: "repos", parDefaut: false },
+];
+
+export const BLOCS_PAR_PROFIL: Record<string, BlocCatalogue[]> = {
+  etudiant: [
+    ...SOCLE,
+    { debut: "09:00", fin: "12:00", titre: "Cours", categorie: "autre", parDefaut: true },
+    { debut: "14:00", fin: "16:00", titre: "Révisions ciblées", categorie: "creation", parDefaut: true },
+    { debut: "16:30", fin: "17:30", titre: "Sport", categorie: "corps", parDefaut: true },
+    { debut: "18:00", fin: "19:00", titre: "Fiches et relecture", categorie: "creation", parDefaut: false },
+    { debut: "21:00", fin: "21:30", titre: "Lecture", categorie: "repos", parDefaut: false },
+  ],
+  createur: [
+    ...SOCLE,
+    { debut: "08:00", fin: "09:30", titre: "Écriture de scripts", categorie: "creation", parDefaut: true },
+    { debut: "10:00", fin: "12:00", titre: "Tournage", categorie: "tournage", parDefaut: true },
+    { debut: "14:00", fin: "16:30", titre: "Montage", categorie: "creation", parDefaut: true },
+    { debut: "17:00", fin: "17:30", titre: "Réponses à la communauté", categorie: "business", parDefaut: false },
+    { debut: "18:00", fin: "19:00", titre: "Sport", categorie: "corps", parDefaut: true },
+  ],
+  actif: [
+    ...SOCLE,
+    { debut: "07:30", fin: "08:15", titre: "Trajet — podcast ou lecture", categorie: "autre", parDefaut: false },
+    { debut: "09:00", fin: "12:30", titre: "Travail — matinée", categorie: "business", parDefaut: true },
+    { debut: "14:00", fin: "18:00", titre: "Travail — après-midi", categorie: "business", parDefaut: true },
+    { debut: "18:30", fin: "19:30", titre: "Sport", categorie: "corps", parDefaut: true },
+    { debut: "20:30", fin: "21:30", titre: "Projet perso", categorie: "creation", parDefaut: false },
+  ],
+  independant: [
+    ...SOCLE,
+    { debut: "08:30", fin: "09:00", titre: "Relances clients", categorie: "business", parDefaut: true },
+    { debut: "09:00", fin: "12:30", titre: "Travail facturable", categorie: "business", parDefaut: true },
+    { debut: "14:00", fin: "17:00", titre: "Travail facturable", categorie: "business", parDefaut: true },
+    { debut: "17:00", fin: "17:30", titre: "Prospection", categorie: "business", parDefaut: false },
+    { debut: "18:00", fin: "19:00", titre: "Sport", categorie: "corps", parDefaut: true },
+  ],
+  sportif: [
+    ...SOCLE,
+    { debut: "07:30", fin: "09:00", titre: "Séance du matin", categorie: "corps", parDefaut: true },
+    { debut: "09:15", fin: "09:45", titre: "Petit-déjeuner protéiné", categorie: "corps", parDefaut: true },
+    { debut: "12:30", fin: "13:15", titre: "Repas complet", categorie: "corps", parDefaut: false },
+    { debut: "18:00", fin: "19:15", titre: "Séance du soir", categorie: "corps", parDefaut: false },
+    { debut: "22:00", fin: "22:30", titre: "Étirements et sommeil", categorie: "repos", parDefaut: true },
+  ],
+  autre: [
+    ...SOCLE,
+    { debut: "09:00", fin: "11:00", titre: "Bloc de travail profond", categorie: "creation", parDefaut: true },
+    { debut: "14:00", fin: "16:00", titre: "Deuxième bloc", categorie: "creation", parDefaut: true },
+    { debut: "17:30", fin: "18:30", titre: "Sport", categorie: "corps", parDefaut: true },
+    { debut: "20:00", fin: "20:30", titre: "Bilan de la journée", categorie: "repos", parDefaut: false },
+  ],
+};
+
+/** Les habitudes proposées par profil, en secours comme pour l'IA. */
+export const HABITUDES_PAR_PROFIL: Record<string, { nom: string; categorie: string }[]> = {
+  etudiant: [
+    { nom: "Révision du jour", categorie: "Savoir" },
+    { nom: "Sport", categorie: "Corps" },
+    { nom: "Coucher avant minuit", categorie: "Corps" },
+  ],
+  createur: [
+    { nom: "Publier", categorie: "Création" },
+    { nom: "Sport", categorie: "Corps" },
+    { nom: "Veille", categorie: "Création" },
+  ],
+  actif: [
+    { nom: "Sport", categorie: "Corps" },
+    { nom: "Couper le travail le soir", categorie: "Autre" },
+    { nom: "Projet perso avancé", categorie: "Création" },
+  ],
+  independant: [
+    { nom: "Relance faite", categorie: "Business" },
+    { nom: "Sport", categorie: "Corps" },
+    { nom: "Compta à jour", categorie: "Business" },
+  ],
+  sportif: [
+    { nom: "Séance faite", categorie: "Corps" },
+    { nom: "Protéines atteintes", categorie: "Corps" },
+    { nom: "8 h de sommeil", categorie: "Corps" },
+  ],
+  autre: [
+    { nom: "Bloc profond fait", categorie: "Autre" },
+    { nom: "Sport", categorie: "Corps" },
+  ],
+};
