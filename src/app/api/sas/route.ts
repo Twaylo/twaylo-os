@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 
 import { CATEGORIES_BLOC } from "@/lib/journees";
-import { MAX, nettoyerPlan, planUtilisable } from "@/lib/sas-plan";
+import { MAX, nettoyerPlan, planDeSecours, planUtilisable } from "@/lib/sas-plan";
 import { reponsesValides, resumerReponses } from "@/lib/sas";
 
 export const runtime = "nodejs";
@@ -44,14 +44,6 @@ Les règles qui comptent :
 - Tout en FRANÇAIS, tutoiement.`;
 
 export async function POST(req: Request) {
-  const cle = process.env.ANTHROPIC_API_KEY;
-  if (!cle) {
-    return NextResponse.json(
-      { error: "L'assistant n'est pas configuré sur ce serveur." },
-      { status: 503 },
-    );
-  }
-
   let corps: unknown;
   try {
     corps = await req.json();
@@ -62,6 +54,19 @@ export async function POST(req: Request) {
   const reponses = (corps as { reponses?: unknown })?.reponses;
   if (!reponsesValides(reponses)) {
     return NextResponse.json({ error: "Réponses incomplètes." }, { status: 400 });
+  }
+
+  /*
+   * Sans clé, on ne renvoie pas une erreur : on renvoie le catalogue.
+   *
+   * La personne vient de traverser six écrans. Terminer sur « l'assistant
+   * n'est pas configuré » lui fait perdre ses réponses et l'envie de
+   * recommencer. Le plan du profil est moins fin, mais il est complet — et
+   * entièrement modifiable à l'écran suivant, ce qui est l'essentiel.
+   */
+  const cle = process.env.ANTHROPIC_API_KEY;
+  if (!cle) {
+    return NextResponse.json({ plan: planDeSecours(reponses), secours: true });
   }
 
   try {
@@ -95,10 +100,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ plan });
   } catch (err) {
-    console.error("[sas] construction impossible :", err);
-    return NextResponse.json(
-      { error: "La construction a échoué. Réessaie dans un instant." },
-      { status: 502 },
-    );
+    // Même raison qu'au-dessus : le modèle qui ne répond pas ne doit pas
+    // renvoyer quelqu'un à l'écran d'accueil les mains vides.
+    console.error("[sas] construction par le modèle impossible, secours :", err);
+    return NextResponse.json({ plan: planDeSecours(reponses), secours: true });
   }
 }

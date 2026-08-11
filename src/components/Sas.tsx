@@ -31,6 +31,16 @@ export function Sas() {
 
   const [phase, setPhase] = useState<Phase>("questions");
   const [plan, setPlan] = useState<PlanOs | null>(null);
+  /*
+   * Ce qu'on GARDE, coche par coche.
+   *
+   * Séparé du plan lui-même : décocher un bloc ne doit pas l'effacer, sinon
+   * on ne peut plus le récupérer d'un second appui. La clé est
+   * « type:position » — le plan ne bouge pas d'ordre entre l'aperçu et la
+   * mise en place.
+   */
+  const [garde, setGarde] = useState<Record<string, boolean>>({});
+  const [secours, setSecours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [bilan, setBilan] = useState<Record<string, number> | null>(null);
 
@@ -70,8 +80,20 @@ export function Sas() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reponses }),
       });
-      const d = (await r.json()) as { plan?: PlanOs; error?: string };
+      const d = (await r.json()) as { plan?: PlanOs; error?: string; secours?: boolean };
       if (!r.ok || !d.plan) throw new Error(d.error ?? `HTTP ${r.status}`);
+      // Tout coché au départ : on propose, on n'impose pas de trier.
+      const coches: Record<string, boolean> = {};
+      for (const [type, n] of [
+        ["bloc", d.plan.blocs.length],
+        ["hab", d.plan.habitudes.length],
+        ["obj", d.plan.objectifs.length],
+        ["skill", d.plan.skills.length],
+      ] as const) {
+        for (let i = 0; i < n; i++) coches[`${type}:${i}`] = true;
+      }
+      setGarde(coches);
+      setSecours(Boolean(d.secours));
       setPlan(d.plan);
       setPhase("apercu");
     } catch (err) {
@@ -85,15 +107,27 @@ export function Sas() {
     }
   }, [profil, choix, precision]);
 
+  /** Le plan réellement appliqué : seulement ce qui est resté coché. */
+  const planRetenu = useMemo(() => {
+    if (!plan) return null;
+    return {
+      resume: plan.resume,
+      blocs: plan.blocs.filter((_, i) => garde[`bloc:${i}`]),
+      habitudes: plan.habitudes.filter((_, i) => garde[`hab:${i}`]),
+      objectifs: plan.objectifs.filter((_, i) => garde[`obj:${i}`]),
+      skills: plan.skills.filter((_, i) => garde[`skill:${i}`]),
+    };
+  }, [plan, garde]);
+
   const appliquer = useCallback(async () => {
-    if (!plan) return;
+    if (!planRetenu) return;
     setPhase("construction");
     setErreur(null);
     try {
       const r = await fetch("/api/sas/appliquer", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan: planRetenu }),
       });
       const d = (await r.json()) as { pose?: Record<string, number>; error?: string };
       if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
@@ -104,7 +138,19 @@ export function Sas() {
       setErreur("La mise en place a échoué. Ton OS n'a pas été modifié.");
       setPhase("apercu");
     }
-  }, [plan]);
+  }, [planRetenu]);
+
+  /** Modifier un bloc sur place : heure de début, de fin, intitulé. */
+  const modifierBloc = useCallback(
+    (i: number, champ: "debut" | "fin" | "titre", valeur: string) => {
+      setPlan((p) =>
+        p === null
+          ? p
+          : { ...p, blocs: p.blocs.map((b, j) => (j === i ? { ...b, [champ]: valeur } : b)) },
+      );
+    },
+    [],
+  );
 
   const teinte = PROFILS.find((p) => p.id === profil)?.couleur ?? "var(--color-cya)";
 
@@ -252,7 +298,21 @@ export function Sas() {
         )}
 
         {phase === "apercu" && plan && (
-          <Apercu plan={plan} erreur={erreur} onAppliquer={() => void appliquer()} />
+          <Apercu
+            plan={plan}
+            garde={garde}
+            secours={secours}
+            erreur={erreur}
+            retenus={
+              (planRetenu?.blocs.length ?? 0) +
+              (planRetenu?.habitudes.length ?? 0) +
+              (planRetenu?.objectifs.length ?? 0) +
+              (planRetenu?.skills.length ?? 0)
+            }
+            onBasculer={(cle) => setGarde((g) => ({ ...g, [cle]: !g[cle] }))}
+            onModifierBloc={modifierBloc}
+            onAppliquer={() => void appliquer()}
+          />
         )}
 
         {phase === "pose" && <Termine bilan={bilan} />}
@@ -336,83 +396,128 @@ function EnConstruction() {
 
 function Apercu({
   plan,
+  garde,
+  secours,
   erreur,
+  retenus,
+  onBasculer,
+  onModifierBloc,
   onAppliquer,
 }: {
   plan: PlanOs;
+  garde: Record<string, boolean>;
+  secours: boolean;
   erreur: string | null;
+  retenus: number;
+  onBasculer: (cle: string) => void;
+  onModifierBloc: (i: number, champ: "debut" | "fin" | "titre", valeur: string) => void;
   onAppliquer: () => void;
 }) {
   return (
     <div className="view-in flex flex-1 flex-col">
-      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em]">Voilà ton OS.</h1>
+      <h1 className="text-[23px] font-black leading-[1.2] tracking-[-0.02em]">
+        Choisis ce que tu gardes.
+      </h1>
       {plan.resume && (
         <p className="mt-[8px] text-[13px] font-semibold leading-[1.5] text-white/55">
           {plan.resume}
         </p>
       )}
+      {secours && (
+        <p
+          className="mt-[10px] rounded-[10px] px-[11px] py-[8px] text-[11.5px] font-bold leading-[1.4]"
+          style={{ color: "var(--color-amb-soft)", background: "rgba(255,198,61,0.09)" }}
+        >
+          L&apos;assistant n&apos;a pas répondu : voici la base de ton profil. Elle se modifie
+          entièrement ici.
+        </p>
+      )}
 
       <div className="mt-[18px] flex flex-col gap-[10px]">
         {plan.blocs.length > 0 && (
-          <Bloc titre="TA JOURNÉE TYPE" nombre={plan.blocs.length}>
-            {plan.blocs.map((b, i) => (
-              <div key={`${b.debut}-${i}`} className="flex items-center gap-[9px] py-[4px]">
-                <span className="w-[74px] flex-none font-mono text-[11px] font-bold text-white/35">
-                  {b.debut}
-                  {b.fin ? `–${b.fin}` : ""}
-                </span>
-                <span
-                  className="h-[7px] w-[7px] flex-none rounded-full"
-                  style={{ background: CATEGORIES_BLOC[b.categorie].couleur }}
-                />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-bold">{b.titre}</span>
-              </div>
-            ))}
+          <Bloc titre="TA JOURNÉE TYPE" nombre={plan.blocs.filter((_, i) => garde[`bloc:${i}`]).length}>
+            {/*
+              Modifiable SUR PLACE, pas dans un écran à part.
+              Un horaire qu'il faut aller changer ailleurs après coup n'est
+              jamais changé : la journée proposée est acceptée telle quelle,
+              puis abandonnée parce qu'elle ne colle pas.
+            */}
+            {plan.blocs.map((b, i) => {
+              const actif = Boolean(garde[`bloc:${i}`]);
+              return (
+                <div
+                  key={`bloc-${i}`}
+                  className="flex items-center gap-[8px] border-b py-[7px] last:border-b-0"
+                  style={{ borderColor: "rgba(255,255,255,0.05)", opacity: actif ? 1 : 0.35 }}
+                >
+                  <Coche actif={actif} onClick={() => onBasculer(`bloc:${i}`)} />
+                  <span
+                    className="h-[7px] w-[7px] flex-none rounded-full"
+                    style={{ background: CATEGORIES_BLOC[b.categorie].couleur }}
+                  />
+                  <input
+                    type="time"
+                    value={b.debut}
+                    disabled={!actif}
+                    onChange={(e) => onModifierBloc(i, "debut", e.target.value)}
+                    aria-label={`Heure de début de ${b.titre}`}
+                    className="w-[62px] flex-none rounded-[7px] bg-transparent px-[4px] py-[3px] font-mono text-[11px] font-bold text-white/60 outline-none"
+                    style={{ border: "1px solid rgba(255,255,255,0.09)" }}
+                  />
+                  <input
+                    value={b.titre}
+                    disabled={!actif}
+                    onChange={(e) => onModifierBloc(i, "titre", e.target.value.slice(0, 60))}
+                    aria-label={`Intitulé du bloc de ${b.debut}`}
+                    className="min-w-0 flex-1 rounded-[7px] bg-transparent px-[6px] py-[3px] text-[12.5px] font-bold outline-none"
+                    style={{ border: "1px solid rgba(255,255,255,0.09)", color: "var(--color-fg)" }}
+                  />
+                </div>
+              );
+            })}
           </Bloc>
         )}
 
         {plan.habitudes.length > 0 && (
-          <Bloc titre="TES HABITUDES" nombre={plan.habitudes.length}>
-            <div className="flex flex-wrap gap-[6px]">
-              {plan.habitudes.map((h) => (
-                <span
-                  key={h.nom}
-                  className="rounded-full px-[9px] py-[4px] text-[11.5px] font-bold text-white/65"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
-                >
-                  {h.nom}
-                </span>
-              ))}
-            </div>
+          <Bloc titre="TES HABITUDES" nombre={plan.habitudes.filter((_, i) => garde[`hab:${i}`]).length}>
+            <Puces
+              items={plan.habitudes.map((h) => h.nom)}
+              prefixe="hab"
+              garde={garde}
+              onBasculer={onBasculer}
+            />
           </Bloc>
         )}
 
         {plan.objectifs.length > 0 && (
-          <Bloc titre="TES OBJECTIFS" nombre={plan.objectifs.length}>
-            {plan.objectifs.map((o) => (
-              <div key={o.objectif} className="flex items-baseline gap-[8px] py-[3px]">
-                <span className="min-w-0 flex-1 text-[12.5px] font-bold">{o.objectif}</span>
-                <span className="flex-none font-mono text-[10px] font-bold text-white/30">
-                  {o.portee}
-                </span>
-              </div>
-            ))}
+          <Bloc titre="TES OBJECTIFS" nombre={plan.objectifs.filter((_, i) => garde[`obj:${i}`]).length}>
+            {plan.objectifs.map((o, i) => {
+              const actif = Boolean(garde[`obj:${i}`]);
+              return (
+                <div
+                  key={`obj-${i}`}
+                  className="flex items-center gap-[8px] py-[4px]"
+                  style={{ opacity: actif ? 1 : 0.35 }}
+                >
+                  <Coche actif={actif} onClick={() => onBasculer(`obj:${i}`)} />
+                  <span className="min-w-0 flex-1 text-[12.5px] font-bold">{o.objectif}</span>
+                  <span className="flex-none font-mono text-[10px] font-bold text-white/30">
+                    {o.portee}
+                  </span>
+                </div>
+              );
+            })}
           </Bloc>
         )}
 
         {plan.skills.length > 0 && (
-          <Bloc titre="TES COMPÉTENCES SUIVIES" nombre={plan.skills.length}>
-            <div className="flex flex-wrap gap-[6px]">
-              {plan.skills.map((s) => (
-                <span
-                  key={s.nom}
-                  className="rounded-full px-[9px] py-[4px] text-[11.5px] font-bold text-white/65"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
-                >
-                  {s.nom} <span className="font-mono text-white/35">{s.niveau}</span>
-                </span>
-              ))}
-            </div>
+          <Bloc titre="TES COMPÉTENCES SUIVIES" nombre={plan.skills.filter((_, i) => garde[`skill:${i}`]).length}>
+            <Puces
+              items={plan.skills.map((s) => s.nom)}
+              prefixe="skill"
+              garde={garde}
+              onBasculer={onBasculer}
+            />
           </Bloc>
         )}
       </div>
@@ -430,16 +535,81 @@ function Apercu({
         <button
           type="button"
           onClick={onAppliquer}
-          className="flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-[14px] text-[15px] font-black text-[#07121d] transition-all hover:brightness-110"
+          disabled={retenus === 0}
+          className="flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-[14px] text-[15px] font-black text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-25"
           style={{ background: "var(--grad)" }}
         >
-          Mettre en place
+          {retenus === 0 ? "Rien de sélectionné" : `Mettre en place (${retenus})`}
         </button>
         {/* Ce que « mettre en place » ne fait PAS : dit ici, avant le geste. */}
         <p className="mt-[9px] text-center text-[11px] font-bold leading-[1.4] text-white/30">
           Rien n&apos;est remplacé — tout s&apos;ajoute à ce que tu as déjà.
         </p>
       </div>
+    </div>
+  );
+}
+
+/** La case à cocher des éléments du plan : 32 px de haut au doigt. */
+function Coche({ actif, onClick }: { actif: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={actif}
+      aria-label={actif ? "Retirer cet élément" : "Garder cet élément"}
+      className="flex h-[32px] w-[26px] flex-none cursor-pointer items-center justify-center"
+    >
+      <span
+        className="flex h-[19px] w-[19px] items-center justify-center rounded-[6px] text-[11px] font-black"
+        style={{
+          background: actif ? "var(--color-ver)" : "transparent",
+          border: `2px solid ${actif ? "var(--color-ver)" : "rgba(255,255,255,0.18)"}`,
+          color: "#07121d",
+        }}
+      >
+        {actif ? "✓" : ""}
+      </span>
+    </button>
+  );
+}
+
+/** Les listes courtes — habitudes, compétences — en puces cochables. */
+function Puces({
+  items,
+  prefixe,
+  garde,
+  onBasculer,
+}: {
+  items: string[];
+  prefixe: string;
+  garde: Record<string, boolean>;
+  onBasculer: (cle: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-[6px]">
+      {items.map((nom, i) => {
+        const actif = Boolean(garde[`${prefixe}:${i}`]);
+        return (
+          <button
+            key={`${prefixe}-${i}`}
+            type="button"
+            onClick={() => onBasculer(`${prefixe}:${i}`)}
+            aria-pressed={actif}
+            className="flex min-h-[34px] cursor-pointer items-center gap-[6px] rounded-full px-[10px] py-[5px] text-[11.5px] font-bold transition-all"
+            style={{
+              background: actif ? "rgba(61,220,132,0.13)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${actif ? "rgba(61,220,132,0.4)" : "rgba(255,255,255,0.08)"}`,
+              color: actif ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.3)",
+            }}
+          >
+            <span style={{ color: actif ? "var(--color-ver)" : "rgba(255,255,255,0.2)" }}>
+              {actif ? "✓" : "+"}
+            </span>
+            {nom}
+          </button>
+        );
+      })}
     </div>
   );
 }

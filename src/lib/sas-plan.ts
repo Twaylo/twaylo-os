@@ -1,4 +1,5 @@
 import { CATEGORIES_BLOC, type CategorieBloc } from "./journees";
+import { BLOCS_PAR_PROFIL, HABITUDES_PAR_PROFIL, type Reponses } from "./sas";
 
 /**
  * Le plan que l'IA propose, et sa mise en forme.
@@ -131,4 +132,63 @@ export function nettoyerPlan(brut: unknown): PlanOs {
 /** Un plan vide ne vaut pas la peine d'être appliqué. */
 export function planUtilisable(p: PlanOs): boolean {
   return p.blocs.length + p.habitudes.length + p.objectifs.length + p.skills.length > 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Le plan de secours, tiré du catalogue                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Le plan qu'on propose quand l'IA n'est pas là.
+ *
+ * Un sas qui se termine sur « réessaie plus tard » est un sas qu'on ne
+ * recommence pas : la personne a répondu à six écrans, elle doit repartir
+ * avec quelque chose. Le catalogue par profil est moins fin qu'une réponse du
+ * modèle, mais il est complet, cohérent, et entièrement modifiable à l'écran
+ * juste après — ce qui est déjà l'essentiel.
+ *
+ * Il tient compte de DEUX réponses, celles qui changent tout : le temps
+ * disponible, qui plafonne le nombre de blocs, et les priorités, qui décident
+ * des compétences suivies.
+ */
+export function planDeSecours(reponses: Reponses): PlanOs {
+  const catalogue = BLOCS_PAR_PROFIL[reponses.profil] ?? BLOCS_PAR_PROFIL.autre;
+  const temps = reponses.choix.temps?.[0] ?? "2a4";
+  const plafond = { moins2: 3, "2a4": 5, "4a8": 7, plus8: MAX.blocs }[temps] ?? 5;
+
+  const blocs = catalogue
+    // Les blocs marqués par défaut d'abord : si le plafond coupe, il coupe
+    // dans l'optionnel, jamais dans l'essentiel.
+    .slice()
+    .sort((a, b) => Number(b.parDefaut) - Number(a.parDefaut))
+    .slice(0, plafond)
+    .map((b) => ({
+      debut: b.debut,
+      fin: b.fin,
+      titre: b.titre,
+      categorie: b.categorie as CategorieBloc,
+    }))
+    .sort((a, b) => a.debut.localeCompare(b.debut));
+
+  const priorites = reponses.choix.priorites ?? [];
+  const SKILLS: Record<string, { nom: string; categorie: string }> = {
+    corps: { nom: "Condition physique", categorie: "Corps" },
+    argent: { nom: "Vendre et négocier", categorie: "Business" },
+    savoir: { nom: "Apprentissage", categorie: "Autre" },
+    creation: { nom: "Création de contenu", categorie: "Création" },
+    calme: { nom: "Discipline", categorie: "Autre" },
+    relations: { nom: "Relationnel", categorie: "Autre" },
+  };
+
+  return nettoyerPlan({
+    resume:
+      "Une base tirée de ton profil, sans l'assistant. Coche ce que tu gardes et ajuste les horaires : tout est modifiable ici.",
+    blocs,
+    habitudes: (HABITUDES_PAR_PROFIL[reponses.profil] ?? HABITUDES_PAR_PROFIL.autre).map((h) => ({
+      ...h,
+      options: [],
+    })),
+    objectifs: [],
+    skills: priorites.map((p) => ({ ...(SKILLS[p] ?? SKILLS.calme), niveau: 10 })),
+  });
 }
