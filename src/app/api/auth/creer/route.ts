@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE, SESSION_MAX_AGE, createSessionToken } from "@/lib/auth";
 import { creerCompte, normaliserId } from "@/lib/comptes";
+import { adresse, souslaLimite } from "@/lib/limite";
 import { USER_ID, isSupabaseConfigured } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -15,6 +16,20 @@ export const dynamic = "force-dynamic";
  * d'ouvrir une porte.
  */
 export async function POST(req: Request) {
+  /*
+   * Cinq créations par heure et par adresse.
+   *
+   * La liste des comptes vit dans UNE ligne, relue et réécrite par six chemins
+   * différents. La faire grossir sans limite, c'est ralentir tout l'OS pour
+   * tout le monde — une panne provoquée depuis une route ouverte.
+   */
+  if (!souslaLimite(`creer:${adresse(req)}`, 5, 3_600_000)) {
+    return NextResponse.json(
+      { error: "Trop de créations d'affilée. Réessaie dans une heure." },
+      { status: 429 },
+    );
+  }
+
   const secret = process.env.AUTH_SECRET;
   const motDePasseServeur = process.env.DASHBOARD_PASSWORD;
   if (!secret || !motDePasseServeur) {

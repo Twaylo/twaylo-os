@@ -89,6 +89,20 @@ export function Sas() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reponses }),
       });
+      /*
+       * 401 : il n'y a pas de session. C'est le cas de quelqu'un qui a touché
+       * « Continuer avec mon OS » sans en avoir un.
+       *
+       * La route qui appelle le modèle reste volontairement derrière la porte :
+       * elle coûte de l'argent à chaque appel, et exiger un compte est la
+       * protection la plus solide. Mais l'impasse doit être NOMMÉE, avec la
+       * sortie à côté — un « HTTP 401 » à l'écran ne dit rien à personne.
+       */
+      if (r.status === 401) {
+        setErreur("Tu n'as pas encore d'OS. Reviens en arrière et crée-en un.");
+        setPhase("porte");
+        return;
+      }
       const d = (await r.json()) as { plan?: PlanOs; error?: string; secours?: boolean };
       if (!r.ok || !d.plan) throw new Error(d.error ?? `HTTP ${r.status}`);
       // Tout coché au départ : on propose, on n'impose pas de trier.

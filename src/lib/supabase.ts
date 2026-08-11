@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { SESSION_COOKIE, lireUtilisateur } from "./auth";
+import { SESSION_COOKIE, lireUtilisateur, verifySessionToken } from "./auth";
 
 /**
  * Client Supabase à privilèges service role.
@@ -74,8 +74,28 @@ export async function uid(): Promise<string> {
   try {
     const { cookies } = await import("next/headers");
     const jeton = (await cookies()).get(SESSION_COOKIE)?.value;
-    const nom = jeton ? lireUtilisateur(jeton) : null;
-    return nom ?? USER_ID;
+    if (!jeton) return USER_ID;
+
+    /*
+     * LA SIGNATURE EST VÉRIFIÉE ICI, et pas seulement par le middleware.
+     *
+     * S'en remettre au middleware paraissait suffisant : il tourne avant
+     * chaque requête et refuse un jeton invalide. Sauf que certaines routes
+     * sont PUBLIQUES, donc ne passent pas par lui — le webhook Telegram en
+     * premier. Un cookie fabriqué à la main portant le nom de quelqu'un
+     * d'autre y aurait été cru sur parole, et aurait écrit dans l'OS de cette
+     * personne.
+     *
+     * Le coût est un calcul HMAC par requête. Il est dérisoire, et il
+     * transforme « c'est vérifié ailleurs » — une garantie qui se périme au
+     * premier chemin public ajouté — en « c'est vérifié ici ».
+     */
+    const secret = process.env.AUTH_SECRET;
+    const mdp = process.env.DASHBOARD_PASSWORD;
+    if (!secret || !mdp) return USER_ID;
+    if (!(await verifySessionToken(jeton, secret, mdp))) return USER_ID;
+
+    return lireUtilisateur(jeton) ?? USER_ID;
   } catch {
     /*
      * Hors contexte de requête — une tâche planifiée, un script. `cookies()`
