@@ -21,3 +21,20 @@ avancer aussi `main` dessus (`git push origin <branche>:main`,
 fast-forward) — Vercel déploie `main` automatiquement sur
 twaylo-os.vercel.app. Ne jamais laisser du travail fini en attente sur
 une branche.
+
+# Twaylo OS : un outil perso, plus un produit
+
+Décision de Twaylo, prise après plusieurs semaines d'usage réel. Twaylo OS
+n'est PAS commercialisé et ne le sera pas : c'est son outil à lui. Sa seule
+entreprise, c'est Momentum — se disperser sur cinq projets, c'est n'en réussir
+aucun. Le sas d'accueil, les comptes multiples et la page publique restent en
+place et fonctionnels ; on ne les développe simplement plus, et on ne propose
+plus de travail « produit » (prix, acquisition, indexation, onboarding
+grand public) sans qu'il le redemande.
+
+**Ce qui remplace ça : la TO-DO LIST.** Tout l'OS est bâti autour d'elle —
+c'est elle qui fait avancer le reste. La page d'accueil ne montre qu'elle, en
+pleine largeur, plus « aujourd'hui je vais » au-dessus et trois cartes de
+soutien en dessous (progression, quêtes, habitudes). Toute idée d'amélioration
+se juge à cette aune : est-ce que ça sert la todo ? Continuer à gamifier,
+animer, regrouper, mettre des icônes.

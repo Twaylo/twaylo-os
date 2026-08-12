@@ -7,7 +7,7 @@
  * n'importe quel appareil — Twaylo pilote son OS du téléphone comme du bureau.
  */
 
-import { BLOC_PAR_ID, BLOCS, TABS, ordonner, tousLesBlocs, type Tab } from "./modules";
+import { BLOC_PAR_ID, BLOCS, TABS, blocsParDefaut, ordonner, type Tab } from "./modules";
 
 const CATALOGUE_BLOCS = BLOCS.map((b) => b.id);
 
@@ -259,7 +259,7 @@ export function modulesActifs(c: CustomConfig): Tab[] {
  */
 export function blocsActifs(c: CustomConfig, modules: readonly string[]): string[] {
   const installes = new Set(modules);
-  const choisis = c.blocs.length > 0 ? ordonner(c.blocs, CATALOGUE_BLOCS) : tousLesBlocs();
+  const choisis = c.blocs.length > 0 ? ordonner(c.blocs, CATALOGUE_BLOCS) : blocsParDefaut();
   return choisis.filter((id) => {
     const requis = BLOC_PAR_ID.get(id)?.module;
     return !requis || installes.has(requis);

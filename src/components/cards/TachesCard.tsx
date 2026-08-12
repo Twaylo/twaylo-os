@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
-import { emojiPourTache } from "@/lib/emoji-tache";
+import { emojiPourTache, familleDeTache } from "@/lib/emoji-tache";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -178,6 +178,39 @@ export function TachesCard() {
    * bougé de plus de 8 px — sinon un simple défilement partant de la poignée
    * déclencherait un tri par accident. À la souris, c'est immédiat.
    */
+  /*
+   * L'ordre REGROUPÉ : les tâches de même nature deviennent voisines.
+   *
+   * Trois scripts dispersés entre un appel et une facture, ce sont trois
+   * changements de contexte — et c'est le changement de contexte qui fatigue,
+   * pas le travail. Côte à côte, ils se font en une passe.
+   *
+   * Le tri est STABLE et se fait sur la première apparition de la famille :
+   * l'ordre qu'on a rangé à la main est donc préservé à l'intérieur d'une
+   * famille, et tirer une tâche en tête de liste y emmène toute sa famille
+   * plutôt que de la laisser revenir en arrière toute seule.
+   *
+   * C'est l'ORDRE qui est trié, pas seulement l'affichage : le glissement lit
+   * la même liste (voir `ordreRef` au démarrage d'un tri), donc rien ne saute
+   * au moment où l'on pose le doigt.
+   */
+  const ordreGroupe = useMemo(() => {
+    const rang = new Map<string, number>();
+    for (const [i, t] of tasks.entries()) {
+      const cle = `${t.niveau ?? "secondaire"}:${familleDeTache(t.text)?.id ?? `seul-${i}`}`;
+      if (!rang.has(cle)) rang.set(cle, i);
+    }
+    return tasks
+      .map((t, i) => ({ t, i }))
+      .sort((a, b) => {
+        const ca = `${a.t.niveau ?? "secondaire"}:${familleDeTache(a.t.text)?.id ?? `seul-${a.i}`}`;
+        const cb = `${b.t.niveau ?? "secondaire"}:${familleDeTache(b.t.text)?.id ?? `seul-${b.i}`}`;
+        return (rang.get(ca) ?? 0) - (rang.get(cb) ?? 0) || a.i - b.i;
+      })
+      .map(({ t }) => t.id)
+      .filter((x): x is string => Boolean(x));
+  }, [tasks]);
+
   function commencerDrag(
     e: React.PointerEvent,
     id: string,
@@ -276,9 +309,15 @@ export function TachesCard() {
        * moment où il compte : la composition du corps envoyé au serveur
        * (voir `deposerTache`).
        */
-      const ordre = tasks
-        .map((t) => (t as { id?: string }).id)
-        .filter((x): x is string => Boolean(x));
+      /*
+       * L'ordre REGROUPÉ, pas l'ordre brut : c'est celui qui est à l'écran.
+       * Partir de l'autre ferait sauter toute la liste au premier appui.
+       *
+       * Lu par fermeture plutôt que par une référence : cette fonction est
+       * redéclarée à chaque rendu, elle voit donc l'ordre qui était affiché au
+       * moment où le doigt s'est posé — exactement ce qu'il faut.
+       */
+      const ordre = ordreGroupe;
       ordreRef.current = ordre;
       niveauRef.current = niveau;
       niveauInitialRef.current = niveau;
@@ -633,6 +672,8 @@ export function TachesCard() {
   const parIndex = new Map(
     tasks.map((t, index) => [(t as { id?: string }).id, { t, index }]),
   );
+
+
   const flat: { t: (typeof tasks)[number]; index: number; niveau: Niveau }[] = dragId
     ? (() => {
         const vus = new Set(ordreVisuel);
@@ -654,13 +695,49 @@ export function TachesCard() {
           .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
         return [...suite, ...extras];
       })()
-    : tasks.map((t, index) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+    : (() => {
+        const vus = new Set(ordreGroupe);
+        const suite = ordreGroupe
+          .map((id) => parIndex.get(id))
+          .filter((e): e is { t: (typeof tasks)[number]; index: number } => Boolean(e))
+          .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+        // Une tâche sans identifiant (amorçage) n'est pas dans l'ordre.
+        const extras = tasks
+          .map((t, index) => ({ t, index }))
+          .filter(({ t }) => !vus.has(t.id ?? ""))
+          .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+        return [...suite, ...extras];
+      })();
 
   const parNiveau = ORDRE_NIVEAUX.map((niveau) => ({
     niveau,
     meta: NIVEAUX[niveau],
     items: flat.filter((f) => f.niveau === niveau),
   }));
+
+  /**
+   * Où poser un intertitre de famille.
+   *
+   * Seulement quand la famille compte AU MOINS DEUX tâches dans ce niveau :
+   * un intertitre au-dessus d'une ligne unique n'apprend rien et double la
+   * hauteur de la liste. Renvoie, pour chaque position, la famille à annoncer
+   * ou `null`.
+   */
+  const enTetes = (items: typeof flat): (ReturnType<typeof familleDeTache> | null)[] => {
+    const combien = new Map<string, number>();
+    for (const { t } of items) {
+      const f = familleDeTache(t.text);
+      if (f) combien.set(f.id, (combien.get(f.id) ?? 0) + 1);
+    }
+    let precedente: string | null = null;
+    return items.map(({ t }) => {
+      const f = familleDeTache(t.text);
+      const groupe = f && (combien.get(f.id) ?? 0) >= 2 ? f : null;
+      const nouvelle = groupe && groupe.id !== precedente ? groupe : null;
+      precedente = groupe ? groupe.id : null;
+      return nouvelle;
+    });
+  };
 
   return (
     <Panel
@@ -732,6 +809,7 @@ export function TachesCard() {
       <div className="mt-[11px] flex flex-col gap-[13px]">
         {parNiveau.map(({ niveau, meta, items }) => {
           const faites = items.filter(({ t }) => t.done).length;
+          const titres = enTetes(items);
 
           return (
             <div key={niveau}>
@@ -783,7 +861,7 @@ export function TachesCard() {
               </form>
 
               <div className="flex flex-col gap-[4px]">
-                {items.map(({ t, index }) => {
+                {items.map(({ t, index }, i) => {
                   const id = (t as { id?: string }).id;
 
                   // En cours de renommage : le champ remplace la ligne.
@@ -821,9 +899,28 @@ export function TachesCard() {
 
                   const tire = dragId === id;
                   const ouvert = Boolean(id) && menu === id;
+                  const enTete = titres[i];
 
                   return (
                     <Fragment key={id ?? t.text}>
+                    {/*
+                      L'intertitre d'une famille : « 🎬 Vidéo · 3 ».
+                      Il n'apparaît qu'à partir de deux tâches de même nature —
+                      au-dessus d'une ligne unique, il n'apprendrait rien et
+                      doublerait la hauteur de la liste.
+                    */}
+                    {enTete && !tire && (
+                      <div className="famille-titre mt-[3px] flex items-center gap-[7px] pl-[2px] first:mt-0">
+                        <span className="text-[12px] leading-none">{enTete.emoji}</span>
+                        <span className="text-[9.5px] font-black tracking-[0.1em] text-white/35">
+                          {enTete.nom.toUpperCase()}
+                        </span>
+                        <span
+                          className="h-[1px] flex-1 rounded-full"
+                          style={{ background: "rgba(255,255,255,0.07)" }}
+                        />
+                      </div>
+                    )}
                     <div
                       ref={id ? setRowRef(id) : undefined}
                       data-niveau={niveau}

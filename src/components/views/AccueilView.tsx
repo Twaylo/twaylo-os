@@ -7,8 +7,8 @@ import { useMasonry } from "@/lib/use-masonry";
 import { BLOC_PAR_ID } from "@/lib/modules";
 import { Eyebrow } from "@/components/ui";
 import { Panel } from "@/components/Panel";
-import { CaptureBar } from "@/components/cards/CaptureBar";
 import { RelanceBanner } from "@/components/cards/RelanceBanner";
+import { ChoseCard } from "@/components/cards/ChoseCard";
 import { OperateurCard } from "@/components/cards/OperateurCard";
 import { ProgressionCard } from "@/components/cards/ProgressionCard";
 import { TachesCard } from "@/components/cards/TachesCard";
@@ -38,6 +38,7 @@ import { ExploitsCard } from "@/components/cards/ExploitsCard";
  * (cas d'un réglage venu d'une version plus récente que le code servi).
  */
 const CARTES: Record<string, ComponentType> = {
+  chose: ChoseCard,
   operateur: OperateurCard,
   progression: ProgressionCard,
   quetes: QuetesCard,
@@ -100,34 +101,59 @@ export function AccueilView() {
     if (def && Carte) rendus.push({ id, large: Boolean(def.large), Carte });
   }
 
-  const colonne = rendus.filter((b) => !b.large);
-  const larges = rendus.filter((b) => b.large);
+  /*
+   * On découpe en TRANCHES, dans l'ordre. C'est le point important.
+   *
+   * La version d'avant renvoyait toutes les cartes d'une colonne d'abord,
+   * puis toutes les larges — la todo, passée en pleine largeur, se retrouvait
+   * donc au-dessous de Progression, Quêtes et Habitudes alors qu'elle est
+   * placée deuxième dans la liste. L'OS est bâti autour d'elle : elle doit
+   * être là où on l'a mise.
+   *
+   * Une tranche = une suite de cartes d'une colonne (une grille compactée),
+   * ou une carte large (une rangée pleine).
+   */
+  const tranches: { large: boolean; blocs: typeof rendus }[] = [];
+  for (const b of rendus) {
+    const derniere = tranches[tranches.length - 1];
+    if (b.large || !derniere || derniere.large) {
+      tranches.push({ large: b.large, blocs: [b] });
+    } else {
+      derniere.blocs.push(b);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-[14px]">
       {/* La relance passe AVANT tout : si elle a quelque chose à dire, c'est
           la première chose à lire. Elle disparaît à la première coche. */}
       <RelanceBanner />
-      <CaptureBar />
 
-      {colonne.length > 0 && (
-        <div
-          ref={grille}
-          // `grid-auto-rows` fin + `items-start` : chaque carte occupe exactement
-          // le nombre de micro-rangées que son contenu réclame (voir useMasonry).
-          // Les micro-rangées n'existent qu'au format large, là où le compactage a
-          // un sens. En dessous, la grille reste une pile normale : appliquer des
-          // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
-          className="grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-4 xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]">
-          {colonne.map(({ id, Carte }) => (
-            <Carte key={id} />
-          ))}
-        </div>
+      {tranches.map((tranche, i) =>
+        tranche.large ? (
+          tranche.blocs.map(({ id, Carte }) => <Carte key={id} />)
+        ) : (
+          <div
+            key={`grille-${i}`}
+            // Le compactage ne s'applique qu'à la PREMIÈRE grille : c'est la
+            // seule qui en a besoin (les suivantes n'ont qu'une poignée de
+            // cartes), et `useMasonry` ne pilote qu'un élément.
+            ref={i === 0 ? grille : undefined}
+            // `grid-auto-rows` fin + `items-start` : chaque carte occupe exactement
+            // le nombre de micro-rangées que son contenu réclame (voir useMasonry).
+            // Les micro-rangées n'existent qu'au format large, là où le compactage a
+            // un sens. En dessous, la grille reste une pile normale : appliquer des
+            // rangées de 4 px sans span écraserait chaque carte dans 4 px de haut.
+            className={`grid grid-cols-1 items-start gap-[14px] md:grid-cols-2 xl:grid-cols-3 ${
+              i === 0 ? "xl:[grid-auto-flow:row_dense] xl:[grid-auto-rows:4px]" : ""
+            }`}
+          >
+            {tranche.blocs.map(({ id, Carte }) => (
+              <Carte key={id} />
+            ))}
+          </div>
+        ),
       )}
-
-      {larges.map(({ id, Carte }) => (
-        <Carte key={id} />
-      ))}
 
       {rendus.length === 0 && (
         <Panel accent="var(--color-amb)">

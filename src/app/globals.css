@@ -1437,3 +1437,78 @@ details[open] .chevron-section {
     padding-right: 48px;
   }
 }
+
+/* ================================================================== */
+/* La todo — la carte autour de laquelle l'OS est bâti                 */
+/* ================================================================== */
+
+/*
+ * L'intertitre d'une famille.
+ *
+ * Il apparaît et disparaît au fil des tâches ajoutées : sans transition, la
+ * liste sautait d'un cran à chaque fois qu'une deuxième tâche de même nature
+ * arrivait. Ici il se déploie, et le reste suit.
+ */
+.famille-titre {
+  animation: familleIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes familleIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * L'entrée d'une tâche : elle glisse depuis la gauche, sans pousser le reste.
+ *
+ * `animation-fill-mode: both` et une durée courte : une tâche qu'on vient de
+ * taper doit être là AVANT qu'on ait fini de lever le doigt. Au-delà de
+ * 300 ms, l'animation cesse d'être une confirmation et devient une attente.
+ */
+.tache-neuve {
+  animation: tacheIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tacheIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * La case de « aujourd'hui je vais » : un battement lent tant qu'elle est
+ * vide, rien une fois cochée. C'est la seule chose de l'écran qui réclame
+ * quelque chose, elle a le droit de se signaler.
+ */
+.chose-case:not([aria-pressed="true"]) {
+  animation: choseBat 2.6s ease-in-out infinite;
+}
+
+@keyframes choseBat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 61, 139, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 61, 139, 0.13);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .famille-titre,
+  .tache-neuve,
+  .chose-case:not([aria-pressed="true"]) {
+    animation: none;
+  }
+}
