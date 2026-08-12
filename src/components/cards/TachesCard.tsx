@@ -25,7 +25,15 @@ function deplacer(ids: string[], id: string, survole: string, apres: boolean): s
   return sans;
 }
 
-type Cible = { id: string; niveau: Niveau; apres: boolean };
+/**
+ * Où la tâche tirée va atterrir.
+ *
+ * `id` vaut `null` quand la colonne visée est VIDE : il n'y a alors aucune
+ * ligne devant ou derrière laquelle s'insérer, mais le niveau, lui, change.
+ * C'est le cas qu'on ne savait pas traiter — déposer dans un bloc vide ne
+ * faisait rien.
+ */
+type Cible = { id: string | null; niveau: Niveau; apres: boolean };
 
 /** navigator.vibrate n'est pas dans tous les typages ; on le decrit ici. */
 type NavVibr = Navigator & { vibrate?: (pattern: number | number[]) => boolean };
@@ -95,6 +103,19 @@ export function TachesCard() {
   const niveauRef = useRef<Niveau>("secondaire");
   const niveauInitialRef = useRef<Niveau>("secondaire");
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  /**
+   * Le cadre de chaque colonne de niveau.
+   *
+   * Indispensable depuis que les trois niveaux ne sont plus empilés : viser
+   * « secondaire » à droite demande de savoir OÙ est secondaire, pas seulement
+   * à quelle hauteur. C'est aussi ce qui permet de déposer dans une colonne
+   * vide, qui n'offre aucune ligne à viser.
+   */
+  const zoneRefs = useRef(new Map<Niveau, HTMLDivElement>());
+  const setZoneRef = (niveau: Niveau) => (el: HTMLDivElement | null) => {
+    if (el) zoneRefs.current.set(niveau, el);
+    else zoneRefs.current.delete(niveau);
+  };
 
   // Le clone flottant (dans document.body), la position du pointeur, l'offset
   // de prise, et les identifiants d'animation à annuler proprement.
@@ -376,27 +397,68 @@ export function TachesCard() {
     let derniere: string | null = null;
     let relache = false;
 
-    function cibleSous(clientY: number): Cible | null {
+    /**
+     * La COLONNE visée, d'abord.
+     *
+     * Le ciblage était purement vertical : il cherchait la ligne la plus proche
+     * en hauteur, tous niveaux confondus. Tant que les trois niveaux étaient
+     * empilés, cela suffisait. Côte à côte, c'est faux — amener une tâche à
+     * droite la faisait retomber dans la colonne de gauche, à la même hauteur.
+     *
+     * On décide donc du niveau par la position HORIZONTALE ET verticale, puis
+     * de la place dans ce niveau par la hauteur seule. Hors de toute colonne
+     * (au-dessus, en dessous, dans la gouttière), on prend la plus proche en
+     * distance réelle plutôt que d'abandonner : un doigt qui dépasse un peu du
+     * cadre veut visiblement y déposer.
+     */
+    function zoneSous(x: number, y: number): Niveau | null {
+      let proche: Niveau | null = null;
+      let distance = Infinity;
+      for (const [niveau, el] of zoneRefs.current) {
+        const r = el.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return niveau;
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        const d = Math.hypot(dx, dy);
+        if (d < distance) {
+          distance = d;
+          proche = niveau;
+        }
+      }
+      return proche;
+    }
+
+    function cibleSous(clientX: number, clientY: number): Cible | null {
+      const zone = zoneSous(clientX, clientY);
+      if (!zone) return null;
+
       let meilleur: Cible | null = null;
       let distance = Infinity;
+      let vide = true;
+
       for (const [id, el] of rowRefs.current) {
         if (id === dragId) continue;
+        // On ne compare QU'AUX lignes de la colonne visée.
+        if (((el.dataset.niveau as Niveau) || "secondaire") !== zone) continue;
+        vide = false;
         const r = el.getBoundingClientRect();
-        const niveau = (el.dataset.niveau as Niveau) || "secondaire";
         const milieu = (r.top + r.bottom) / 2;
         if (clientY >= r.top && clientY <= r.bottom) {
           const d = clientY - milieu;
           // Zone morte de 4 px autour du milieu : tue le clignotement d'un cran
           // quand le doigt hésite pile à la frontière.
           if (Math.abs(d) < 4) return null;
-          return { id, niveau, apres: d > 0 };
+          return { id, niveau: zone, apres: d > 0 };
         }
         const dm = Math.abs(clientY - milieu);
         if (dm < distance) {
           distance = dm;
-          meilleur = { id, niveau, apres: clientY > milieu };
+          meilleur = { id, niveau: zone, apres: clientY > milieu };
         }
       }
+
+      // Colonne vide : rien à viser, mais le niveau change quand même.
+      if (vide) return { id: null, niveau: zone, apres: false };
       return meilleur;
     }
 
@@ -416,13 +478,23 @@ export function TachesCard() {
        */
       const centreCarte =
         pointerRef.current.y - grabRef.current.y + hauteurRef.current / 2;
-      const c = cibleSous(centreCarte);
+      /*
+       * En X on suit le DOIGT, pas le centre de la carte.
+       *
+       * La carte est large : son centre peut déborder dans la colonne voisine
+       * alors que le doigt vise clairement celle d'à côté. Le doigt est ce
+       * qu'on pointe, c'est donc lui qui décide de la colonne.
+       */
+      const c = cibleSous(pointerRef.current.x, centreCarte);
       if (c && (c.id !== derniere || c.niveau !== niveauRef.current)) {
         derniere = c.id;
         aReordonneRef.current = true;
-        const nx = deplacer(ordreRef.current, dragId!, c.id, c.apres);
-        ordreRef.current = nx;
-        setOrdreVisuel(nx);
+        // Colonne vide : on ne réordonne rien, on change juste de niveau.
+        if (c.id) {
+          const nx = deplacer(ordreRef.current, dragId!, c.id, c.apres);
+          ordreRef.current = nx;
+          setOrdreVisuel(nx);
+        }
         setNiveauCourant(c.niveau);
         niveauRef.current = c.niveau;
       }
@@ -806,13 +878,41 @@ export function TachesCard() {
         </EmptyState>
       )}
 
-      <div className="mt-[11px] flex flex-col gap-[13px]">
+      {/*
+        Deux colonnes à partir du grand écran : le focus principal à gauche,
+        large, et les deux autres empilés à droite.
+
+        Empilés sur toute la largeur, les trois niveaux donnaient des lignes de
+        1 300 px de long pour un texte de trois mots, et il fallait défiler pour
+        passer du focus aux annexes. Le focus garde la plus grande colonne :
+        c'est ce qui fait la journée, il ne se met pas à côté du reste à
+        égalité. En dessous de 1 024 px, on reste empilé — deux colonnes de
+        180 px ne rendraient service à personne.
+      */}
+      <div className="mt-[11px] grid grid-cols-1 items-start gap-[13px] lg:grid-cols-[1.35fr_1fr] lg:gap-x-[18px]">
         {parNiveau.map(({ niveau, meta, items }) => {
           const faites = items.filter(({ t }) => t.done).length;
           const titres = enTetes(items);
 
           return (
-            <div key={niveau}>
+            <div
+              key={niveau}
+              ref={setZoneRef(niveau)}
+              data-zone={niveau}
+              /*
+               * Le focus occupe les deux rangées de la colonne de gauche ; les
+               * deux autres se suivent à droite. `min-height` pour qu'une
+               * colonne vide reste une cible atteignable : sans elle, un
+               * niveau sans tâche se réduit à son titre et on ne peut plus
+               * rien y déposer.
+               */
+              className={
+                niveau === "principal"
+                  ? "lg:col-start-1 lg:row-span-2"
+                  : "lg:col-start-2"
+              }
+              style={{ minHeight: items.length === 0 ? 92 : undefined }}
+            >
               <div className="mb-[5px] flex items-baseline justify-between gap-2">
                 <div className="min-w-0">
                   <div
