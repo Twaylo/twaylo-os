@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCES_COOKIE, accesValide } from "@/lib/acces";
+import { estCheminOutil, estHoteOS } from "@/lib/hotes";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -132,6 +133,32 @@ const PREFIXE_OUTIL = "/piraterie";
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  /*
+   * Premier tri : sur quel site sommes-nous ?
+   *
+   * Sur une adresse qui n'est pas celle de l'OS, ce déploiement ne connaît
+   * que les Tway'tools. La bibliothèque prend la racine, et tout ce qui
+   * appartient à l'OS répond « introuvable » — pas une redirection, qui
+   * donnerait l'adresse qu'on cherche justement à ne pas montrer.
+   *
+   * On sert « /tway-tools/index.html » directement plutôt que « /tway-tools » :
+   * la réécriture qui mène de l'un à l'autre est examinée plus loin dans la
+   * chaîne, et compter dessus depuis ici serait un pari inutile.
+   */
+  if (!estHoteOS(req.headers.get("host"))) {
+    if (pathname === "/") {
+      const accueil = req.nextUrl.clone();
+      accueil.pathname = "/tway-tools/index.html";
+      return NextResponse.rewrite(accueil);
+    }
+    if (!estCheminOutil(pathname)) {
+      return new NextResponse("Introuvable", {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+  }
 
   if (
     CHEMINS_PUBLICS.has(pathname) ||
