@@ -2165,7 +2165,25 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const ajouterTache = useCallback(async (titre: string, niveau: Niveau = "secondaire") => {
     const propre = titre.trim();
-    if (!propre || demoModeRef.current) return;
+    if (!propre) return;
+
+    /*
+     * EN DÉMO, la tâche existe à l'écran et nulle part ailleurs.
+     *
+     * Ajouter ne faisait rien du tout : le champ se vidait, la liste ne
+     * bougeait pas. Le mode démo sert à filmer l'OS — une démonstration où
+     * l'on ne peut pas poser une tâche ne montre pas l'OS, elle en montre une
+     * version morte, et c'est précisément le geste le plus fréquent.
+     *
+     * Un identifiant `demo-…` et non `tmp-…` : `tmp-` désigne une tâche dont
+     * on attend la confirmation du serveur, et déclencherait toute la
+     * mécanique de rattrapage pour une réponse qui ne viendra jamais.
+     */
+    if (demoModeRef.current) {
+      const cle = `demo-neuve-${(compteurTemp.current += 1)}`;
+      setTasks((prev) => [{ id: cle, text: propre, done: false, niveau } as Task, ...prev]);
+      return;
+    }
 
     const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
     const provisoire = { id: cleTemp, text: propre, done: false, niveau } as Task;

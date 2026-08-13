@@ -86,6 +86,7 @@ export function CheckRow({
   accent,
   onToggle,
   meta,
+  badge,
   intensite = 0,
 }: {
   label: string;
@@ -93,6 +94,14 @@ export function CheckRow({
   accent: string;
   onToggle: () => void;
   meta?: string;
+  /**
+   * Une pastille posée juste après l'intitulé — l'âge d'une tâche, aujourd'hui.
+   *
+   * Distincte de `meta` : la catégorie est un classement, elle s'efface sur
+   * téléphone pour rendre la place au texte. Ceci est une ALERTE, elle reste
+   * partout et ne s'efface pas au survol.
+   */
+  badge?: { texte: string; couleur: string; titre: string } | null;
   /** Proportion de la journée déjà faite, 0 à 1. Règle la démesure. */
   intensite?: number;
 }) {
@@ -159,6 +168,19 @@ export function CheckRow({
       >
         {label}
       </span>
+      {badge && !done && (
+        <span
+          title={badge.titre}
+          className="flex-none rounded-[6px] px-[5px] py-[2px] font-mono text-[9.5px] font-black leading-none"
+          style={{
+            color: badge.couleur,
+            background: "rgba(255,255,255,0.05)",
+            border: `1px solid ${badge.couleur}`,
+          }}
+        >
+          {badge.texte}
+        </span>
+      )}
       {meta && (
         // S'efface quand la ligne est survolée : la barre d'actions vient se
         // placer exactement ici, et les deux se chevauchaient.

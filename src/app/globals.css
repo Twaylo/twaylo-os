@@ -1544,6 +1544,77 @@ details[open] .chevron-section {
 /* ================================================================== */
 
 /*
+ * LE SABLIER DE LA SUPPRESSION.
+ *
+ * Une ligne qui se vide en six secondes, posée en bas de la barre « Annuler ».
+ * Sans elle, le bouton apparaît et disparaît sans prévenir : on ne sait pas
+ * s'il reste une seconde ou dix, donc on n'ose pas quitter la barre des yeux.
+ * Six secondes visibles, c'est six secondes qu'on peut ignorer tranquillement.
+ */
+.sablier-suppr {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-mag);
+  animation: sablierSuppr 6s linear both;
+}
+
+@keyframes sablierSuppr {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sablier-suppr {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/*
+ * LES JAUGES DE LA TODO — celle de la journée, et une par colonne.
+ *
+ * Un rapport « 3/8 » dit tout et ne montre rien : deux nombres à lire et à
+ * diviser de tête. Une barre se voit sans être lue, et surtout elle BOUGE au
+ * moment où l'on coche. C'est la récompense qui manquait entre le clic et la
+ * fin de journée.
+ *
+ * La transition porte sur la largeur et non sur un `transform` : la barre part
+ * du bord gauche et pousse, ce qui est le mouvement qu'on attend d'une jauge.
+ * À cette taille, aucun coût.
+ */
+.jauge-todo {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.jauge-todo-fine {
+  height: 3px;
+}
+
+.jauge-todo-plein {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jauge-todo-plein {
+    transition: none;
+  }
+}
+
+/*
  * L'intertitre d'une famille.
  *
  * Il apparaît et disparaît au fil des tâches ajoutées : sans transition, la
@@ -1558,6 +1629,35 @@ details[open] .chevron-section {
   from {
     opacity: 0;
     transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * L'ARRIVÉE DE LA LISTE, ligne à ligne.
+ *
+ * La todo apparaissait d'un bloc, comme un tableau qu'on affiche. Elle se pose
+ * maintenant de haut en bas, 35 ms d'écart entre deux lignes : le regard suit
+ * la colonne au lieu de tomber sur un mur de texte, et on a lu ce qu'il y a à
+ * faire avant même de l'avoir cherché.
+ *
+ * `both` avec un retard : la ligne reste invisible jusqu'à son tour, sinon
+ * elles seraient toutes là dès la première image et la cascade ne servirait à
+ * rien. Le retard est plafonné côté composant — au-delà de dix crans, on
+ * attendrait une liste au lieu de la lire.
+ */
+.tache-entree {
+  animation: tacheEntree 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--retard, 0ms);
+}
+
+@keyframes tacheEntree {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -1609,6 +1709,7 @@ details[open] .chevron-section {
 @media (prefers-reduced-motion: reduce) {
   .famille-titre,
   .tache-neuve,
+  .tache-entree,
   .chose-case:not([aria-pressed="true"]) {
     animation: none;
   }
