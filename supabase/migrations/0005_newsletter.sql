@@ -20,6 +20,11 @@ create table if not exists newsletter (
   -- soient la même personne. L'index unique plus bas s'appuie dessus.
   email        text not null,
 
+  -- Le prénom, tel qu'il a été tapé. Il sert à s'adresser à quelqu'un par son
+  -- nom dans un envoi, rien de plus — et il reste facultatif en base : une
+  -- ligne importée d'ailleurs n'en aurait pas.
+  prenom       text,
+
   statut       text not null default 'en_attente'
                  check (statut in ('en_attente', 'confirme', 'desabonne')),
 
@@ -57,4 +62,8 @@ create index if not exists newsletter_jeton on newsletter (jeton) where jeton is
 -- peut ni la lire ni y écrire. Seule la clé de service, qui reste sur le
 -- serveur, y accède.
 -- ============================================================================
+-- Ajoutée après coup : cette ligne rattrape les bases où la table existait
+-- déjà sans le prénom. Sur une base neuve elle ne fait rien.
+alter table newsletter add column if not exists prenom text;
+
 alter table newsletter enable row level security;

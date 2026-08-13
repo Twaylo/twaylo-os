@@ -34,12 +34,11 @@
 const HOTES_OS = ["twaylo-os", "localhost", "127.0.0.1"];
 
 /**
- * L'adresse publique des Tway'tools.
+ * L'adresse publique des Tway'tools, pour information.
  *
- * Elle ne sert QU'À une chose : renvoyer vers elle ce qui frappe encore à
- * l'ancienne porte. La reconnaissance d'un hôte « outils » ne s'appuie pas
- * dessus — elle marche par élimination, ce qui laisse fonctionner n'importe
- * quel domaine ajouté plus tard sans toucher au code.
+ * Rien ne s'appuie dessus pour décider quoi que ce soit : la reconnaissance
+ * d'un hôte « outils » marche par élimination, ce qui laisse fonctionner
+ * n'importe quel domaine ajouté plus tard sans toucher au code.
  */
 export const HOTE_OUTILS = "tway-tools.vercel.app";
 
@@ -69,11 +68,17 @@ export const CHEMINS_OUTILS = [
 ] as const;
 
 /**
- * Ceux de ces chemins qui DÉMÉNAGENT.
+ * Ceux de ces chemins qui ont DÉMÉNAGÉ, et n'existent plus côté OS.
  *
- * `robots.txt` et `sitemap.xml` en sont exclus : chaque site a besoin des
- * siens, à sa propre adresse. Les renvoyer ailleurs priverait l'OS des
- * consignes qui empêchent justement son indexation.
+ * Ils y ont d'abord été redirigés vers l'adresse publique. Vu de l'écran,
+ * ça donnait ceci : on tape « twaylo-os », on atterrit sur « tway-tools ».
+ * Deux sites censés être séparés qui se renvoient l'un vers l'autre, c'est
+ * précisément l'impression qu'on cherchait à faire disparaître. Ils
+ * répondent donc « introuvable » : l'adresse de l'OS ne mène plus nulle part
+ * ailleurs qu'à l'OS.
+ *
+ * `robots.txt` et `sitemap.xml` n'en font pas partie : chaque site a besoin
+ * des siens, à sa propre adresse.
  */
 const CHEMINS_DEMENAGES = ["/tway-tools", "/piraterie", "/api/tools"] as const;
 

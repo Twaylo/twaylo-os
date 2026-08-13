@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Accès — Tway'tools</title>
-    <meta name="description" content="Une adresse, une confirmation, et les outils s'ouvrent." />
+    <meta name="description" content="Ton prénom, ton adresse, et les outils s'ouvrent." />
     <meta name="theme-color" content="#0c1524" />
     <!-- Une page de saisie n'a rien à faire dans un moteur de recherche. -->
     <meta name="robots" content="noindex" />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
           href="/piraterie/vendeur/ibm-plex-sans-latin-600-normal.woff2" />
-    <link rel="stylesheet" href="/tway-tools/tway.css?v=2" />
+    <link rel="stylesheet" href="/tway-tools/tway.css?v=3" />
   </head>
 
   <body>
@@ -35,8 +35,8 @@
           </p>
 
           <ul class="faits" style="margin-top: 26px">
-            <li><b>Une</b> adresse, <b>un</b> clic de confirmation</li>
-            <li>Pas de mot de passe</li>
+            <li><b>Ton prénom</b>, ton adresse, et c'est ouvert</li>
+            <li>Pas de mot de passe, pas de compte</li>
             <li>Désinscription en un clic</li>
           </ul>
         </section>
@@ -46,6 +46,18 @@
             <p class="etiquette" style="margin: 0 0 16px">Ouvrir les outils</p>
 
             <form id="formulaire" novalidate>
+              <label class="lecteur-ecran" for="prenom">Ton prénom</label>
+              <input
+                class="champ"
+                id="prenom"
+                name="prenom"
+                type="text"
+                autocomplete="given-name"
+                placeholder="Ton prénom"
+                maxlength="60"
+                required
+              />
+
               <label class="lecteur-ecran" for="email">Ton adresse e-mail</label>
               <input
                 class="champ"
@@ -68,15 +80,15 @@
                 <input id="societe" name="societe" type="text" tabindex="-1" autocomplete="off" />
               </div>
 
-              <button class="bouton" type="submit" id="envoyer">Recevoir mon accès</button>
+              <button class="bouton" type="submit" id="envoyer">Ouvrir la carte</button>
             </form>
 
             <div class="message" id="retour" hidden role="status"></div>
 
             <p class="mention">
-              Ton adresse rejoint la newsletter de Twaylo — les coulisses des enquêtes et les
-              prochains outils. Rien d'autre n'en est fait : elle n'est ni revendue, ni
-              partagée, et chaque message porte un lien pour partir en un clic.
+              En ouvrant la carte, tu rejoins la newsletter de Twaylo — les coulisses des
+              enquêtes et les prochains outils. Ton adresse n'est ni revendue ni partagée,
+              et chaque message porte un lien pour partir en un clic.
             </p>
           </div>
 
@@ -91,9 +103,15 @@
       /*
        * La porte, côté navigateur.
        *
-       * Volontairement minuscule : un champ, un envoi, trois réponses
-       * possibles. Le formulaire reste un vrai <form>, donc la touche Entrée
-       * fonctionne et le navigateur propose l'adresse enregistrée.
+       * Volontairement minuscule : deux champs, un envoi, et la carte. Le
+       * formulaire reste un vrai <form>, donc la touche Entrée fonctionne et
+       * le navigateur propose le prénom et l'adresse déjà enregistrés.
+       *
+       * Où l'on va ensuite est décidé ICI, à partir du nom de l'outil, et
+       * jamais lu dans l'adresse de la page. Sans ce garde-fou,
+       * « ?vers=https://ailleurs » ferait de cette porte un tremplin vers
+       * n'importe quel site — le genre de lien qu'on met dans un hameçonnage
+       * parce qu'il commence par une adresse de confiance.
        */
       const OUTILS = {
         "pirats-attack": {
@@ -111,7 +129,11 @@
         document.getElementById("dit-outil").textContent = o.dit;
       }
 
+      const DESTINATIONS = { "pirats-attack": "/piraterie" };
+      const destination = DESTINATIONS[outil] ?? "/tway-tools";
+
       const formulaire = document.getElementById("formulaire");
+      const champPrenom = document.getElementById("prenom");
       const champ = document.getElementById("email");
       const bouton = document.getElementById("envoyer");
       const retour = document.getElementById("retour");
@@ -123,19 +145,29 @@
       };
 
       const MESSAGES = {
+        prenom_invalide: "Il manque ton prénom.",
         adresse_invalide: "Cette adresse ne ressemble pas à une adresse e-mail.",
         trop_de_tentatives: "Trop d'essais d'affilée. Reviens dans un quart d'heure.",
-        envoi_indisponible: "L'envoi est momentanément coupé. Réessaie plus tard.",
-        envoi_impossible: "Le message n'a pas pu partir. Réessaie dans un moment.",
+        indisponible: "L'accès est momentanément coupé. Réessaie dans un moment.",
       };
 
       formulaire.addEventListener("submit", async (evenement) => {
         evenement.preventDefault();
+        const prenom = champPrenom.value.trim();
         const adresse = champ.value.trim();
-        if (!adresse) return;
+        if (!prenom) {
+          dire("mal", MESSAGES.prenom_invalide);
+          champPrenom.focus();
+          return;
+        }
+        if (!adresse) {
+          dire("mal", MESSAGES.adresse_invalide);
+          champ.focus();
+          return;
+        }
 
         bouton.disabled = true;
-        bouton.textContent = "Envoi…";
+        bouton.textContent = "Un instant\u2026";
         retour.hidden = true;
 
         try {
@@ -143,6 +175,7 @@
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              prenom,
               email: adresse,
               source: outil,
               langue: (navigator.language || "fr").toLowerCase().startsWith("fr") ? "fr" : "en",
@@ -153,25 +186,23 @@
 
           if (reponse.ok) {
             /*
-             * On dit « regarde ta boîte » sans jamais confirmer que l'adresse
-             * était déjà inscrite : sinon n'importe qui pourrait vérifier si
-             * telle personne figure sur la liste.
+             * On n'annonce jamais si l'adresse figurait déjà sur la liste :
+             * sinon n'importe qui pourrait vérifier si telle personne y est.
+             * Même réponse, même page suivante, dans tous les cas.
              */
             formulaire.hidden = true;
-            dire(
-              "bien",
-              "C'est parti. Ouvre ta boîte mail et clique le lien : les outils s'ouvrent aussitôt. Regarde aussi les indésirables, ça arrive.",
-            );
+            dire("bien", "C'est bon. La carte s'ouvre\u2026");
+            location.assign(destination);
             return;
           }
 
-          dire("mal", MESSAGES[corps.erreur] ?? "Quelque chose n'a pas fonctionné. Réessaie.");
+          dire("mal", MESSAGES[corps.erreur] ?? "Quelque chose n'a pas fonctionn\u00e9. R\u00e9essaie.");
         } catch {
           // Jamais de catch muet : sans réseau, il faut le dire.
-          dire("mal", "Pas de réseau, ou le serveur ne répond pas.");
+          dire("mal", "Pas de r\u00e9seau, ou le serveur ne r\u00e9pond pas.");
         } finally {
           bouton.disabled = false;
-          bouton.textContent = "Recevoir mon accès";
+          bouton.textContent = "Ouvrir la carte";
         }
       });
     </script>

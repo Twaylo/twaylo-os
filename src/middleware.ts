@@ -160,22 +160,22 @@ export async function middleware(req: NextRequest) {
     }
   } else if (estCheminDemenage(pathname)) {
     /*
-     * L'ancienne porte, refermée en douceur.
+     * L'ancienne porte, murée.
      *
      * Les Tway'tools répondaient aussi sous l'adresse de l'OS, puisqu'ils y
-     * sont nés. Or c'est exactement ce qu'il fallait faire disparaître : un
-     * lien partagé en commentaire de vidéo ne doit pas porter le nom du
-     * tableau de bord personnel. Tout ce qui frappe encore ici est donc
-     * renvoyé vers l'adresse publique — rien n'est perdu, aucun lien déjà
-     * diffusé ne casse.
+     * sont nés. On les y a d'abord redirigés vers leur nouvelle adresse —
+     * et vu de l'écran, ça donnait : « je tape twaylo-os, ça m'affiche
+     * tway-tools ». Deux sites censés être séparés qui se renvoient l'un
+     * vers l'autre, c'est exactement l'impression qu'il fallait supprimer.
      *
-     * 307 et non 308 : une redirection permanente se grave dans le cache des
-     * navigateurs et deviendrait très pénible à défaire. Celle-ci se révoque
-     * en une ligne, ce qui compte tant qu'un domaine tout neuf n'a pas fait
-     * ses preuves. La méthode HTTP est préservée dans les deux cas, ce dont
-     * le formulaire d'inscription a besoin.
+     * Ils répondent donc « introuvable », comme n'importe quelle page qui
+     * n'existe pas. L'adresse de l'OS ne mène plus qu'à l'OS, celle des
+     * outils ne mène qu'aux outils, et rien ne circule entre les deux.
      */
-    return NextResponse.redirect(`https://${HOTE_OUTILS}${pathname}${search}`, 307);
+    return new NextResponse(
+      `Cette page a déménagé sur ${HOTE_OUTILS}.`,
+      { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } },
+    );
   }
 
   if (
@@ -208,18 +208,18 @@ export async function middleware(req: NextRequest) {
     /*
      * La porte ne se ferme QUE si elle peut s'ouvrir.
      *
-     * Sans clé d'envoi, personne ne recevrait le courriel de confirmation :
-     * fermer quand même reviendrait à condamner l'outil pour tout le monde,
-     * silencieusement, dès le premier déploiement.
+     * Une seule condition désormais : `AUTH_SECRET`, qui signe le
+     * laissez-passer. Sans elle, aucun cookie valable ne peut être fabriqué,
+     * donc fermer reviendrait à condamner l'outil pour tout le monde.
      *
-     * ATTENTION, vérifié à l'exécution : Next fige la valeur de cette
-     * variable AU MOMENT DE LA CONSTRUCTION pour le middleware. Ajouter la
-     * clé sur Vercel ne ferme donc pas la porte tout seul — il faut
-     * redéployer. C'est une bonne chose : la fermeture reste un geste
-     * délibéré, pas un effet de bord d'un réglage.
+     * La clé d'envoi de courriels ne fait PLUS partie de la condition, et
+     * c'est le cœur du changement : l'inscription est immédiate, le courriel
+     * n'est qu'un mot de bienvenue. Faire dépendre l'entrée d'un service
+     * d'envoi, c'était laisser la porte grande ouverte tant qu'il n'était pas
+     * configuré — exactement ce qui se passait.
      */
     const secret = process.env.AUTH_SECRET;
-    if (!secret || !process.env.RESEND_API_KEY) return NextResponse.next();
+    if (!secret) return NextResponse.next();
 
     if (await accesValide(req.cookies.get(ACCES_COOKIE)?.value, secret)) {
       return NextResponse.next();
@@ -227,7 +227,22 @@ export async function middleware(req: NextRequest) {
     const porte = req.nextUrl.clone();
     porte.pathname = "/tway-tools/acces";
     porte.search = `?outil=pirats-attack`;
-    return NextResponse.redirect(porte);
+
+    /*
+     * « no-store », et ce n'est pas une précaution de principe.
+     *
+     * Sans cet en-tête, le navigateur garde la redirection en mémoire. Le
+     * parcours réel devient alors : on clique le lien de la vidéo → porte
+     * (redirection retenue) → on donne son prénom et son adresse → on revient
+     * sur la carte → le navigateur rejoue sa redirection et RENVOIE À LA
+     * PORTE, indéfiniment. Reproduit au navigateur, corrigé ici.
+     *
+     * La réponse dépend d'un cookie : elle ne doit jamais être resservie
+     * telle quelle.
+     */
+    const versLaPorte = NextResponse.redirect(porte);
+    versLaPorte.headers.set("cache-control", "no-store");
+    return versLaPorte;
   }
 
   if (pathname.startsWith(PREFIXE_PUBLIC)) return NextResponse.next();
