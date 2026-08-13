@@ -162,6 +162,14 @@ type OsState = {
   ajouterObjectif: (libelle: string, portee: string) => Promise<boolean>;
   /** Fait avancer un objectif : progression, chiffre affiché, étapes. */
   majObjectif: (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => void;
+  /**
+   * Dépôt d'un objectif glissé : le nouvel ordre, et l'horizon s'il a changé.
+   * Un objectif repoussé du mois au trimestre reste le même objectif.
+   */
+  deposerObjectif: (
+    ordre: string[],
+    changement: { id: string; portee: string } | null,
+  ) => void;
   supprimerObjectif: (id: string) => void;
 
   /** Les stats YouTube, nulles tant que la lecture n'a pas répondu. */
@@ -1106,7 +1114,29 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * injoignable ne doit pas empêcher de cocher ses habitudes.
    */
   useEffect(() => {
-    if (demoMode) return;
+    /*
+     * En démo, les objectifs viennent du jeu de démonstration.
+     *
+     * Sans cette branche, l'onglet restait bloqué sur « Lecture des
+     * objectifs… » pour toujours : le chargement distant est coupé en démo, et
+     * rien ne prenait le relais. Un onglet qui ne montre jamais rien n'est pas
+     * une démonstration, c'est une panne — et c'est aussi ce qui empêchait de
+     * vérifier le glisser entre horizons sans base de données.
+     */
+    if (demoMode) {
+      setObjectifs(
+        DEMO_DATA.objectives.map((o, i) => ({
+          id: `demo-obj-${i}`,
+          objectif: o.label,
+          portee: o.period.toLowerCase() === "année" ? "annee" : o.period.toLowerCase(),
+          statut: "en_cours",
+          pct: o.pct,
+          valeur: o.value,
+          etapes: (o.steps ?? []).map((e) => ({ texte: e.text, fait: e.done })),
+        })),
+      );
+      return;
+    }
     let annule = false;
     void fetch("/api/objectifs")
       .then((r) => r.json())
@@ -1996,6 +2026,48 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * Le dépôt d'un objectif glissé : le nouvel ordre, et l'horizon s'il change.
+   *
+   * Une seule écriture pour les deux, comme pour les tâches. Le décalage se
+   * voit déjà à l'écran — la carte est là où on l'a lâchée — donc la base
+   * rattrape, elle ne commande pas.
+   */
+  const deposerObjectifLocal = useCallback(
+    (ordreIds: string[], changement: { id: string; portee: string } | null) => {
+      setObjectifs((prev) => {
+        if (!prev) return prev;
+        const rang = new Map(ordreIds.map((id, i) => [id, i]));
+        return [...prev]
+          .map((o) =>
+            changement && o.id === changement.id ? { ...o, portee: changement.portee } : o,
+          )
+          .sort(
+            (a, b) =>
+              (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+              (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+          );
+      });
+      if (demoModeRef.current) return;
+
+      // L'ordre : les identifiants provisoires n'existent pas en base.
+      void fetch("/api/objectifs", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ordre: ordreIds.filter((id) => !estProvisoire(id)) }),
+      }).catch((err) => console.error("[objectifs] ordre impossible :", err));
+
+      if (changement && !estProvisoire(changement.id)) {
+        void fetch("/api/objectifs", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: changement.id, portee: changement.portee }),
+        }).catch((err) => console.error("[objectifs] horizon impossible :", err));
+      }
+    },
+    [],
+  );
+
   const supprimerObjectifLocal = useCallback((id: string) => {
     setObjectifs((prev) => (prev ? prev.filter((o) => o.id !== id) : prev));
     if (demoModeRef.current || estProvisoire(id)) return;
@@ -2612,6 +2684,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       objectifs,
       ajouterObjectif,
       majObjectif: majObjectifLocal,
+      deposerObjectif: deposerObjectifLocal,
       supprimerObjectif: supprimerObjectifLocal,
       youtube,
       agenda,
@@ -2679,6 +2752,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       objectifs,
       ajouterObjectif,
       majObjectifLocal,
+      deposerObjectifLocal,
       supprimerObjectifLocal,
       youtube,
       agenda,
