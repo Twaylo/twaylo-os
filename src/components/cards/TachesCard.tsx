@@ -6,7 +6,14 @@ import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
 import { ageEnJours, vieillesse } from "@/lib/age-tache";
-import { emojiPourTache, familleDeTache } from "@/lib/emoji-tache";
+import {
+  PALETTE,
+  avecEmoji,
+  emojiDeTete,
+  emojiPourTache,
+  emojiVisible,
+  familleDeTache,
+} from "@/lib/emoji-tache";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -100,6 +107,22 @@ export function TachesCard() {
   const enChargement = !tachesPretes && !demoMode;
 
   const [nouvelle, setNouvelle] = useState<Record<string, string>>({});
+  /**
+   * L'emoji que RECEVRA la tâche en cours de frappe, par colonne.
+   *
+   * Calculé pendant la saisie, pas après : l'OS répond au fur et à mesure au
+   * lieu d'appliquer sa pastille dans le dos une fois la tâche posée.
+   */
+  const apercus = useMemo(
+    () =>
+      Object.fromEntries(
+        ORDRE_NIVEAUX.map((n) => [
+          n,
+          (nouvelle[n] ?? "").trim() ? emojiVisible(nouvelle[n], n) : "",
+        ]),
+      ) as Record<Niveau, string>,
+    [nouvelle],
+  );
   /** L'identifiant de la tâche en cours de renommage, s'il y en a une. */
   const [edition, setEdition] = useState<string | null>(null);
   /**
@@ -1295,6 +1318,29 @@ export function TachesCard() {
                 }}
                 className="mb-[5px]"
               >
+                {/*
+                  L'EMOJI APPARAÎT PENDANT QU'ON TAPE.
+
+                  L'OS déduit une pastille de l'intitulé, et jusqu'ici on la
+                  découvrait après coup, une fois la tâche posée. La montrer
+                  dans le champ change la nature de la chose : ce n'est plus une
+                  décoration appliquée dans le dos, c'est une réponse. On écrit
+                  « appeler », le téléphone apparaît, et on sait que l'OS a
+                  compris avant même d'avoir validé.
+                */}
+                <div className="relative">
+                  {apercus[niveau] && (
+                    <span
+                      // La clé change avec l'emoji : le nœud est remplacé, donc
+                      // l'animation se rejoue à chaque fois qu'il change. Sans
+                      // ça, elle ne jouerait qu'une seule fois par saisie.
+                      key={apercus[niveau]}
+                      aria-hidden
+                      className="apercu-emoji pointer-events-none absolute left-[8px] top-1/2 -translate-y-1/2 text-[13px] leading-none"
+                    >
+                      {apercus[niveau]}
+                    </span>
+                  )}
                 <input
                   value={nouvelle[niveau] ?? ""}
                   onChange={(e) =>
@@ -1326,12 +1372,15 @@ export function TachesCard() {
                   }}
                   placeholder={`+ ${meta.nom.toLowerCase()}`}
                   aria-label={`Ajouter une tâche — ${meta.nom.toLowerCase()}`}
-                  className="w-full rounded-[8px] px-[9px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
+                  className={`w-full rounded-[8px] py-[5px] text-[11px] font-semibold text-white outline-none transition-all focus:border-white/25 ${
+                    apercus[niveau] ? "pl-[29px] pr-[9px]" : "px-[9px]"
+                  }`}
                   style={{
                     background: "rgba(255,255,255,0.03)",
                     border: "1px dashed rgba(255,255,255,0.12)",
                   }}
                 />
+                </div>
               </form>
 
               <div className="flex flex-col gap-[4px]">
@@ -1574,7 +1623,75 @@ export function TachesCard() {
                           border: "1px solid rgba(255,255,255,0.09)",
                         }}
                       >
+                        {/*
+                          CHOISIR L'EMOJI — et donc le groupe.
+
+                          La déduction se trompe forcément parfois : « Vérité
+                          #12 » est une vidéo, aucun mot ne le dit. Plutôt que
+                          d'ajouter des règles à l'infini pour deviner un
+                          vocabulaire qui n'est qu'à lui, on laisse trancher en
+                          un geste — et le choix REGROUPE : poser 🎬 sur une
+                          tâche l'envoie rejoindre les autres vidéos.
+
+                          Une palette de familles, pas le clavier d'emojis : une
+                          tâche pastèque ne se regrouperait avec rien.
+                        */}
                         <div className="px-[3px] text-[9.5px] font-black tracking-[0.1em] text-white/30">
+                          EMOJI
+                        </div>
+                        <div className="flex flex-wrap gap-[4px]">
+                          {(() => {
+                            const pose = emojiDeTete(t.text);
+                            const vu = emojiVisible(t.text, niveau);
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => renommerTache(id, avecEmoji(t.text, null))}
+                                  title="Laisser l'OS choisir d'après l'intitulé"
+                                  className="flex h-[36px] cursor-pointer items-center justify-center rounded-[9px] px-[9px] text-[10px] font-black transition-all hover:brightness-125"
+                                  style={
+                                    pose
+                                      ? {
+                                          color: "rgba(255,255,255,0.55)",
+                                          background: "rgba(255,255,255,0.05)",
+                                        }
+                                      : {
+                                          color: "var(--color-mag-soft)",
+                                          background: "rgba(255,61,139,0.14)",
+                                          border: "1.5px solid var(--color-mag)",
+                                        }
+                                  }
+                                >
+                                  {vu} AUTO
+                                </button>
+                                {PALETTE.map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => renommerTache(id, avecEmoji(t.text, f.emoji))}
+                                    title={f.nom}
+                                    aria-label={f.nom}
+                                    aria-pressed={pose === f.emoji}
+                                    className="flex h-[36px] w-[36px] cursor-pointer items-center justify-center rounded-[9px] text-[15px] leading-none transition-all hover:brightness-125"
+                                    style={
+                                      pose === f.emoji
+                                        ? {
+                                            background: "rgba(255,61,139,0.16)",
+                                            border: "1.5px solid var(--color-mag)",
+                                          }
+                                        : { background: "rgba(255,255,255,0.05)" }
+                                    }
+                                  >
+                                    {f.emoji}
+                                  </button>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="mt-[3px] px-[3px] text-[9.5px] font-black tracking-[0.1em] text-white/30">
                           DÉPLACER VERS
                         </div>
                         <div className="flex gap-[5px]">
