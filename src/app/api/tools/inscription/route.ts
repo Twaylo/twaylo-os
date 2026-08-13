@@ -106,13 +106,30 @@ export async function POST(req: Request) {
    */
   let enregistre = false;
   let jeton: string | null = null;
-  try {
-    const resultat = await inscrire(email, prenomSur, sourceSure, langueSure);
-    jeton = resultat.jeton;
-    enregistre = true;
-  } catch (erreur) {
-    // L'adresse n'apparaît pas dans le journal : elle n'a rien à y faire.
-    console.error("[inscription] échec", erreur instanceof Error ? erreur.message : erreur);
+
+  /*
+   * Deux tentatives, pas une.
+   *
+   * Ces adresses sont ce que toute l'opération produit : elles ne se
+   * rattrapent pas. Un hoquet réseau d'une demi-seconde entre Vercel et la
+   * base — le genre de chose qui arrive précisément quand mille personnes
+   * arrivent d'un coup — ne doit pas coûter un inscrit. On réessaie une fois,
+   * après une courte pause, et on n'insiste pas davantage : au-delà, ce n'est
+   * plus un hoquet, et faire attendre la personne ne réparerait rien.
+   */
+  for (let essai = 0; essai < 2 && !enregistre; essai += 1) {
+    try {
+      if (essai > 0) await new Promise((r) => setTimeout(r, 400));
+      const resultat = await inscrire(email, prenomSur, sourceSure, langueSure);
+      jeton = resultat.jeton;
+      enregistre = true;
+    } catch (erreur) {
+      // L'adresse n'apparaît pas dans le journal : elle n'a rien à y faire.
+      console.error(
+        `[inscription] échec (essai ${essai + 1}/2)`,
+        erreur instanceof Error ? erreur.message : erreur,
+      );
+    }
   }
 
   const reponse = NextResponse.json({ etat: "inscrit", enregistre });

@@ -199,6 +199,33 @@ export async function desabonner(jeton: string): Promise<boolean> {
   return true;
 }
 
+/** Une ligne de la liste, telle qu'on la relit. */
+export type Inscrit = {
+  prenom: string | null;
+  email: string;
+  statut: Statut;
+  source: string;
+  langue: string;
+  created_at: string;
+};
+
+/**
+ * Toute la liste, du plus récent au plus ancien.
+ *
+ * Sans pagination, et c'est un choix : une liste de diffusion se lit en
+ * entier ou ne se lit pas. À dix mille adresses la réponse pèse moins d'un
+ * mégaoctet, et elle n'est demandée que depuis l'OS, par une seule personne.
+ * Paginer ici compliquerait l'export sans rien économiser d'utile.
+ */
+export async function listerInscrits(): Promise<Inscrit[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("newsletter")
+    .select("prenom, email, statut, source, langue, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Inscrit[];
+}
+
 /** Combien de personnes ont confirmé — le seul chiffre qui compte vraiment. */
 export async function compterConfirmes(): Promise<number> {
   const { count, error } = await supabaseAdmin()
