@@ -226,6 +226,20 @@ export async function listerInscrits(): Promise<Inscrit[]> {
   return (data ?? []) as Inscrit[];
 }
 
+/**
+ * Retire complètement une adresse de la table.
+ *
+ * À ne pas confondre avec `desabonner`, qui garde la trace du refus. Celle-ci
+ * efface, et ne sert qu'à nettoyer derrière l'essai d'enregistrement.
+ */
+export async function supprimerInscrit(email: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("newsletter")
+    .delete()
+    .eq("email", normaliserEmail(email));
+  if (error) throw error;
+}
+
 /** Combien de personnes ont confirmé — le seul chiffre qui compte vraiment. */
 export async function compterConfirmes(): Promise<number> {
   const { count, error } = await supabaseAdmin()

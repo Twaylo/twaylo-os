@@ -44,9 +44,26 @@ create table if not exists newsletter (
 );
 
 -- Une adresse, une seule ligne. Se réinscrire ne crée pas de doublon : le
--- code fait un « upsert » sur cette contrainte et renvoie un nouveau jeton.
-create unique index if not exists newsletter_email_unique
-  on newsletter (lower(email));
+-- code fait un « upsert » sur cette contrainte.
+--
+-- SUR LA COLONNE, PAS SUR « lower(email) », ET C'EST TOUT LE SUJET.
+--
+-- La première version indexait l'expression « lower(email) ». C'est le
+-- réflexe — il rend « Twaylo@ » et « twaylo@ » équivalents — et il rendait
+-- ici TOUTE inscription impossible : PostgreSQL exige que la cible d'un
+-- « ON CONFLICT (email) » corresponde à un index portant exactement cette
+-- colonne. Un index sur une expression ne correspond pas, et l'insertion
+-- échouait avec l'erreur 42P10 — dès la première, pas seulement en cas de
+-- doublon. Résultat : la porte s'ouvrait, et aucune adresse n'était gardée.
+--
+-- Rien n'est perdu au passage : le code range déjà l'adresse en minuscules
+-- avant d'écrire (voir « normaliserEmail »), donc l'unicité sur la colonne
+-- fait exactement le même travail.
+create unique index if not exists newsletter_email_key on newsletter (email);
+
+-- L'ancien index, devenu inutile : deux index pour la même garantie, dont un
+-- qui ne sert plus à rien.
+drop index if exists newsletter_email_unique;
 
 -- Les deux lectures fréquentes : « combien de confirmés ? » et « à qui
 -- appartient ce jeton ? ».

@@ -1,5 +1,10 @@
 import { versCsv } from "@/lib/csv";
-import { listerInscrits, type Inscrit } from "@/lib/newsletter";
+import {
+  inscrire,
+  listerInscrits,
+  supprimerInscrit,
+  type Inscrit,
+} from "@/lib/newsletter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +86,13 @@ function page(lignes: Inscrit[]): string {
   .mail { font-family:ui-monospace,Menlo,monospace; font-size:13px }
   .date, td:last-child { color:var(--faible); white-space:nowrap }
   .parti td { opacity:.45 }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 20px }
+  .bouton.second { background:transparent; color:var(--doux); border:1px solid var(--bord);
+                   font:600 15px/1 system-ui,sans-serif; cursor:pointer }
+  .verdict { margin:0 0 24px; padding:13px 15px; border-radius:10px; font-size:14px;
+             line-height:1.5; border:1px solid var(--bord); color:var(--doux) }
+  .verdict[data-ton="bien"] { border-color:#59d3c4; background:rgba(89,211,196,.09); color:var(--texte) }
+  .verdict[data-ton="mal"] { border-color:#ff7a6b; background:rgba(255,122,107,.08); color:#ffd2cc }
   .vide { padding:34px; text-align:center; color:var(--faible);
           background:var(--surface); border:1px solid var(--bord); border-radius:12px }
   @media (max-width:640px){ .date{display:none} th:nth-child(4){display:none} }
@@ -90,7 +102,11 @@ function page(lignes: Inscrit[]): string {
 <p class="sous"><span class="compte">${nombre.format(inscrits.length)}</span> inscrit${inscrits.length > 1 ? "s" : ""}${
     partis ? ` · ${nombre.format(partis)} désabonné${partis > 1 ? "s" : ""}` : ""
   }</p>
-<a class="bouton" href="/liste?csv=1">Télécharger en CSV</a>
+<p class="actions">
+  <a class="bouton" href="/liste?csv=1">Télécharger en CSV</a>
+  <button class="bouton second" id="essai" type="button">Tester l'enregistrement</button>
+</p>
+<p class="verdict" id="verdict" hidden></p>
 ${
   lignes.length
     ? `<table>
@@ -101,7 +117,77 @@ ${rangees}
 </table>`
     : `<p class="vide">Personne pour l'instant. Les inscriptions arriveront ici dès la première.</p>`
 }
-</div></body></html>`;
+</div>
+<script>
+  /*
+   * L'essai d'enregistrement.
+   *
+   * Il écrit une ligne de contrôle dans la table, puis l'efface. Ce n'est
+   * pas un luxe : quand une inscription ne s'enregistre pas, l'erreur part
+   * dans les journaux de Vercel — que Twaylo ne lira jamais — et la seule
+   * chose visible est une liste vide, qui ressemble exactement à « personne
+   * ne s'est encore inscrit ». Ce bouton fait dire à la base ce qui cloche,
+   * en clair, en un clic.
+   */
+  const bouton = document.getElementById("essai");
+  const verdict = document.getElementById("verdict");
+  bouton.addEventListener("click", async () => {
+    bouton.disabled = true;
+    bouton.textContent = "Essai\u2026";
+    verdict.hidden = false;
+    verdict.removeAttribute("data-ton");
+    verdict.textContent = "Écriture d'une ligne de contrôle\u2026";
+    try {
+      const r = await fetch("/liste?essai=1", { method: "POST" });
+      const c = await r.json();
+      verdict.dataset.ton = c.ok ? "bien" : "mal";
+      verdict.textContent = c.ok
+        ? "Tout fonctionne : la ligne a été écrite puis effacée. Les inscriptions seront bien gardées."
+        : "L'écriture a échoué. La base répond : " + c.erreur;
+    } catch (e) {
+      verdict.dataset.ton = "mal";
+      verdict.textContent = "L'essai n'a pas pu partir : " + e;
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = "Tester l'enregistrement";
+    }
+  });
+</script>
+</body></html>`;
+}
+
+/**
+ * L'essai d'enregistrement : on écrit, on relit, on efface.
+ *
+ * L'adresse porte un domaine réservé aux essais (`.invalid`, que la norme
+ * garantit inexistant) : même si l'effacement échouait, elle ne partirait
+ * jamais chez personne et se repère au premier coup d'œil dans la liste.
+ */
+const ADRESSE_ESSAI = "controle@tway-tools.invalid";
+
+export async function POST(req: Request) {
+  if (!new URL(req.url).searchParams.has("essai")) {
+    return Response.json({ ok: false, erreur: "requête inconnue" }, { status: 400 });
+  }
+  try {
+    await inscrire(ADRESSE_ESSAI, "Contrôle", "controle", "fr");
+  } catch (erreur) {
+    const message = erreur instanceof Error ? erreur.message : String(erreur);
+    console.error("[liste] essai d'écriture échoué", message);
+    return Response.json({ ok: false, erreur: message });
+  }
+  try {
+    await supprimerInscrit(ADRESSE_ESSAI);
+  } catch (erreur) {
+    // L'écriture, elle, a marché : c'est ce qu'on voulait savoir. On le dit
+    // quand même, pour que la ligne de contrôle qui reste ne surprenne pas.
+    const message = erreur instanceof Error ? erreur.message : String(erreur);
+    return Response.json({
+      ok: true,
+      note: `la ligne de contrôle n'a pas pu être effacée (${message})`,
+    });
+  }
+  return Response.json({ ok: true });
 }
 
 export async function GET(req: Request) {
