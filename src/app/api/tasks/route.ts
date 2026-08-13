@@ -3,6 +3,7 @@ import { NIVEAUX, type Niveau } from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   basculerTache,
+  basculerTacheGelee,
   changerNiveauTache,
   creerTache,
   ecrireOrdreTaches,
@@ -67,6 +68,7 @@ export async function PATCH(req: Request) {
     titre?: unknown;
     ordre?: unknown;
     niveau?: unknown;
+    gelee?: unknown;
   };
   try {
     corps = await req.json();
@@ -141,6 +143,18 @@ export async function PATCH(req: Request) {
 
     if (typeof corps.faite === "boolean") {
       await basculerTache(corps.id, corps.faite);
+      applique = true;
+    }
+
+    /*
+     * Le gel — la tâche qui revient tous les jours.
+     *
+     * Il ne vit pas dans la table `tasks` mais sur la sentinelle (aucune
+     * migration possible), d'où un chemin à part : rien à écrire sur la ligne
+     * de la tâche, juste un identifiant à ajouter ou à retirer d'une liste.
+     */
+    if (typeof corps.gelee === "boolean") {
+      await basculerTacheGelee(corps.id, corps.gelee);
       applique = true;
     }
 

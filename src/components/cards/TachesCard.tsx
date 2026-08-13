@@ -1,40 +1,24 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
 import { ageEnJours, vieillesse } from "@/lib/age-tache";
-import { emojiPourTache, familleDeTache } from "@/lib/emoji-tache";
+import {
+  PALETTE,
+  avecEmoji,
+  emojiDeTete,
+  emojiPourTache,
+  emojiVisible,
+  familleDeTache,
+} from "@/lib/emoji-tache";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
+import { useGlisser } from "@/lib/use-glisser";
 
 const ORDRE_NIVEAUX: Niveau[] = ["principal", "secondaire", "annexe"];
-
-/**
- * Déplace `id` juste avant (ou après) `survole` dans la liste d'identifiants.
- * Le drapeau `apres` vient de la moitié de ligne survolée : sous le milieu, on
- * insère en dessous — c'est ce qui rend le tri fluide au doigt.
- */
-function deplacer(ids: string[], id: string, survole: string, apres: boolean): string[] {
-  const sans = ids.filter((x) => x !== id);
-  let i = sans.indexOf(survole);
-  if (i === -1) return ids;
-  if (apres) i += 1;
-  sans.splice(i, 0, id);
-  return sans;
-}
-
-/**
- * Où la tâche tirée va atterrir.
- *
- * `id` vaut `null` quand la colonne visée est VIDE : il n'y a alors aucune
- * ligne devant ou derrière laquelle s'insérer, mais le niveau, lui, change.
- * C'est le cas qu'on ne savait pas traiter — déposer dans un bloc vide ne
- * faisait rien.
- */
-type Cible = { id: string | null; niveau: Niveau; apres: boolean };
 
 /** navigator.vibrate n'est pas dans tous les typages ; on le decrit ici. */
 type NavVibr = Navigator & { vibrate?: (pattern: number | number[]) => boolean };
@@ -88,6 +72,7 @@ export function TachesCard() {
     ajouterTache,
     supprimerTache,
     renommerTache,
+    basculerGelTache,
     changerNiveauTache,
     deposerTache,
     passerJourSuivant,
@@ -100,6 +85,22 @@ export function TachesCard() {
   const enChargement = !tachesPretes && !demoMode;
 
   const [nouvelle, setNouvelle] = useState<Record<string, string>>({});
+  /**
+   * L'emoji que RECEVRA la tâche en cours de frappe, par colonne.
+   *
+   * Calculé pendant la saisie, pas après : l'OS répond au fur et à mesure au
+   * lieu d'appliquer sa pastille dans le dos une fois la tâche posée.
+   */
+  const apercus = useMemo(
+    () =>
+      Object.fromEntries(
+        ORDRE_NIVEAUX.map((n) => [
+          n,
+          (nouvelle[n] ?? "").trim() ? emojiVisible(nouvelle[n], n) : "",
+        ]),
+      ) as Record<Niveau, string>,
+    [nouvelle],
+  );
   /** L'identifiant de la tâche en cours de renommage, s'il y en a une. */
   const [edition, setEdition] = useState<string | null>(null);
   /**
@@ -127,16 +128,6 @@ export function TachesCard() {
   /** Posé par « Annuler » pour que le nettoyage de l'effet n'efface pas. */
   const annuleRef = useRef(false);
 
-  /**
-   * L'arrivée en cascade — vrai le temps de la première liste, puis plus jamais.
-   *
-   * Sans cet interrupteur, la classe d'animation resterait sur chaque ligne et
-   * le moindre rendu (une case cochée, une tâche déplacée) relancerait toute la
-   * colonne. Une animation qui se rejoue à chaque geste cesse d'être une
-   * arrivée pour devenir un tic.
-   */
-  const [entree, setEntree] = useState(true);
-
   /** Le bouton « passer au jour suivant » demande confirmation avant de vider. */
   const [confirmeCloture, setConfirmeCloture] = useState(false);
   const [clotureEnCours, setClotureEnCours] = useState(false);
@@ -146,143 +137,53 @@ export function TachesCard() {
   const aujourdhui = localDateKey();
   const clotureeAujourdhui = todoCloturee === aujourdhui;
 
+  /**
+   * Le dernier appui, pour reconnaître le DOUBLE-TAP qui gèle une tâche.
+   *
+   * Pourquoi un double-tap et pas un bouton : geler, c'est dire « celle-là,
+   * je la refais tous les jours ». C'est un geste qu'on fait une fois par
+   * tâche, sur la ligne elle-même, sans ouvrir de menu. Le bouton existe
+   * quand même dans le panneau ⋯ — pour qui ne connaît pas le raccourci.
+   */
+  const dernierTapRef = useRef<{ id: string | null; quand: number }>({
+    id: null,
+    quand: 0,
+  });
+
   /* ------------------------------------------------------------------ */
-  /* Glisser-déposer                                                     */
+  /* Glisser-déposer — le moteur est partagé (voir `lib/use-glisser`)     */
   /* ------------------------------------------------------------------ */
 
-  // L'identifiant de la tâche tirée, sinon null. `ordreVisuel` est l'ordre des
-  // identifiants pendant le tri ; `niveauCourant` le niveau que la tâche tirée
-  // vient d'adopter. Chaque état est doublé d'un ref pour que les écouteurs de
-  // pointeur lisent toujours la valeur fraîche.
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [ordreVisuel, setOrdreVisuel] = useState<string[]>([]);
-  const [niveauCourant, setNiveauCourant] = useState<Niveau>("secondaire");
-  const ordreRef = useRef<string[]>([]);
-  const niveauRef = useRef<Niveau>("secondaire");
-  const niveauInitialRef = useRef<Niveau>("secondaire");
-  const rowRefs = useRef(new Map<string, HTMLDivElement>());
-  /**
-   * Le cadre de chaque colonne de niveau.
-   *
-   * Indispensable depuis que les trois niveaux ne sont plus empilés : viser
-   * « secondaire » à droite demande de savoir OÙ est secondaire, pas seulement
-   * à quelle hauteur. C'est aussi ce qui permet de déposer dans une colonne
-   * vide, qui n'offre aucune ligne à viser.
-   */
-  const zoneRefs = useRef(new Map<Niveau, HTMLDivElement>());
-  const setZoneRef = (niveau: Niveau) => (el: HTMLDivElement | null) => {
-    if (el) zoneRefs.current.set(niveau, el);
-    else zoneRefs.current.delete(niveau);
-  };
-  /** Le cadre des trois colonnes — voir l'écouteur anti-défilement plus bas. */
-  const grilleRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * Un glissement est-il en cours ?
-   *
-   * En ref et non en état : l'écouteur anti-défilement est posé une fois pour
-   * toutes et doit lire la valeur fraîche à chaque `touchmove`.
-   */
-  const enGlissementRef = useRef(false);
-
-  // Le clone flottant (dans document.body), la position du pointeur, l'offset
-  // de prise, et les identifiants d'animation à annuler proprement.
-  const proxyRef = useRef<HTMLDivElement | null>(null);
-  const pointerRef = useRef({ x: 0, y: 0 });
-  const grabRef = useRef({ x: 0, y: 0 });
-  /** Hauteur de la ligne tirée : sert à viser d'après la carte, pas le doigt. */
-  const hauteurRef = useRef(0);
-  /**
-   * Vrai dès qu'un appui s'est transformé en déplacement.
-   *
-   * On peut désormais saisir une tâche n'importe où sur la ligne — or la ligne
-   * sert aussi à cocher. Le clic part après le relâchement : sans ce drapeau,
-   * ranger une tâche la cocherait par la même occasion.
-   */
-  const glissementArmeRef = useRef(false);
-  const rafProxy = useRef(0);
-  const rafMove = useRef<number | null>(null);
-  const rafScroll = useRef<number | null>(null);
-  // Le pointeur (doigt/souris) qui a armé le drag. On ignore tout autre contact,
-  // sinon un second doigt posé puis levé terminerait le glissement à sa place.
-  const idPointeurRef = useRef<number | null>(null);
-  // Vitesse d'auto-défilement, relue à chaque frame pour rester proportionnelle
-  // à la profondeur du doigt dans la zone de bord (sinon elle se figeait à la
-  // première valeur).
-  const vScrollRef = useRef(0);
-  // Défilement de page au dernier instantané FLIP : on le retranche des deltas,
-  // sinon un réordonnancement pendant l'auto-scroll ferait glisser toutes les
-  // voisines de la valeur du scroll.
-  const scrollPrevRef = useRef(0);
-  // A-t-on réellement réordonné ? Sinon (simple clic sur la poignée), rien à
-  // persister — pas d'écriture réseau inutile.
-  const aReordonneRef = useRef(false);
-  // Minuteur d'appui-long, coupé si le composant se démonte avant l'armement.
-  const preArmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Positions de toutes les lignes AVANT le dernier réordonnancement, indexées
-  // par identifiant sur les trois sections — c'est ce qui permet à une ligne
-  // qui change de niveau (donc de parent DOM) de glisser comme une voisine.
-  const prevRects = useRef(new Map<string, DOMRect>());
-  const reduireRef = useRef(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    reduireRef.current = mq.matches;
-    const suivre = () => (reduireRef.current = mq.matches);
-    mq.addEventListener("change", suivre);
-    return () => mq.removeEventListener("change", suivre);
-  }, []);
-
-  const setRowRef = (id: string) => (el: HTMLDivElement | null) => {
-    if (el) rowRefs.current.set(id, el);
-    else rowRefs.current.delete(id);
-  };
-
-  function mesurerToutes() {
-    const m = new Map<string, DOMRect>();
-    for (const [id, el] of rowRefs.current) m.set(id, el.getBoundingClientRect());
-    return m;
-  }
-
-  function defilementPage() {
-    return document.scrollingElement ?? document.documentElement;
-  }
-
-  // La boucle qui colle le clone au doigt : transform pur, aucune transition,
-  // coordonnées viewport (fixed) — il suit même si la page défile, sans jamais
-  // lire une position de layout.
-  function boucleProxy() {
-    const w = proxyRef.current;
-    if (!w) return;
-    const { x, y } = pointerRef.current;
-    const g = grabRef.current;
-    w.style.transform = `translate3d(${x - g.x}px,${y - g.y}px,0)`;
-    rafProxy.current = requestAnimationFrame(boucleProxy);
-  }
-
-  /**
-   * Début d'un glissement, sur la poignée.
-   *
-   * Au doigt, on n'arme qu'après un court appui (140 ms) et si le doigt n'a pas
-   * bougé de plus de 8 px — sinon un simple défilement partant de la poignée
-   * déclencherait un tri par accident. À la souris, c'est immédiat.
-   */
   /*
-   * L'ordre REGROUPÉ : les tâches de même nature deviennent voisines.
+   * L'ORDRE AFFICHÉ EST L'ORDRE ENREGISTRÉ. Point.
    *
-   * Trois scripts dispersés entre un appel et une facture, ce sont trois
-   * changements de contexte — et c'est le changement de contexte qui fatigue,
-   * pas le travail. Côte à côte, ils se font en une passe.
+   * Il ne l'était pas : la liste était re-triée à chaque rendu pour mettre les
+   * tâches de même nature côte à côte. L'intention était bonne — enchaîner
+   * trois scripts coûte moins cher que d'alterner script, appel, facture.
+   * L'effet, lui, était insupportable : on posait une tâche en tête, le tri se
+   * rejouait aussitôt, elle atterrissait deuxième, et DEUX AUTRES lignes qu'on
+   * n'avait pas touchées changeaient de place au passage. Mesuré, pas supposé.
    *
-   * Le tri est STABLE et se fait sur la première apparition de la famille :
-   * l'ordre qu'on a rangé à la main est donc préservé à l'intérieur d'une
-   * famille, et tirer une tâche en tête de liste y emmène toute sa famille
-   * plutôt que de la laisser revenir en arrière toute seule.
-   *
-   * C'est l'ORDRE qui est trié, pas seulement l'affichage : le glissement lit
-   * la même liste (voir `ordreRef` au démarrage d'un tri), donc rien ne saute
-   * au moment où l'on pose le doigt.
+   * Un rangement à la main ne peut pas être arbitré par une règle : ou bien
+   * c'est la règle qui décide, ou bien c'est le doigt — jamais les deux, sinon
+   * le geste ne veut plus rien dire. C'est donc le doigt. Le regroupement
+   * reste, mais il devient un GESTE : le bouton « Regrouper » range la liste
+   * quand Twaylo le demande, et le résultat est un ordre enregistré comme un
+   * autre, que plus rien ne défait.
    */
-  const ordreGroupe = useMemo(() => {
+  const ordreAffiche = useMemo(
+    () => tasks.map((t) => t.id).filter((x): x is string => Boolean(x)),
+    [tasks],
+  );
+
+  /**
+   * L'ordre que donnerait un regroupement par famille.
+   *
+   * Tri STABLE sur la première apparition de la famille dans chaque niveau :
+   * ce qui est déjà rangé à la main le reste à l'intérieur d'une famille, et
+   * les familles gardent l'ordre où elles apparaissent.
+   */
+  const ordreRegroupe = useMemo(() => {
     const rang = new Map<string, number>();
     for (const [i, t] of tasks.entries()) {
       const cle = `${t.niveau ?? "secondaire"}:${familleDeTache(t.text)?.id ?? `seul-${i}`}`;
@@ -299,496 +200,45 @@ export function TachesCard() {
       .filter((x): x is string => Boolean(x));
   }, [tasks]);
 
-  function commencerDrag(
-    e: React.PointerEvent,
-    id: string,
-    niveau: Niveau,
-    depuisPoignee: boolean,
-  ) {
-    if (edition) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    const row = rowRefs.current.get(id);
-    if (!row) return;
-    // Nouvelle séquence d'appui : le glissement précédent ne compte plus.
-    glissementArmeRef.current = false;
-    // Depuis la ligne, on ne coupe RIEN : le clic doit continuer de cocher si
-    // l'appui reste court. Depuis la poignée, on coupe tout de suite — elle ne
-    // sert qu'à ranger.
-    if (depuisPoignee) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  /** Le bouton ne s'affiche que s'il a quelque chose à faire. */
+  const regroupementUtile = ordreRegroupe.join("|") !== ordreAffiche.join("|");
 
-    const idPointeur = e.pointerId;
-    const sx = e.clientX;
-    const sy = e.clientY;
-    pointerRef.current = { x: sx, y: sy };
-    let arme = false;
+  /** Le niveau d'une tâche, tel qu'il est affiché — sans le glissement. */
+  const niveauDe = (id: string): Niveau =>
+    tasks.find((t) => t.id === id)?.niveau ?? "secondaire";
 
-    const nettoyerPre = () => {
-      if (preArmRef.current) {
-        clearTimeout(preArmRef.current);
-        preArmRef.current = null;
-      }
-      window.removeEventListener("pointermove", surMovePre);
-      window.removeEventListener("pointerup", nettoyerPre);
-      window.removeEventListener("pointercancel", nettoyerPre);
-    };
+  const {
+    dragId,
+    ordreVisuel,
+    zoneCourante: niveauCourant,
+    commencerDrag,
+    setRowRef,
+    setZoneRef,
+    grilleRef,
+    glissementArmeRef,
+  } = useGlisser<Niveau>({
+    ordre: ordreAffiche,
+    zoneDe: niveauDe,
+    onDepot: (ids, changement) =>
+      deposerTache(ids, changement ? { id: changement.id, niveau: changement.zone } : null),
+    // Une ligne en cours de renommage ne se déplace pas : le champ a la main.
+    bloque: Boolean(edition),
+    zoneParDefaut: "secondaire",
+  });
 
-    const armer = () => {
-      arme = true;
-      glissementArmeRef.current = true;
-      enGlissementRef.current = true;
-      preArmRef.current = null;
-      idPointeurRef.current = idPointeur;
-      aReordonneRef.current = false;
-      const r = row.getBoundingClientRect();
-      grabRef.current = {
-        x: pointerRef.current.x - r.left,
-        y: pointerRef.current.y - r.top,
-      };
-      hauteurRef.current = r.height;
-      if (!reduireRef.current) (navigator as NavVibr).vibrate?.(8);
 
-      // Clone flottant : un conteneur qui suit le doigt (translate) enveloppant
-      // la copie de la ligne, sur laquelle joue le lift (scale) — séparer les
-      // deux transforms laisse le suivi rester 1:1 pendant que le lift s'anime.
-      const wrapper = document.createElement("div");
-      Object.assign(wrapper.style, {
-        position: "fixed",
-        top: "0",
-        left: "0",
-        margin: "0",
-        width: `${r.width}px`,
-        height: `${r.height}px`,
-        pointerEvents: "none",
-        zIndex: "60",
-        willChange: "transform",
-        transform: `translate3d(${pointerRef.current.x - grabRef.current.x}px,${pointerRef.current.y - grabRef.current.y}px,0)`,
-      });
-      const inner = row.cloneNode(true) as HTMLElement;
-      Object.assign(inner.style, {
-        margin: "0",
-        width: "100%",
-        borderRadius: "11px",
-        boxShadow: reduireRef.current
-          ? "0 0 0 1px var(--color-mag)"
-          : "0 18px 40px -12px rgba(255,61,139,0.45), 0 0 0 1px rgba(255,61,139,0.45)",
-        transform: "scale(1)",
-        transition: reduireRef.current ? "none" : "transform 90ms ease-out",
-      });
-      wrapper.appendChild(inner);
-      document.body.appendChild(wrapper);
-      proxyRef.current = wrapper;
-      if (!reduireRef.current) {
-        requestAnimationFrame(() => {
-          inner.style.transform = "scale(1.03)";
-        });
-      }
-
-      /*
-       * TOUS les identifiants, y compris les `tmp-…` que le serveur n'a pas
-       * encore confirmés.
-       *
-       * Les exclure ici était un piège : l'ordre visuel pilote l'affichage
-       * pendant le glissement, et une tâche absente de cet ordre est rejetée
-       * à la fin (`extras`). La tâche à peine tapée, posée en tête, sautait
-       * donc en bas de sa section dès qu'on attrapait une autre ligne — puis
-       * y restait après le dépôt. Le filtrage a bien lieu, mais au seul
-       * moment où il compte : la composition du corps envoyé au serveur
-       * (voir `deposerTache`).
-       */
-      /*
-       * L'ordre REGROUPÉ, pas l'ordre brut : c'est celui qui est à l'écran.
-       * Partir de l'autre ferait sauter toute la liste au premier appui.
-       *
-       * Lu par fermeture plutôt que par une référence : cette fonction est
-       * redéclarée à chaque rendu, elle voit donc l'ordre qui était affiché au
-       * moment où le doigt s'est posé — exactement ce qu'il faut.
-       */
-      const ordre = ordreGroupe;
-      ordreRef.current = ordre;
-      niveauRef.current = niveau;
-      niveauInitialRef.current = niveau;
-      // Figer les positions ET le défilement AVANT tout réordonnancement : c'est
-      // le « First » du FLIP des voisines, et la référence de scroll.
-      prevRects.current = mesurerToutes();
-      scrollPrevRef.current = defilementPage().scrollTop;
-
-      setOrdreVisuel(ordre);
-      setNiveauCourant(niveau);
-      setDragId(id);
-      boucleProxy();
-      nettoyerPre();
-    };
-
-    const tactile = e.pointerType === "touch";
-    // À la souris, saisir la ligne elle-même ne peut pas armer sur-le-champ :
-    // un simple clic servirait alors à ranger au lieu de cocher. On attend un
-    // vrai geste — quelques pixels parcourus, bouton enfoncé.
-    const seuilSouris = !tactile && !depuisPoignee;
-
-    const surMovePre = (ev: PointerEvent) => {
-      if (ev.pointerId !== idPointeur) return;
-      pointerRef.current = { x: ev.clientX, y: ev.clientY };
-      if (arme) return;
-      const distance = Math.hypot(ev.clientX - sx, ev.clientY - sy);
-      if (seuilSouris) {
-        if (distance > 6) armer();
-      } else if (distance > 10) {
-        // Au doigt, s'éloigner avant l'appui long, c'est vouloir faire défiler
-        // la page : on abandonne et on laisse le geste au navigateur.
-        nettoyerPre();
-      }
-    };
-
-    // Depuis la ligne, l'appui doit être plus franc que depuis la poignée : on
-    // couvre ainsi le tap qui coche, qui est le geste le plus fréquent.
-    const delai = tactile ? (depuisPoignee ? 140 : 220) : 0;
-
-    if (!tactile && depuisPoignee) {
-      armer();
-      return;
-    }
-
-    window.addEventListener("pointermove", surMovePre, { passive: true });
-    window.addEventListener("pointerup", nettoyerPre, { once: true });
-    window.addEventListener("pointercancel", nettoyerPre, { once: true });
-    if (tactile) {
-      /*
-       * Le second garde-fou, posé sur le nœud TOUCHÉ lui-même.
-       *
-       * Celui du cadre (plus bas) suffit tant que la ligne reste où elle est.
-       * Mais dès qu'elle change de colonne, React la détache du DOM pour la
-       * reconstruire dans l'autre — et un évènement tactile continue de viser
-       * le nœud d'origine, désormais hors de l'arbre : il ne remonte plus
-       * jusqu'au cadre, le garde-fou cesse d'être appelé, le navigateur reprend
-       * le geste pour faire défiler, et il annule le pointeur.
-       *
-       * C'était ça, le bug qui restait : mesuré, le geste mourait EXACTEMENT au
-       * premier changement de colonne. Les petits trajets s'en sortaient (le
-       * changement arrivait juste avant le lâcher), les longs se posaient dans
-       * la colonne traversée en chemin. D'où l'impression d'un glisser qui
-       * marche une fois sur deux.
-       *
-       * Un écouteur posé sur le nœud touché suit ce nœud, détaché ou non.
-       */
-      const touche = e.target as HTMLElement;
-      const bloquer = (ev: TouchEvent) => {
-        if (arme && ev.cancelable) ev.preventDefault();
-      };
-      const oublier = () => {
-        touche.removeEventListener("touchmove", bloquer);
-        window.removeEventListener("touchend", oublier);
-        window.removeEventListener("touchcancel", oublier);
-      };
-      touche.addEventListener("touchmove", bloquer, { passive: false });
-      window.addEventListener("touchend", oublier);
-      window.addEventListener("touchcancel", oublier);
-      preArmRef.current = setTimeout(armer, delai);
-    }
-  }
-
-  /*
-   * LE DÉFILEMENT QUI VOLE LE GESTE — la vraie panne du glisser au doigt.
+  /**
+   * L'arrivée en cascade — vrai le temps de la première liste, puis plus jamais.
    *
-   * Tenir une ligne appuyée l'armait bien au bout de 220 ms. Puis le premier
-   * millimètre parcouru partait en défilement de page, le navigateur annulait
-   * le pointeur (`pointercancel`), et la tâche restait où elle était — ou pire,
-   * atterrissait dans la colonne traversée en chemin. Mesuré au doigt : SIX
-   * glissements sur six annulés. Les rares fois où ça « marchait », la tâche se
-   * posait par chance là où le geste passait au moment de l'annulation. Voilà
-   * le « trop de bugs ».
-   *
-   * Ce qui ne marche pas, et pourquoi :
-   *  · `touch-action: none` sur les lignes — la propriété est lue quand le
-   *    doigt se pose, donc avant de savoir s'il s'agit d'un appui long ou d'un
-   *    défilement. Les lignes couvrent l'écran : la todo ne défilerait plus ;
-   *  · `preventDefault()` sur un `pointermove` tactile — il n'arrête rien ;
-   *  · un `touchmove` non passif posé au moment de l'appui — TESTÉ, inopérant.
-   *    Le navigateur fige au contact du doigt la liste des zones qui peuvent
-   *    l'interrompre ; un écouteur ajouté après n'y figure pas, et son
-   *    `preventDefault` arrive sur un évènement déjà non annulable.
-   *
-   * Il faut donc que l'écouteur soit là AVANT que le doigt ne se pose. Il est
-   * posé une fois pour toutes sur le cadre des trois colonnes — pas sur la
-   * fenêtre : seuls les gestes qui commencent dans la todo passent par le fil
-   * principal, le reste de la page continue de défiler sans rien demander à
-   * personne. Et il ne bloque QUE si un glissement est armé : un défilement
-   * parti d'une ligne reste un défilement.
+   * Sans cet interrupteur, la classe d'animation resterait sur chaque ligne et
+   * le moindre rendu (une case cochée, une tâche déplacée) relancerait toute la
+   * colonne. Une animation qui se rejoue à chaque geste cesse d'être une
+   * arrivée pour devenir un tic.
    */
-  useEffect(() => {
-    const cadre = grilleRef.current;
-    if (!cadre) return;
-    const bloquer = (ev: TouchEvent) => {
-      if (enGlissementRef.current && ev.cancelable) ev.preventDefault();
-    };
-    cadre.addEventListener("touchmove", bloquer, { passive: false });
-    return () => cadre.removeEventListener("touchmove", bloquer);
-  }, []);
+  const [entree, setEntree] = useState(true);
 
 
-  // Écoute du geste une fois armé : pointermove coalescé dans un seul rAF (une
-  // cible + un auto-scroll par frame), et le lâcher qui fait atterrir le clone
-  // puis persiste. `passive:false` autorise le preventDefault anti-défilement.
-  useEffect(() => {
-    if (!dragId) return;
-    let derniere: string | null = null;
-    let relache = false;
 
-    /**
-     * La COLONNE visée, d'abord.
-     *
-     * Le ciblage était purement vertical : il cherchait la ligne la plus proche
-     * en hauteur, tous niveaux confondus. Tant que les trois niveaux étaient
-     * empilés, cela suffisait. Côte à côte, c'est faux — amener une tâche à
-     * droite la faisait retomber dans la colonne de gauche, à la même hauteur.
-     *
-     * On décide donc du niveau par la position HORIZONTALE ET verticale, puis
-     * de la place dans ce niveau par la hauteur seule. Hors de toute colonne
-     * (au-dessus, en dessous, dans la gouttière), on prend la plus proche en
-     * distance réelle plutôt que d'abandonner : un doigt qui dépasse un peu du
-     * cadre veut visiblement y déposer.
-     */
-    function zoneSous(x: number, y: number): Niveau | null {
-      let proche: Niveau | null = null;
-      let distance = Infinity;
-      for (const [niveau, el] of zoneRefs.current) {
-        const r = el.getBoundingClientRect();
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return niveau;
-        const dx = Math.max(r.left - x, 0, x - r.right);
-        const dy = Math.max(r.top - y, 0, y - r.bottom);
-        const d = Math.hypot(dx, dy);
-        if (d < distance) {
-          distance = d;
-          proche = niveau;
-        }
-      }
-      return proche;
-    }
-
-    function cibleSous(clientX: number, clientY: number): Cible | null {
-      const zone = zoneSous(clientX, clientY);
-      if (!zone) return null;
-
-      let meilleur: Cible | null = null;
-      let distance = Infinity;
-      let vide = true;
-
-      for (const [id, el] of rowRefs.current) {
-        if (id === dragId) continue;
-        // On ne compare QU'AUX lignes de la colonne visée.
-        if (((el.dataset.niveau as Niveau) || "secondaire") !== zone) continue;
-        vide = false;
-        const r = el.getBoundingClientRect();
-        const milieu = (r.top + r.bottom) / 2;
-        if (clientY >= r.top && clientY <= r.bottom) {
-          const d = clientY - milieu;
-          /*
-           * Zone morte de 4 px autour du milieu : elle tue le clignotement d'un
-           * cran quand le doigt hésite pile à la frontière.
-           *
-           * Mais SEULEMENT à l'intérieur de la colonne où la tâche se trouve
-           * déjà. Appliquée partout, elle suspendait tout le ciblage — donc
-           * aussi le changement de colonne : amener une tâche des annexes vers
-           * le focus et la lâcher pile au milieu d'une ligne ne faisait rien,
-           * et elle restait dans la colonne traversée en chemin. Mesuré au
-           * doigt : elle atterrissait en « secondaire » au lieu de
-           * « principal ». Quatre pixels sur un écran de téléphone, c'est un
-           * hasard — pas une intention.
-           */
-          if (Math.abs(d) < 4 && zone === niveauRef.current) return null;
-          return { id, niveau: zone, apres: d > 0 };
-        }
-        const dm = Math.abs(clientY - milieu);
-        if (dm < distance) {
-          distance = dm;
-          meilleur = { id, niveau: zone, apres: clientY > milieu };
-        }
-      }
-
-      // Colonne vide : rien à viser, mais le niveau change quand même.
-      if (vide) return { id: null, niveau: zone, apres: false };
-      return meilleur;
-    }
-
-    // Recalcule la cible de dépôt et réordonne si besoin. Appelée depuis le
-    // pointermove ET depuis la boucle d'auto-scroll : pendant un défilement à
-    // doigt immobile, les lignes bougent sous le doigt, il faut recibler.
-    function appliquerCible() {
-      /*
-       * On vise avec le CENTRE de la carte tirée, pas avec le doigt.
-       *
-       * Le doigt tient la poignée à mi-hauteur : en amenant visuellement la
-       * carte au-dessus de la première ligne, il restait au niveau du milieu de
-       * celle-ci, et l'OS concluait « insérer après ». Impossible, donc, de
-       * poser une tâche en tête de colonne — l'écran montrait une chose et le
-       * calcul en faisait une autre. Le centre de la carte, lui, correspond à
-       * ce que Twaylo voit.
-       */
-      const centreCarte =
-        pointerRef.current.y - grabRef.current.y + hauteurRef.current / 2;
-      /*
-       * En X on suit le DOIGT, pas le centre de la carte.
-       *
-       * La carte est large : son centre peut déborder dans la colonne voisine
-       * alors que le doigt vise clairement celle d'à côté. Le doigt est ce
-       * qu'on pointe, c'est donc lui qui décide de la colonne.
-       */
-      const c = cibleSous(pointerRef.current.x, centreCarte);
-      if (c && (c.id !== derniere || c.niveau !== niveauRef.current)) {
-        derniere = c.id;
-        aReordonneRef.current = true;
-        // Colonne vide : on ne réordonne rien, on change juste de niveau.
-        if (c.id) {
-          const nx = deplacer(ordreRef.current, dragId!, c.id, c.apres);
-          ordreRef.current = nx;
-          setOrdreVisuel(nx);
-        }
-        setNiveauCourant(c.niveau);
-        niveauRef.current = c.niveau;
-      }
-    }
-
-    function stopScroll() {
-      if (rafScroll.current != null) {
-        cancelAnimationFrame(rafScroll.current);
-        rafScroll.current = null;
-      }
-    }
-
-    // Auto-défilement de la page quand le doigt approche du haut/bas de l'écran
-    // — permet de déplacer une tâche au-delà de ce qui tient à l'écran. La
-    // vitesse passe par un ref, relu chaque frame, et on recible à chaque pas.
-    function autoScroll(y: number) {
-      const cible = defilementPage();
-      const E = 55;
-      const MAX = 13;
-      let v = 0;
-      if (y < E) v = -MAX * (1 - y / E);
-      else if (y > window.innerHeight - E) v = MAX * (1 - (window.innerHeight - y) / E);
-      if (!v) {
-        stopScroll();
-        return;
-      }
-      vScrollRef.current = v;
-      if (rafScroll.current == null) {
-        const pas = () => {
-          const avant = cible.scrollTop;
-          cible.scrollTop += vScrollRef.current;
-          // Bout de page atteint : plus rien ne bouge, inutile de tourner (et de
-          // recibler) à chaque frame jusqu'au lâcher.
-          if (cible.scrollTop === avant) {
-            rafScroll.current = null;
-            return;
-          }
-          appliquerCible();
-          rafScroll.current = requestAnimationFrame(pas);
-        };
-        rafScroll.current = requestAnimationFrame(pas);
-      }
-    }
-
-    function process() {
-      rafMove.current = null;
-      appliquerCible();
-      autoScroll(pointerRef.current.y);
-    }
-
-    function onMove(e: PointerEvent) {
-      // Un autre doigt ne pilote pas ce drag — et on ne bloque pas son
-      // défilement en appelant preventDefault avant le filtre.
-      if (e.pointerId !== idPointeurRef.current) return;
-      e.preventDefault();
-      pointerRef.current = { x: e.clientX, y: e.clientY };
-      if (rafMove.current == null) rafMove.current = requestAnimationFrame(process);
-    }
-
-    function onUp(e: PointerEvent) {
-      if (e.pointerId !== idPointeurRef.current) return;
-      if (relache) return;
-      relache = true;
-      enGlissementRef.current = false;
-      cancelAnimationFrame(rafProxy.current);
-      stopScroll();
-      // Un pointermove peut avoir programmé un `process` juste avant le lâcher :
-      // sans cette annulation il s'exécuterait APRÈS la sauvegarde et
-      // réordonnerait dans le vide (voire relancerait l'auto-défilement).
-      if (rafMove.current != null) {
-        cancelAnimationFrame(rafMove.current);
-        rafMove.current = null;
-      }
-
-      /*
-       * UN DERNIER CIBLAGE, à l'endroit exact où le doigt s'est levé.
-       *
-       * Chaque changement de colonne réorganise la liste : la colonne quittée
-       * rétrécit, celle d'arrivée s'allonge, et tout ce qui est en dessous
-       * remonte — SOUS le doigt. Un long trajet (des annexes vers le focus)
-       * traversait donc une colonne intermédiaire, la mise en page bougeait, et
-       * la tâche se posait là où la colonne visée se trouvait AVANT le
-       * décalage : mesuré, elle atterrissait en « secondaire » alors qu'on
-       * l'avait amenée sur « principal ».
-       *
-       * On recalcule donc une dernière fois, mise en page stabilisée, à partir
-       * de la dernière position connue du doigt. C'est ce que l'œil voit au
-       * moment du lâcher qui fait foi.
-       */
-      appliquerCible();
-
-      const w = proxyRef.current;
-      const idAuDrop = dragId!;
-      const row = rowRefs.current.get(idAuDrop);
-      const changement =
-        niveauRef.current !== niveauInitialRef.current
-          ? { id: idAuDrop, niveau: niveauRef.current }
-          : null;
-      // On persiste TOUT DE SUITE (pas dans `finir`) : l'atterrissage n'est que
-      // visuel, et un drag démarré pendant les 200 ms doit déjà lire l'ordre à
-      // jour. Un simple clic (rien réordonné) n'écrit rien.
-      if (aReordonneRef.current) deposerTache(ordreRef.current, changement);
-      // `finir` ne fait plus que du visuel : retirer le clone (s'il est encore
-      // le nôtre) et relâcher `dragId` — mais seulement si c'est toujours CE
-      // drop qui est courant, sinon on tuerait un drag enchaîné.
-      const finir = () => {
-        w?.remove();
-        if (proxyRef.current === w) proxyRef.current = null;
-        setDragId((prev) => (prev === idAuDrop ? null : prev));
-      };
-      if (w && row && !reduireRef.current) {
-        const d = row.getBoundingClientRect();
-        const depart = w.style.transform || "translate3d(0,0,0)";
-        const inner = w.firstElementChild as HTMLElement | null;
-        if (inner) inner.style.transform = "scale(1)";
-        const anim = w.animate(
-          [{ transform: depart }, { transform: `translate3d(${d.left}px,${d.top}px,0)` }],
-          { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" },
-        );
-        anim.onfinish = finir;
-        anim.oncancel = finir;
-      } else {
-        finir();
-      }
-    }
-
-    window.addEventListener("pointermove", onMove, { passive: false });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-      if (rafMove.current != null) {
-        cancelAnimationFrame(rafMove.current);
-        rafMove.current = null;
-      }
-      stopScroll();
-      // Le clone est retiré par `finir` (au lâcher) — on n'y touche PAS ici :
-      // ce nettoyage se rejoue à chaque changement de `dragId`, et effacer le
-      // clone effacerait celui d'un drag suivant. Le démontage du composant est
-      // couvert par l'effet dédié ci-dessous.
-    };
-  }, [dragId, deposerTache]);
 
   /*
    * La cascade s'éteint une fois jouée. Le minuteur ne démarre qu'à l'arrivée
@@ -832,61 +282,6 @@ export function TachesCard() {
       partir();
     };
   }, [aSupprimer, supprimerTache]);
-
-  // Filet de démontage : si le composant disparaît en plein glissement (ou en
-  // plein appui-long), on coupe le minuteur, la boucle du clone et le clone.
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(rafProxy.current);
-      if (preArmRef.current) {
-        clearTimeout(preArmRef.current);
-        preArmRef.current = null;
-      }
-      if (proxyRef.current) {
-        proxyRef.current.remove();
-        proxyRef.current = null;
-      }
-    };
-  }, []);
-
-  // FLIP des voisines : à chaque réordonnancement, faire glisser chaque ligne
-  // de son ancienne position vers la nouvelle. useLayoutEffect pour poser
-  // l'inverse AVANT le paint (sinon la ligne flashe à sa nouvelle place).
-  useLayoutEffect(() => {
-    if (!dragId || reduireRef.current) return;
-
-    // 1) Annuler d'abord TOUTES les animations des voisines : leurs transforms
-    //    résiduels retombent à l'identité, sinon getBoundingClientRect les
-    //    inclut et pollue le « Last » → saut/tremblement au tri rapide.
-    for (const [id, el] of rowRefs.current) {
-      if (id === dragId) continue;
-      el.getAnimations().forEach((a) => a.cancel());
-    }
-
-    // 2) Mesurer des positions de layout propres, et le défilement écoulé
-    //    depuis le dernier instantané (à retrancher : les rects sont en
-    //    coordonnées viewport, le scroll les décale sans que la ligne bouge).
-    const scrollNow = defilementPage().scrollTop;
-    const dScroll = scrollNow - scrollPrevRef.current;
-    const now = mesurerToutes();
-
-    // 3) Poser l'inverse (scroll compensé) puis jouer vers zéro.
-    for (const [id, el] of rowRefs.current) {
-      if (id === dragId) continue;
-      const prev = prevRects.current.get(id);
-      const n = now.get(id);
-      if (!prev || !n) continue;
-      const dx = prev.left - n.left;
-      const dy = prev.top - n.top - dScroll;
-      if (!dx && !dy) continue;
-      el.animate(
-        [{ transform: `translate3d(${dx}px,${dy}px,0)` }, { transform: "translate3d(0,0,0)" }],
-        { duration: 200, easing: "cubic-bezier(.2,.7,.3,1)" },
-      );
-    }
-    prevRects.current = now;
-    scrollPrevRef.current = scrollNow;
-  }, [ordreVisuel, niveauCourant, dragId]);
 
   const done = tasks.filter((t) => t.done).length;
 
@@ -979,8 +374,8 @@ export function TachesCard() {
         return [...suite, ...extras];
       })()
     : (() => {
-        const vus = new Set(ordreGroupe);
-        const suite = ordreGroupe
+        const vus = new Set(ordreAffiche);
+        const suite = ordreAffiche
           .map((id) => parIndex.get(id))
           .filter((e): e is { t: (typeof tasks)[number]; index: number } => Boolean(e))
           .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
@@ -1010,31 +405,47 @@ export function TachesCard() {
    * hauteur de la liste. Renvoie, pour chaque position, la famille à annoncer
    * ou `null`.
    */
+  /**
+   * Où poser un intertitre de famille.
+   *
+   * Sur des SUITES, et seulement sur des suites d'au moins deux lignes. C'est
+   * la conséquence directe de l'ordre rendu à la main : deux scripts séparés
+   * par un appel ne forment plus un groupe, et prétendre le contraire
+   * afficherait deux fois « ✍️ ÉCRITURE 2 » dans la même colonne, pour deux
+   * lignes qui ne se touchent pas. Un intertitre annonce ce qui suit
+   * immédiatement, sinon il ment.
+   *
+   * Le compteur donne ce qu'il RESTE à faire dans la suite : c'est ce qui
+   * donne envie de l'enchaîner d'une traite, et il passe au vert une fois la
+   * suite bouclée.
+   */
   const enTetes = (
     items: typeof flat,
   ): ({ famille: NonNullable<ReturnType<typeof familleDeTache>>; combien: number; restent: number } | null)[] => {
-    const combien = new Map<string, number>();
-    const restent = new Map<string, number>();
-    for (const { t } of items) {
-      const f = familleDeTache(t.text);
-      if (!f) continue;
-      combien.set(f.id, (combien.get(f.id) ?? 0) + 1);
-      if (!t.done) restent.set(f.id, (restent.get(f.id) ?? 0) + 1);
+    const familles = items.map(({ t }) => familleDeTache(t.text));
+    const sorties: ({ famille: NonNullable<ReturnType<typeof familleDeTache>>; combien: number; restent: number } | null)[] =
+      items.map(() => null);
+
+    let i = 0;
+    while (i < items.length) {
+      const f = familles[i];
+      if (!f) {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j + 1 < items.length && familles[j + 1]?.id === f.id) j += 1;
+      const longueur = j - i + 1;
+      if (longueur >= 2) {
+        sorties[i] = {
+          famille: f,
+          combien: longueur,
+          restent: items.slice(i, j + 1).filter(({ t }) => !t.done).length,
+        };
+      }
+      i = j + 1;
     }
-    let precedente: string | null = null;
-    return items.map(({ t }) => {
-      const f = familleDeTache(t.text);
-      const groupe = f && (combien.get(f.id) ?? 0) >= 2 ? f : null;
-      const nouvelle = groupe && groupe.id !== precedente ? groupe : null;
-      precedente = groupe ? groupe.id : null;
-      return nouvelle
-        ? {
-            famille: nouvelle,
-            combien: combien.get(nouvelle.id) ?? 0,
-            restent: restent.get(nouvelle.id) ?? 0,
-          }
-        : null;
-    });
+    return sorties;
   };
 
   return (
@@ -1084,11 +495,35 @@ export function TachesCard() {
           </span>
           TÂCHES CLÉS
         </div>
-        <div
-          className="font-mono text-[11.5px] font-extrabold"
-          style={{ color: "var(--color-mag-soft)" }}
-        >
-          {done}/{tasks.length}
+        <div className="flex items-center gap-[7px]">
+          {/*
+            REGROUPER — le tri par famille, à la demande.
+            Il se faisait tout seul à chaque rendu, et défaisait les
+            rangements à la main : on posait une tâche en tête, elle
+            atterrissait deuxième. Devenu un geste, il range quand on le
+            demande, et le résultat est un ordre enregistré que rien ne défait.
+          */}
+          {regroupementUtile && (
+            <button
+              type="button"
+              onClick={() => deposerTache(ordreRegroupe, null)}
+              title="Mettre les tâches de même nature côte à côte"
+              className="bouton-regrouper cursor-pointer rounded-[8px] px-[8px] text-[10px] font-black tracking-[0.06em] transition-all hover:brightness-125"
+              style={{
+                color: "var(--color-mag-soft)",
+                background: "rgba(255,61,139,0.12)",
+                border: "1px solid rgba(255,61,139,0.28)",
+              }}
+            >
+              ⇅ REGROUPER
+            </button>
+          )}
+          <div
+            className="font-mono text-[11.5px] font-extrabold"
+            style={{ color: "var(--color-mag-soft)" }}
+          >
+            {done}/{tasks.length}
+          </div>
         </div>
       </div>
 
@@ -1295,6 +730,29 @@ export function TachesCard() {
                 }}
                 className="mb-[5px]"
               >
+                {/*
+                  L'EMOJI APPARAÎT PENDANT QU'ON TAPE.
+
+                  L'OS déduit une pastille de l'intitulé, et jusqu'ici on la
+                  découvrait après coup, une fois la tâche posée. La montrer
+                  dans le champ change la nature de la chose : ce n'est plus une
+                  décoration appliquée dans le dos, c'est une réponse. On écrit
+                  « appeler », le téléphone apparaît, et on sait que l'OS a
+                  compris avant même d'avoir validé.
+                */}
+                <div className="relative">
+                  {apercus[niveau] && (
+                    <span
+                      // La clé change avec l'emoji : le nœud est remplacé, donc
+                      // l'animation se rejoue à chaque fois qu'il change. Sans
+                      // ça, elle ne jouerait qu'une seule fois par saisie.
+                      key={apercus[niveau]}
+                      aria-hidden
+                      className="apercu-emoji pointer-events-none absolute left-[8px] top-1/2 -translate-y-1/2 text-[13px] leading-none"
+                    >
+                      {apercus[niveau]}
+                    </span>
+                  )}
                 <input
                   value={nouvelle[niveau] ?? ""}
                   onChange={(e) =>
@@ -1326,12 +784,15 @@ export function TachesCard() {
                   }}
                   placeholder={`+ ${meta.nom.toLowerCase()}`}
                   aria-label={`Ajouter une tâche — ${meta.nom.toLowerCase()}`}
-                  className="w-full rounded-[8px] px-[9px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
+                  className={`w-full rounded-[8px] py-[5px] text-[11px] font-semibold text-white outline-none transition-all focus:border-white/25 ${
+                    apercus[niveau] ? "pl-[29px] pr-[9px]" : "px-[9px]"
+                  }`}
                   style={{
                     background: "rgba(255,255,255,0.03)",
                     border: "1px dashed rgba(255,255,255,0.12)",
                   }}
                 />
+                </div>
               </form>
 
               <div className="flex flex-col gap-[4px]">
@@ -1441,7 +902,7 @@ export function TachesCard() {
                        */
                       className={`group relative flex items-stretch gap-[5px]${
                         entree ? " tache-entree" : ""
-                      }`}
+                      }${t.gelee ? " tache-gelee" : ""}`}
                       // Pendant le tri, la ligne tirée devient un trou invisible
                       // (elle garde sa boîte = l'emplacement de dépôt) : tout le
                       // visuel passe par le clone flottant.
@@ -1502,7 +963,23 @@ export function TachesCard() {
                            */
                           label={`${emojiPourTache(t.text, niveau)} ${t.text}`.trim()}
                           meta={t.categorie}
-                          badge={vieillesse(ageEnJours(t.creeLe, aujourdhui))}
+                          /*
+                           * Pas d'âge sur une tâche gelée : elle est vieille
+                           * par nature. « Poster sur Snap » date du jour où on
+                           * l'a écrite et ne bougera plus — la marquer « 12j »
+                           * serait un reproche adressé à une corvée faite tous
+                           * les jours. Le flocon dit déjà ce qu'elle est.
+                           */
+                          badge={
+                            t.gelee
+                              ? {
+                                  texte: "❄️",
+                                  couleur: "var(--color-cya)",
+                                  titre:
+                                    "Gelée : elle revient tous les jours et survit au passage au jour suivant",
+                                }
+                              : vieillesse(ageEnJours(t.creeLe, aujourdhui))
+                          }
                           done={t.done}
                           accent={meta.couleur}
                           intensite={intensite}
@@ -1526,6 +1003,36 @@ export function TachesCard() {
                               glissementArmeRef.current = false;
                               return;
                             }
+
+                            /*
+                             * DEUX APPUIS RAPPROCHÉS : on gèle.
+                             *
+                             * Le premier appui a déjà coché — et c'est
+                             * volontaire. Retarder la coche de 300 ms pour
+                             * voir si un second appui arrive rendrait
+                             * poussif le geste le plus fréquent de l'OS. On
+                             * coche donc tout de suite, et le second appui
+                             * ANNULE le premier avant de geler : la case
+                             * revient où elle était, et la tâche prend son
+                             * flocon.
+                             */
+                            const maintenant = Date.now();
+                            const suite =
+                              id &&
+                              dernierTapRef.current.id === id &&
+                              maintenant - dernierTapRef.current.quand < 380;
+                            if (suite && id) {
+                              dernierTapRef.current = { id: null, quand: 0 };
+                              toggleTask(index);
+                              basculerGelTache(id);
+                              if (
+                                !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                              ) {
+                                (navigator as NavVibr).vibrate?.([10, 40, 10]);
+                              }
+                              return;
+                            }
+                            dernierTapRef.current = { id: id ?? null, quand: maintenant };
                             toggleTask(index);
                           }}
                         />
@@ -1574,7 +1081,75 @@ export function TachesCard() {
                           border: "1px solid rgba(255,255,255,0.09)",
                         }}
                       >
+                        {/*
+                          CHOISIR L'EMOJI — et donc le groupe.
+
+                          La déduction se trompe forcément parfois : « Vérité
+                          #12 » est une vidéo, aucun mot ne le dit. Plutôt que
+                          d'ajouter des règles à l'infini pour deviner un
+                          vocabulaire qui n'est qu'à lui, on laisse trancher en
+                          un geste — et le choix REGROUPE : poser 🎬 sur une
+                          tâche l'envoie rejoindre les autres vidéos.
+
+                          Une palette de familles, pas le clavier d'emojis : une
+                          tâche pastèque ne se regrouperait avec rien.
+                        */}
                         <div className="px-[3px] text-[9.5px] font-black tracking-[0.1em] text-white/30">
+                          EMOJI
+                        </div>
+                        <div className="flex flex-wrap gap-[4px]">
+                          {(() => {
+                            const pose = emojiDeTete(t.text);
+                            const vu = emojiVisible(t.text, niveau);
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => renommerTache(id, avecEmoji(t.text, null))}
+                                  title="Laisser l'OS choisir d'après l'intitulé"
+                                  className="flex h-[36px] cursor-pointer items-center justify-center rounded-[9px] px-[9px] text-[10px] font-black transition-all hover:brightness-125"
+                                  style={
+                                    pose
+                                      ? {
+                                          color: "rgba(255,255,255,0.55)",
+                                          background: "rgba(255,255,255,0.05)",
+                                        }
+                                      : {
+                                          color: "var(--color-mag-soft)",
+                                          background: "rgba(255,61,139,0.14)",
+                                          border: "1.5px solid var(--color-mag)",
+                                        }
+                                  }
+                                >
+                                  {vu} AUTO
+                                </button>
+                                {PALETTE.map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => renommerTache(id, avecEmoji(t.text, f.emoji))}
+                                    title={f.nom}
+                                    aria-label={f.nom}
+                                    aria-pressed={pose === f.emoji}
+                                    className="flex h-[36px] w-[36px] cursor-pointer items-center justify-center rounded-[9px] text-[15px] leading-none transition-all hover:brightness-125"
+                                    style={
+                                      pose === f.emoji
+                                        ? {
+                                            background: "rgba(255,61,139,0.16)",
+                                            border: "1.5px solid var(--color-mag)",
+                                          }
+                                        : { background: "rgba(255,255,255,0.05)" }
+                                    }
+                                  >
+                                    {f.emoji}
+                                  </button>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="mt-[3px] px-[3px] text-[9.5px] font-black tracking-[0.1em] text-white/30">
                           DÉPLACER VERS
                         </div>
                         <div className="flex gap-[5px]">
@@ -1614,6 +1189,33 @@ export function TachesCard() {
                             );
                           })}
                         </div>
+                        {/*
+                          GELER — le même geste que le double-tap, mais nommé.
+                          Le raccourci ne se devine pas ; ce bouton l'apprend,
+                          et sert à ceux qui préfèrent viser.
+                        */}
+                        <button
+                          type="button"
+                          onClick={() => basculerGelTache(id)}
+                          className="mt-[2px] min-h-[44px] cursor-pointer rounded-[10px] px-[10px] text-left text-[11px] font-extrabold leading-[1.3] transition-all hover:brightness-125"
+                          style={
+                            t.gelee
+                              ? {
+                                  color: "var(--color-cya)",
+                                  background: "rgba(34,211,238,0.12)",
+                                  border: "1.5px solid var(--color-cya)",
+                                }
+                              : {
+                                  color: "rgba(255,255,255,0.7)",
+                                  background: "rgba(255,255,255,0.05)",
+                                }
+                          }
+                        >
+                          {t.gelee
+                            ? "❄️ Gelée — elle revient chaque jour. Appuyer pour dégeler"
+                            : "❄️ Geler — la garder tous les jours (ou double-tap)"}
+                        </button>
+
                         <div className="mt-[2px] flex gap-[5px]">
                           <button
                             type="button"

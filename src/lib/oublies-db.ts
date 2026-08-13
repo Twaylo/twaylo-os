@@ -18,6 +18,18 @@ import { NIVEAUX, type Niveau } from "./types";
 
 const JOURS_AVANT_OUBLI = 4;
 
+/**
+ * Les tâches gelées, lues ici plutôt qu'importées de `db`.
+ *
+ * `db` importe déjà ce module (pour l'archivage) : lui réimporter
+ * `lireTachesGelees` fermerait le cercle. Les deux lisent la même clé de la
+ * même sentinelle, et cette lecture-ci ne sert qu'à protéger l'archivage.
+ */
+async function lireTachesGeleesBrutes(): Promise<string[]> {
+  const brut = (await lireSentinelle()).tachesGelees;
+  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
+}
+
 export type TacheOubliee = {
   id: string;
   titre: string;
@@ -100,13 +112,27 @@ export function estOubliee(
 }
 
 export async function archiverTachesOubliees(): Promise<void> {
-  const { error } = await supabaseAdmin()
+  /*
+   * Les tâches GELÉES ne s'oublient jamais.
+   *
+   * Une tâche quotidienne est vieille par nature — « poster sur Snap » date du
+   * jour où on l'a écrite et ne bougera plus. L'archivage la voyait donc comme
+   * une tâche qui traîne depuis quatre jours et la rangeait dans les Oubliés,
+   * en silence : la corvée du jour disparaissait toute seule de la todo, sans
+   * que rien ne le signale.
+   */
+  const gelees = await lireTachesGeleesBrutes();
+
+  let requete = supabaseAdmin()
     .from("tasks")
     .update({ statut: "abandonnee" })
     .eq("user_id", (await uid()))
     .in("statut", ["ouverte", "en_cours"])
     .neq("urgence", "aujourdhui")
     .lt("created_at", seuilOubli());
+  if (gelees.length > 0) requete = requete.not("id", "in", `(${gelees.join(",")})`);
+
+  const { error } = await requete;
 
   /*
    * Journalisé, jamais propagé.

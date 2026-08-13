@@ -6,6 +6,7 @@ import { EmptyState, ProgressBar } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 import { ViewHeader } from "@/components/views/ViewHeader";
 import { COULEUR_PORTEE, LIBELLE_PORTEE, ORDRE_PORTEES } from "@/lib/portees";
+import { useGlisser } from "@/lib/use-glisser";
 
 /** Le serveur tronque au-delà : on l'annonce au lieu de le subir. */
 const MAX_ETAPES = 12;
@@ -26,9 +27,43 @@ const MAX_ETAPES = 12;
  * déplace soi-même. Dès qu'il y a des étapes, ce sont elles qui commandent.
  */
 export function ObjectifsView() {
-  const { objectifs, ajouterObjectif, majObjectif, supprimerObjectif } = useOs();
+  const { objectifs, ajouterObjectif, majObjectif, deposerObjectif, supprimerObjectif } =
+    useOs();
   const [nouveau, setNouveau] = useState<Record<string, string>>({});
   const [archiveOuverte, setArchiveOuverte] = useState(false);
+
+  /*
+   * GLISSER UN OBJECTIF D'UN HORIZON À L'AUTRE.
+   *
+   * Un objectif ne reste pas où on l'a écrit : ce qui devait tenir dans la
+   * semaine glisse au mois, ce qu'on visait pour le trimestre se rapproche.
+   * Jusqu'ici il fallait le supprimer et le retaper dans la bonne colonne —
+   * et on perdait ses étapes, sa progression, sa mémoire.
+   *
+   * Même moteur que la todo, au caractère près : appui long au doigt, six
+   * pixels à la souris, clone qui colle au doigt, colonne visée qui s'allume,
+   * auto-défilement quand l'horizon visé est hors de l'écran. Ces subtilités
+   * ont coûté cher à régler une fois ; elles ne se réécrivent pas ici.
+   */
+  const actifsPourGlisser = (objectifs ?? []).filter((o) => o.statut === "en_cours");
+  const {
+    dragId,
+    ordreVisuel,
+    zoneCourante,
+    commencerDrag,
+    setRowRef,
+    setZoneRef,
+    grilleRef,
+  } = useGlisser<string>({
+    ordre: actifsPourGlisser.map((o) => o.id),
+    zoneDe: (id) => actifsPourGlisser.find((o) => o.id === id)?.portee ?? "semaine",
+    onDepot: (ids, changement) =>
+      deposerObjectif(
+        ids,
+        changement ? { id: changement.id, portee: changement.zone } : null,
+      ),
+    zoneParDefaut: "semaine",
+  });
 
   if (objectifs === null) {
     return (
@@ -51,6 +86,20 @@ export function ObjectifsView() {
   const actifs = objectifs.filter((o) => o.statut === "en_cours");
   const archives = objectifs.filter((o) => o.statut !== "en_cours");
 
+  /*
+   * Pendant un glissement, c'est l'ordre VISUEL qui commande, et l'objectif
+   * tiré prend la colonne visée. C'est ce qui fait que la liste se réorganise
+   * sous le doigt sans écrire en base à chaque micro-mouvement.
+   */
+  const parId = new Map(actifs.map((o) => [o.id, o]));
+  const affiches = dragId
+    ? ordreVisuel
+        .map((id) => parId.get(id))
+        .filter((o): o is ObjectifVue => Boolean(o))
+        .map((o) => (o.id === dragId ? { ...o, portee: zoneCourante } : o))
+        .concat(actifs.filter((o) => !ordreVisuel.includes(o.id)))
+    : actifs;
+
   const global = actifs.length
     ? Math.round(actifs.reduce((n, o) => n + o.pct, 0) / actifs.length)
     : 0;
@@ -68,13 +117,23 @@ export function ObjectifsView() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2 xl:grid-cols-4">
+      <div
+        ref={grilleRef}
+        className="grid grid-cols-1 gap-[14px] md:grid-cols-2 xl:grid-cols-4"
+      >
         {ORDRE_PORTEES.map((portee) => {
           const couleur = COULEUR_PORTEE[portee];
-          const items = actifs.filter((o) => o.portee === portee);
+          const items = affiches.filter((o) => o.portee === portee);
+          const vise = Boolean(dragId) && zoneCourante === portee;
 
           return (
-            <Panel key={portee} accent={couleur} className="col-span-1">
+            <Panel
+              key={portee}
+              accent={couleur}
+              className={`zone-niveau col-span-1${vise ? " zone-visee" : ""}`}
+              innerRef={setZoneRef(portee)}
+              zone={portee}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="eyebrow tracking-[0.12em]" style={{ color: couleur }}>
                   <span className="eyebrow-dot" style={{ background: couleur }} />
@@ -105,6 +164,9 @@ export function ObjectifsView() {
                     key={o.id}
                     objectif={o}
                     couleur={couleur}
+                    tire={dragId === o.id}
+                    refLigne={setRowRef(o.id)}
+                    onPrise={(e, poignee) => commencerDrag(e, o.id, portee, poignee)}
                     onMaj={(patch) => majObjectif(o.id, patch)}
                     onSupprimer={() => supprimerObjectif(o.id)}
                     onArchiver={(statut) => majObjectif(o.id, { statut })}
@@ -240,12 +302,19 @@ export function ObjectifsView() {
 function CarteObjectif({
   objectif,
   couleur,
+  tire,
+  refLigne,
+  onPrise,
   onMaj,
   onSupprimer,
   onArchiver,
 }: {
   objectif: ObjectifVue;
   couleur: string;
+  /** En cours de déplacement : la carte devient le trou où elle atterrira. */
+  tire: boolean;
+  refLigne: (el: HTMLDivElement | null) => void;
+  onPrise: (e: React.PointerEvent, depuisPoignee: boolean) => void;
   onMaj: (patch: Partial<Omit<ObjectifVue, "id">>) => void;
   onSupprimer: () => void;
   onArchiver: (statut: "atteint" | "abandonne") => void;
@@ -286,12 +355,51 @@ function CarteObjectif({
 
   return (
     <div
-      className="group relative rounded-[12px] px-[11px] py-[10px]"
-      style={{
-        background: "rgba(255,255,255,0.03)",
-        border: `1px solid ${atteint ? couleur : "rgba(255,255,255,0.07)"}`,
-      }}
+      ref={refLigne}
+      /*
+       * La carte entière est une prise : appui long au doigt, six pixels à la
+       * souris. Le déplier reste un simple clic — le moteur garde la main sur
+       * le clic tant qu'un déplacement a eu lieu.
+       */
+      onPointerDown={(e) => onPrise(e, false)}
+      data-objectif={objectif.objectif}
+      className="group relative flex items-stretch gap-[5px] rounded-[12px]"
+      // Pendant le déplacement, la carte devient un trou invisible qui garde sa
+      // boîte : c'est l'emplacement de dépôt. Tout le visuel passe par le clone.
+      style={tire ? { visibility: "hidden" } : undefined}
     >
+      {tire && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[12px]"
+          style={{
+            visibility: "visible",
+            border: `2px dashed ${couleur}`,
+            background: "rgba(255,255,255,0.04)",
+          }}
+        />
+      )}
+
+      {/* La poignée, comme dans la todo : 40 px au doigt, 22 px à la souris,
+          et `touch-action: none` pour que le geste ne parte pas en défilement. */}
+      <button
+        type="button"
+        aria-label={`Déplacer ${objectif.objectif}`}
+        title="Glisser vers un autre horizon"
+        onPointerDown={(e) => onPrise(e, true)}
+        className="poignee-tache flex flex-none items-center justify-center rounded-l-[12px] text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
+        style={{ cursor: tire ? "grabbing" : "grab" }}
+      >
+        ⠿
+      </button>
+
+      <div
+        className="relative min-w-0 flex-1 rounded-[12px] px-[11px] py-[10px]"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: `1px solid ${atteint ? couleur : "rgba(255,255,255,0.07)"}`,
+        }}
+      >
       <button
         type="button"
         onClick={() => setDeplie((v) => !v)}
@@ -449,6 +557,7 @@ function CarteObjectif({
           </form>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   creerObjectif,
+  ecrireOrdreObjectifs,
   lireCible,
   lireObjectifs,
+  lireOrdreObjectifs,
   majObjectif,
   supprimerObjectif,
   type ContenuCible,
@@ -32,8 +34,22 @@ export async function GET() {
     return NextResponse.json({ connecte: false, objectifs: [] });
   }
   try {
-    const lignes = await lireObjectifs();
-    return NextResponse.json({ connecte: true, objectifs: lignes.map(versVue) });
+    const [lignes, ordre] = await Promise.all([lireObjectifs(), lireOrdreObjectifs()]);
+    /*
+     * L'ordre rangé à la main d'abord ; les objectifs qu'il ne connaît pas
+     * suivent, dans leur ordre de création. Un objectif créé ailleurs (ou
+     * avant que l'ordre n'existe) n'est donc jamais perdu — il arrive juste
+     * en fin de colonne.
+     */
+    const rang = new Map(ordre.map((id, i) => [id, i]));
+    const vues = lignes
+      .map(versVue)
+      .sort(
+        (a, b) =>
+          (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+          (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+      );
+    return NextResponse.json({ connecte: true, objectifs: vues });
   } catch (err) {
     console.error("[objectifs] lecture impossible :", err);
     return NextResponse.json({ error: "Lecture impossible." }, { status: 500 });
@@ -105,11 +121,40 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ persiste: false }, { status: 200 });
   }
 
-  let corps: { id?: unknown; objectif?: unknown; cible?: unknown; statut?: unknown };
+  let corps: {
+    id?: unknown;
+    objectif?: unknown;
+    cible?: unknown;
+    statut?: unknown;
+    portee?: unknown;
+    ordre?: unknown;
+  };
   try {
     corps = await req.json();
   } catch {
     return NextResponse.json({ error: "Corps invalide." }, { status: 400 });
+  }
+
+  /*
+   * Réordonnancement : une liste d'identifiants, sans id unique.
+   *
+   * Fusionnée avec l'ordre déjà connu du serveur, comme pour les tâches : le
+   * navigateur n'envoie que CE QU'IL VOYAIT, et un objectif créé entre-temps
+   * ailleurs en serait absent — l'écrire tel quel le renverrait en fin de
+   * colonne.
+   */
+  if (Array.isArray(corps.ordre)) {
+    const ids = corps.ordre.filter(
+      (x): x is string => typeof x === "string" && !x.startsWith("tmp-"),
+    );
+    const anciens = await lireOrdreObjectifs();
+    const envoyes = new Set(ids);
+    const fusion = [...ids];
+    anciens.forEach((id, rang) => {
+      if (!envoyes.has(id)) fusion.splice(Math.min(rang, fusion.length), 0, id);
+    });
+    await ecrireOrdreObjectifs([...new Set(fusion)]);
+    return NextResponse.json({ persiste: true });
   }
 
   if (typeof corps.id !== "string") {
@@ -135,6 +180,12 @@ export async function PATCH(req: Request) {
       statut:
         corps.statut === "en_cours" || corps.statut === "atteint" || corps.statut === "abandonne"
           ? corps.statut
+          : undefined,
+      // Changer d'horizon, c'est déplacer la carte d'une colonne à l'autre.
+      // Validé contre la liste des portées connues, comme à la création.
+      portee:
+        typeof corps.portee === "string" && PORTEES.includes(corps.portee)
+          ? corps.portee
           : undefined,
     });
     return NextResponse.json({ persiste: true, cible });

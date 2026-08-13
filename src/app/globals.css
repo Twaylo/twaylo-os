@@ -1544,6 +1544,83 @@ details[open] .chevron-section {
 /* ================================================================== */
 
 /*
+ * UNE TÂCHE GELÉE — celle qui revient tous les jours.
+ *
+ * Elle ne se distingue pas par une couleur de plus (la liste en a déjà trois,
+ * une par niveau) mais par une TEXTURE : un liseré froid sur le bord gauche,
+ * là où l'œil descend la colonne. On voit d'un coup ce qui est permanent et ce
+ * qui ne l'est pas, sans avoir à lire.
+ *
+ * Le liseré est posé sur la ligne, pas sur la poignée : celle-ci reste la
+ * prise du glisser, et lui coller une bordure brouillerait la seule chose
+ * qu'elle doit dire.
+ */
+.tache-gelee .ligne-tache .check-row {
+  border-left: 3px solid var(--color-cya) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(34, 211, 238, 0.09),
+    rgba(255, 255, 255, 0.045) 42%
+  ) !important;
+}
+
+/*
+ * L'instant où elle gèle : un souffle froid qui traverse la ligne.
+ *
+ * Le double-tap coche puis décoche en une fraction de seconde — sans ce
+ * signal, on ne saurait pas si le geste a été compris ou si l'on vient de
+ * cocher deux fois pour rien.
+ */
+.tache-gelee .ligne-tache .check-row {
+  animation: gelSouffle 0.5s ease-out;
+}
+
+@keyframes gelSouffle {
+  from {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 9px rgba(34, 211, 238, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tache-gelee .ligne-tache .check-row {
+    animation: none;
+  }
+}
+
+/*
+ * L'EMOJI QUI APPARAÎT DANS LE CHAMP DE SAISIE.
+ *
+ * Il surgit et se pose, à chaque fois qu'il change. Le mouvement fait toute la
+ * différence : sans lui, la pastille se remplacerait en silence et on ne
+ * verrait pas que l'OS vient de comprendre autre chose. Avec, écrire
+ * « appeler » puis « appeler le monteur » devient un dialogue.
+ */
+.apercu-emoji {
+  animation: apercuEmoji 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes apercuEmoji {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apercu-emoji {
+    animation: none;
+    transform: translateY(-50%);
+  }
+}
+
+/*
  * LE SABLIER DE LA SUPPRESSION.
  *
  * Une ligne qui se vide en six secondes, posée en bas de la barre « Annuler ».
@@ -1574,6 +1651,23 @@ details[open] .chevron-section {
     animation: none;
     width: 100%;
     opacity: 0.5;
+  }
+}
+
+/*
+ * Le bouton « Regrouper » : une vraie cible, pas une étiquette.
+ *
+ * Il vit dans l'en-tête de la carte, à côté du compteur, là où tout est
+ * minuscule. Sans hauteur minimale il faisait 14 px — visible, mais pas
+ * touchable.
+ */
+.bouton-regrouper {
+  min-height: 30px;
+}
+
+@media (hover: none) {
+  .bouton-regrouper {
+    min-height: 40px;
   }
 }
 

@@ -107,6 +107,15 @@ export type Task = {
    * de toute façon pas d'âge à afficher.
    */
   creeLe?: string;
+  /**
+   * Gelée : une tâche qui revient tous les jours.
+   *
+   * « Poster sur Snap » n'est pas une tâche qu'on finit, c'est une tâche qu'on
+   * refait. Cochée le soir, elle disparaissait au passage au jour suivant avec
+   * les autres, et il fallait la retaper chaque matin. Gelée, la clôture la
+   * décoche au lieu de l'effacer, et l'archivage des Oubliés ne la touche pas.
+   */
+  gelee?: boolean;
 };
 
 /**

@@ -52,6 +52,7 @@ import {
   synchroniserJour,
 } from "./sync";
 import { localDateKey } from "./local-date";
+import { cloturerTodo } from "./cloture";
 import type { EvenementAgenda } from "./agenda-types";
 import type {
   Blocage,
@@ -161,6 +162,14 @@ type OsState = {
   ajouterObjectif: (libelle: string, portee: string) => Promise<boolean>;
   /** Fait avancer un objectif : progression, chiffre affiché, étapes. */
   majObjectif: (id: string, patch: Partial<Omit<ObjectifVue, "id">>) => void;
+  /**
+   * Dépôt d'un objectif glissé : le nouvel ordre, et l'horizon s'il a changé.
+   * Un objectif repoussé du mois au trimestre reste le même objectif.
+   */
+  deposerObjectif: (
+    ordre: string[],
+    changement: { id: string; portee: string } | null,
+  ) => void;
   supprimerObjectif: (id: string) => void;
 
   /** Les stats YouTube, nulles tant que la lecture n'a pas répondu. */
@@ -212,6 +221,13 @@ type OsState = {
   supprimerTache: (id: string) => void;
   /** Corrige le texte d'une tâche sans la recréer. */
   renommerTache: (id: string, titre: string) => void;
+  /**
+   * Gèle ou dégèle une tâche : celles qui reviennent tous les jours.
+   *
+   * Une tâche gelée n'est pas supprimée au passage au jour suivant — elle est
+   * décochée et reste à sa place.
+   */
+  basculerGelTache: (id: string) => void;
   /** Échange deux tâches de place, par leurs index dans `tasks`. */
   echangerTaches: (a: number, b: number) => void;
   /**
@@ -1098,7 +1114,29 @@ export function OsProvider({ children }: { children: ReactNode }) {
    * injoignable ne doit pas empêcher de cocher ses habitudes.
    */
   useEffect(() => {
-    if (demoMode) return;
+    /*
+     * En démo, les objectifs viennent du jeu de démonstration.
+     *
+     * Sans cette branche, l'onglet restait bloqué sur « Lecture des
+     * objectifs… » pour toujours : le chargement distant est coupé en démo, et
+     * rien ne prenait le relais. Un onglet qui ne montre jamais rien n'est pas
+     * une démonstration, c'est une panne — et c'est aussi ce qui empêchait de
+     * vérifier le glisser entre horizons sans base de données.
+     */
+    if (demoMode) {
+      setObjectifs(
+        DEMO_DATA.objectives.map((o, i) => ({
+          id: `demo-obj-${i}`,
+          objectif: o.label,
+          portee: o.period.toLowerCase() === "année" ? "annee" : o.period.toLowerCase(),
+          statut: "en_cours",
+          pct: o.pct,
+          valeur: o.value,
+          etapes: (o.steps ?? []).map((e) => ({ texte: e.text, fait: e.done })),
+        })),
+      );
+      return;
+    }
     let annule = false;
     void fetch("/api/objectifs")
       .then((r) => r.json())
@@ -1735,6 +1773,30 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [noterGesteProvisoire],
   );
 
+  /**
+   * Geler ou dégeler — la tâche qui revient tous les jours.
+   *
+   * L'écran bascule tout de suite ; la base suit. Rien à mettre de côté pour
+   * une tâche encore provisoire : geler quelque chose qu'on vient de taper à
+   * l'instant n'a pas de sens, et la ligne sera là au prochain chargement.
+   */
+  const basculerGelTache = useCallback((id: string) => {
+    let gelee = false;
+    setTasks((prev) =>
+      prev.map((t) => {
+        if ((t as { id?: string }).id !== id) return t;
+        gelee = !t.gelee;
+        return { ...t, gelee };
+      }),
+    );
+    if (demoModeRef.current || estProvisoire(id)) return;
+    void fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, gelee }),
+    }).catch((err) => console.error("[taches] gel impossible :", err));
+  }, []);
+
   const renommerTache = useCallback(
     (id: string, titre: string) => {
       const propre = titre.trim();
@@ -1960,6 +2022,48 @@ export function OsProvider({ children }: { children: ReactNode }) {
           );
         })
         .catch((err) => console.error("[objectifs] mise à jour impossible :", err));
+    },
+    [],
+  );
+
+  /**
+   * Le dépôt d'un objectif glissé : le nouvel ordre, et l'horizon s'il change.
+   *
+   * Une seule écriture pour les deux, comme pour les tâches. Le décalage se
+   * voit déjà à l'écran — la carte est là où on l'a lâchée — donc la base
+   * rattrape, elle ne commande pas.
+   */
+  const deposerObjectifLocal = useCallback(
+    (ordreIds: string[], changement: { id: string; portee: string } | null) => {
+      setObjectifs((prev) => {
+        if (!prev) return prev;
+        const rang = new Map(ordreIds.map((id, i) => [id, i]));
+        return [...prev]
+          .map((o) =>
+            changement && o.id === changement.id ? { ...o, portee: changement.portee } : o,
+          )
+          .sort(
+            (a, b) =>
+              (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+              (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+          );
+      });
+      if (demoModeRef.current) return;
+
+      // L'ordre : les identifiants provisoires n'existent pas en base.
+      void fetch("/api/objectifs", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ordre: ordreIds.filter((id) => !estProvisoire(id)) }),
+      }).catch((err) => console.error("[objectifs] ordre impossible :", err));
+
+      if (changement && !estProvisoire(changement.id)) {
+        void fetch("/api/objectifs", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: changement.id, portee: changement.portee }),
+        }).catch((err) => console.error("[objectifs] horizon impossible :", err));
+      }
     },
     [],
   );
@@ -2354,9 +2458,31 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setTodoCloturee(jour);
     writeJSON("twaylo-todo-cloturee", jour);
 
-    // 3. Retirer les tâches faites — l'écran d'abord, la base ensuite. Les
-    //    inachevées restent et deviennent la todo de demain.
-    setTasks((prev) => prev.filter((t) => !t.done));
+    /*
+     * 3. Ce qui reste, ce qui se décoche, ce qui s'en va — décidé d'un bloc
+     *    par `cloturerTodo`, la seule règle de l'OS qui détruit des données.
+     *    Elle vit à part pour être vérifiable hors ligne, cas par cas.
+     */
+    const { restantes, aDegeler } = cloturerTodo(actuelles);
+    setTasks(restantes);
+
+    /*
+     * LES GELÉES SONT DÉCOCHÉES AVANT LE MÉNAGE, et l'ordre n'est pas un
+     * détail de style : le vidage qui suit efface EN BASE toutes les lignes
+     * marquées faites, sans distinction. Une gelée encore cochée à cet
+     * instant partirait avec les autres — présente à l'écran, disparue de la
+     * base, et absente au rechargement du lendemain.
+     */
+    await Promise.all(
+      aDegeler.map((id) =>
+        basculerTacheDistante(id, false).catch((err) =>
+          console.error("[todo] dégel impossible :", err),
+        ),
+      ),
+    );
+
+    // 4. Le ménage en base : les faites s'en vont. Les gelées n'en font déjà
+    //    plus partie.
     try {
       await fetch("/api/tasks?faites=1", { method: "DELETE" });
     } catch (err) {
@@ -2558,6 +2684,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       objectifs,
       ajouterObjectif,
       majObjectif: majObjectifLocal,
+      deposerObjectif: deposerObjectifLocal,
       supprimerObjectif: supprimerObjectifLocal,
       youtube,
       agenda,
@@ -2575,6 +2702,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTache: supprimerTacheLocale,
       renommerTache,
+      basculerGelTache,
       echangerTaches,
       deposerTache,
       passerJourSuivant,
@@ -2624,6 +2752,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       objectifs,
       ajouterObjectif,
       majObjectifLocal,
+      deposerObjectifLocal,
       supprimerObjectifLocal,
       youtube,
       agenda,
@@ -2641,6 +2770,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTacheLocale,
       renommerTache,
+      basculerGelTache,
       echangerTaches,
       deposerTache,
       passerJourSuivant,
