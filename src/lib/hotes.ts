@@ -34,6 +34,16 @@
 const HOTES_OS = ["twaylo-os", "localhost", "127.0.0.1"];
 
 /**
+ * L'adresse publique des Tway'tools.
+ *
+ * Elle ne sert QU'À une chose : renvoyer vers elle ce qui frappe encore à
+ * l'ancienne porte. La reconnaissance d'un hôte « outils » ne s'appuie pas
+ * dessus — elle marche par élimination, ce qui laisse fonctionner n'importe
+ * quel domaine ajouté plus tard sans toucher au code.
+ */
+export const HOTE_OUTILS = "tway-tools.vercel.app";
+
+/**
  * Cette requête vise-t-elle l'OS personnel ?
  *
  * `false` pour toute adresse inconnue — c'est le côté sûr.
@@ -58,7 +68,24 @@ export const CHEMINS_OUTILS = [
   "/sitemap.xml",
 ] as const;
 
+/**
+ * Ceux de ces chemins qui DÉMÉNAGENT.
+ *
+ * `robots.txt` et `sitemap.xml` en sont exclus : chaque site a besoin des
+ * siens, à sa propre adresse. Les renvoyer ailleurs priverait l'OS des
+ * consignes qui empêchent justement son indexation.
+ */
+const CHEMINS_DEMENAGES = ["/tway-tools", "/piraterie", "/api/tools"] as const;
+
+const commence = (chemin: string, base: string) =>
+  chemin === base || chemin.startsWith(`${base}/`);
+
 /** Le chemin demandé fait-il partie des Tway'tools ? */
 export function estCheminOutil(chemin: string): boolean {
-  return CHEMINS_OUTILS.some((base) => chemin === base || chemin.startsWith(`${base}/`));
+  return CHEMINS_OUTILS.some((base) => commence(chemin, base));
+}
+
+/** Ce chemin doit-il désormais être servi depuis l'adresse publique ? */
+export function estCheminDemenage(chemin: string): boolean {
+  return CHEMINS_DEMENAGES.some((base) => commence(chemin, base));
 }
