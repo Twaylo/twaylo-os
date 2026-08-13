@@ -74,10 +74,26 @@ export type EtatDistant = {
   dealStats?: { label: string; value: string; color: string }[];
 };
 
+/**
+ * Vrai quand l'adresse ouverte ne sert PAS l'OS.
+ *
+ * Le déploiement héberge deux sites : l'OS sur ses adresses à lui, les
+ * Tway'tools partout ailleurs. Depuis une adresse « outils », toutes les
+ * routes de l'OS répondent « introuvable » — l'écran s'affiche pourtant, sorti
+ * du cache du navigateur, et RIEN ne s'enregistre. On tape une tâche, elle
+ * disparaît ; on coche, ça ne tient pas. Sans un mot, c'est indéchiffrable.
+ *
+ * Un 404 sur `/api/state` ne peut vouloir dire que ça : la route existe dans
+ * tous les déploiements de l'OS.
+ */
+export let mauvaiseAdresse = false;
+
 export async function chargerEtat(jour: string): Promise<EtatDistant | null> {
   try {
     const res = await fetch(`/api/state?jour=${jour}`, { cache: "no-store" });
+    if (res.status === 404) mauvaiseAdresse = true;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    mauvaiseAdresse = false;
     const data = (await res.json()) as EtatDistant;
     poser(data.connecte ? "connecte" : "hors_ligne");
     return data;

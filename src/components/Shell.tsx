@@ -5,6 +5,7 @@ import { ProgressionProvider } from "@/lib/progression-context";
 import { Recompense } from "@/components/Recompense";
 import { Filet } from "@/components/Filet";
 import { TopRail } from "@/components/TopRail";
+import { MauvaiseAdresse } from "@/components/MauvaiseAdresse";
 import { AccueilView } from "@/components/views/AccueilView";
 import { ContactsView } from "@/components/views/ContactsView";
 import { SponsorsView } from "@/components/views/SponsorsView";
@@ -128,6 +129,7 @@ export function Shell() {
         <div className="cadre-appli relative">
           <Glow />
           <TopRail />
+          <MauvaiseAdresse />
           <main
             className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4"
             style={{

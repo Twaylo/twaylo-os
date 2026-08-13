@@ -215,7 +215,14 @@ type OsState = {
 
   /** Faux tant que la base n'a pas répondu : la liste affichée n'est qu'une attente. */
   tachesPretes: boolean;
-  ajouterTache: (titre: string, niveau?: Niveau) => Promise<void>;
+  /**
+   * Ajoute une tâche. Rend `false` si la base l'a refusée.
+   *
+   * Le retour n'est pas décoratif : sans lui, un échec effaçait la ligne de
+   * l'écran sans un mot, et le texte tapé était perdu. Qui appelle doit
+   * pouvoir le dire.
+   */
+  ajouterTache: (titre: string, niveau?: Niveau) => Promise<boolean>;
   /** Fait passer une tâche du focus principal aux annexes, ou l'inverse. */
   changerNiveauTache: (id: string, niveau: Niveau) => void;
   supprimerTache: (id: string) => void;
@@ -2269,7 +2276,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
    */
   const ajouterTache = useCallback(async (titre: string, niveau: Niveau = "secondaire") => {
     const propre = titre.trim();
-    if (!propre) return;
+    if (!propre) return false;
 
     /*
      * EN DÉMO, la tâche existe à l'écran et nulle part ailleurs.
@@ -2286,7 +2293,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
     if (demoModeRef.current) {
       const cle = `demo-neuve-${(compteurTemp.current += 1)}`;
       setTasks((prev) => [{ id: cle, text: propre, done: false, niveau } as Task, ...prev]);
-      return;
+      return true;
     }
 
     const cleTemp = `tmp-${(compteurTemp.current += 1)}`;
@@ -2338,7 +2345,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       if (gestes?.supprimee) {
         setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
         appliquerGesteDistant(tache.id, { supprimee: true });
-        return;
+        return true;
       }
 
       const rattrapee: Task & { id: string } = {
@@ -2352,10 +2359,21 @@ export function OsProvider({ children }: { children: ReactNode }) {
       );
 
       if (gestes) appliquerGesteDistant(tache.id, gestes);
+      return true;
     } catch (err) {
+      /*
+       * L'ÉCHEC SE DIT, il ne s'efface plus en silence.
+       *
+       * La ligne disparaissait de l'écran et l'erreur partait dans la console
+       * — que personne ne regarde. Twaylo tapait une tâche, la voyait
+       * apparaître une fraction de seconde puis s'évanouir, et concluait à
+       * juste titre que « ça ne marche pas ». Le `false` remonte maintenant
+       * jusqu'à la carte, qui garde le texte et le dit.
+       */
       console.error("[taches] ajout impossible :", err);
       gestesAvantConfirmation.current.delete(cleTemp);
       setTasks((prev) => prev.filter((t) => (t as { id?: string }).id !== cleTemp));
+      return false;
     }
   }, [appliquerGesteDistant]);
 

@@ -128,6 +128,22 @@ export function TachesCard() {
   /** Posé par « Annuler » pour que le nettoyage de l'effet n'efface pas. */
   const annuleRef = useRef(false);
 
+  /**
+   * LA TÂCHE QUE LA BASE A REFUSÉE.
+   *
+   * Elle disparaissait de l'écran sans un mot : on tapait, la ligne
+   * apparaissait une fraction de seconde, puis plus rien — et l'erreur partait
+   * dans la console, que personne ne regarde. C'est le pire défaut possible
+   * pour une todo : on croit avoir noté, on n'a rien noté.
+   *
+   * Le texte est donc CONSERVÉ ici, affiché, avec de quoi réessayer. Rien de
+   * ce qui a été tapé ne se perd, même quand le réseau ou la base lâche.
+   */
+  const [echecAjout, setEchecAjout] = useState<{ texte: string; niveau: Niveau } | null>(
+    null,
+  );
+  const [reessaiEnCours, setReessaiEnCours] = useState(false);
+
   /** Le bouton « passer au jour suivant » demande confirmation avant de vider. */
   const [confirmeCloture, setConfirmeCloture] = useState(false);
   const [clotureEnCours, setClotureEnCours] = useState(false);
@@ -203,9 +219,20 @@ export function TachesCard() {
   /** Le bouton ne s'affiche que s'il a quelque chose à faire. */
   const regroupementUtile = ordreRegroupe.join("|") !== ordreAffiche.join("|");
 
-  /** Le niveau d'une tâche, tel qu'il est affiché — sans le glissement. */
-  const niveauDe = (id: string): Niveau =>
-    tasks.find((t) => t.id === id)?.niveau ?? "secondaire";
+  /**
+   * Le niveau d'une tâche, tel qu'il est affiché — sans le glissement.
+   *
+   * Par une table, pas par un parcours. Le moteur du glissement appelle cette
+   * fonction UNE FOIS PAR LIGNE À CHAQUE IMAGE pour savoir quelles lignes
+   * appartiennent à la colonne visée : avec un `find`, quarante tâches font
+   * mille six cents parcours par image, et ça se sent sur un téléphone.
+   */
+  const niveauParId = useMemo(() => {
+    const m = new Map<string, Niveau>();
+    for (const t of tasks) if (t.id) m.set(t.id, t.niveau ?? "secondaire");
+    return m;
+  }, [tasks]);
+  const niveauDe = (id: string): Niveau => niveauParId.get(id) ?? "secondaire";
 
   const {
     dragId,
@@ -582,6 +609,65 @@ export function TachesCard() {
         180 px ne rendraient service à personne.
       */}
       {/*
+        LA BANDE D'ALERTE — ce qui n'a pas pu être enregistré.
+
+        Elle garde le texte tapé et propose de réessayer. Avant, la ligne
+        s'effaçait toute seule : on croyait avoir noté sa tâche, elle n'existait
+        nulle part, et rien ne le disait. Une todo qui perd ce qu'on y met en
+        silence ne sert plus à rien.
+      */}
+      {echecAjout && (
+        <div
+          className="sas-in mt-[9px] flex flex-wrap items-center gap-[9px] rounded-[11px] px-[10px] py-[8px]"
+          role="alert"
+          style={{
+            background: "rgba(255,176,32,0.10)",
+            border: "1px solid rgba(255,176,32,0.32)",
+          }}
+        >
+          <span className="text-[13px] leading-none">⚠️</span>
+          <span className="min-w-0 flex-1 text-[11px] font-bold leading-[1.35] text-white/75">
+            « {echecAjout.texte} » n&apos;a pas pu être enregistrée — l&apos;OS ne joint
+            pas la base. Rien n&apos;est perdu : réessaie.
+          </span>
+          <button
+            type="button"
+            disabled={reessaiEnCours}
+            onClick={() => {
+              const { texte, niveau } = echecAjout;
+              setReessaiEnCours(true);
+              void ajouterTache(texte, niveau).then((ok) => {
+                setReessaiEnCours(false);
+                if (ok) setEchecAjout(null);
+              });
+            }}
+            className="flex-none cursor-pointer rounded-[8px] px-[11px] text-[11px] font-black transition-all hover:brightness-125 disabled:opacity-50"
+            style={{
+              minHeight: 36,
+              color: "var(--color-fg)",
+              background: "rgba(255,176,32,0.28)",
+            }}
+          >
+            {reessaiEnCours ? "…" : "Réessayer"}
+          </button>
+          <button
+            type="button"
+            // Abandonner rend le texte au champ : on ne le fait pas disparaître
+            // une seconde fois.
+            onClick={() => {
+              setNouvelle((p) => ({ ...p, [echecAjout.niveau]: echecAjout.texte }));
+              setEchecAjout(null);
+            }}
+            aria-label="Récupérer le texte et fermer"
+            className="flex-none cursor-pointer rounded-[8px] px-[9px] text-[13px] font-black text-white/50 transition-all hover:text-white"
+            style={{ minHeight: 36, background: "rgba(255,255,255,0.06)" }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/*
         La barre du sursis. Le compte à rebours se voit — une ligne qui se vide
         en six secondes — parce qu'« Annuler » sans savoir combien de temps il
         reste, c'est un bouton qu'on n'ose pas quitter des yeux.
@@ -725,8 +811,15 @@ export function TachesCard() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void ajouterTache(nouvelle[niveau] ?? "", niveau);
+                  const texte = nouvelle[niveau] ?? "";
+                  if (!texte.trim()) return;
+                  // Le champ se vide tout de suite — la ligne est déjà à
+                  // l'écran. Si la base refuse, le texte réapparaît dans la
+                  // bande d'alerte plutôt que de se volatiliser.
                   setNouvelle((p) => ({ ...p, [niveau]: "" }));
+                  void ajouterTache(texte, niveau).then((ok) => {
+                    if (!ok) setEchecAjout({ texte, niveau });
+                  });
                 }}
                 className="mb-[5px]"
               >
@@ -778,7 +871,11 @@ export function TachesCard() {
                       // À l'envers : chaque ajout se pose en tête de pile, donc
                       // partir de la fin remet la liste dans l'ordre tapé.
                       for (const l of [...lignes].reverse()) {
-                        await ajouterTache(l, niveau);
+                        const ok = await ajouterTache(l, niveau);
+                        if (!ok) {
+                          setEchecAjout({ texte: l, niveau });
+                          break;
+                        }
                       }
                     })();
                   }}
@@ -1072,7 +1169,16 @@ export function TachesCard() {
                       plutôt qu'en bulle flottante : une bulle se fait rogner
                       par la carte, ou sort de l'écran sur la dernière ligne.
                     */}
-                    {ouvert && id && (
+                    {/*
+                      Le panneau disparaît pendant que SA ligne est déplacée.
+
+                      Il est frère de la ligne, pas son enfant : la ligne
+                      devient un trou invisible le temps du glissement, mais le
+                      panneau, lui, restait affiché — un bloc de boutons
+                      flottant dans la liste, rattaché à rien, qui décalait en
+                      plus les lignes voisines et donc les cibles de dépôt.
+                    */}
+                    {ouvert && id && !tire && (
                       <div
                         className="sas-in flex flex-col gap-[6px] rounded-[12px] p-[8px]"
                         onPointerDown={(e) => e.stopPropagation()}

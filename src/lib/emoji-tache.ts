@@ -441,9 +441,38 @@ function nu(texte: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
+/**
+ * LA MÉMOIRE DE LA RECONNAISSANCE.
+ *
+ * Peser un intitulé coûte trois cent vingt tests d'expression régulière. Ce
+ * n'est rien pour une ligne — c'est tout autre chose à l'échelle d'un rendu :
+ * la liste passe par ici pour l'emoji de chaque ligne, pour l'intertitre de
+ * chaque famille, et pour l'ordre de regroupement, dont le tri rappelle la
+ * fonction à chaque comparaison. Compté sur une todo de quarante tâches :
+ * environ 175 000 tests À CHAQUE RENDU, donc à chaque case cochée et à chaque
+ * image d'un glissement.
+ *
+ * Or un intitulé ne change pas de nature : « Appeler le monteur » donnera
+ * toujours le téléphone. On garde donc le verdict. Le cache est borné — une
+ * todo n'a pas mille lignes, mais une session qui dure en verrait passer
+ * beaucoup, et une mémoire qui n'oublie jamais est une fuite.
+ */
+const MEMOIRE = new Map<string, Regle | null>();
+const MAX_MEMOIRE = 600;
+
 /** La règle qui décrit le mieux ce texte, ou rien. */
 function regleDe(texte: string): Regle | null {
-  return peser(nu(texte));
+  const t = nu(texte);
+  const vu = MEMOIRE.get(t);
+  // `undefined` = jamais vu ; `null` = vu, et rien ne correspondait.
+  if (vu !== undefined) return vu;
+  const r = peser(t);
+  if (MEMOIRE.size >= MAX_MEMOIRE) {
+    const plusAncien = MEMOIRE.keys().next().value;
+    if (plusAncien !== undefined) MEMOIRE.delete(plusAncien);
+  }
+  MEMOIRE.set(t, r);
+  return r;
 }
 
 /**
