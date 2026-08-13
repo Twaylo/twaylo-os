@@ -1438,6 +1438,107 @@ details[open] .chevron-section {
   }
 }
 
+/*
+ * LA POIGNÉE DE RANGEMENT — d'où venait « j'arrive pas à déplacer mes tâches ».
+ *
+ * Elle mesurait 14 px de large. Mesuré dans un navigateur avec de VRAIS
+ * évènements tactiles, pas supposé : un pouce en couvre quarante. Et c'est
+ * précisément elle qu'il fallait viser, parce qu'elle seule porte
+ * `touch-action: none` — la propriété qui empêche le navigateur de confisquer
+ * le geste pour faire défiler la page. Une prise indispensable et invisable :
+ * le glissement « ne marchait pas » alors qu'il marchait, à condition de
+ * toucher une bande de quatorze pixels.
+ *
+ * 40 px au doigt, 22 px à la souris, où l'on vise au pixel près.
+ */
+.poignee-tache {
+  width: 22px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+@media (hover: none) {
+  .poignee-tache {
+    width: 40px;
+    font-size: 16px;
+    /* Sans survol, il n'y a pas d'autre moment pour se signaler. */
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  /*
+   * Sur téléphone, la catégorie d'une tâche disparaît — et la place revient au
+   * texte.
+   *
+   * Une ligne de todo doit porter trois choses de front sur 390 px : une prise
+   * de 40 px, le bouton d'actions de 40 px, et l'intitulé. Avec « BUSINESS » ou
+   * « CONTENU » en plus, il ne restait que 263 px : « Répondre au sponsor
+   * NordVPN (18h) » tenait sur trois lignes, et la liste redevenait le pavé
+   * qu'on venait d'éviter. La catégorie n'apprend d'ailleurs presque rien ici :
+   * l'emoji en tête de ligne et l'intertitre de famille (« ✍️ ÉCRITURE ») disent
+   * déjà de quoi il s'agit, en moins de place. Elle reste sur grand écran, où
+   * la largeur ne manque pas.
+   */
+  .ligne-tache .etiquette-meta {
+    display: none;
+  }
+
+  /*
+   * Tenir une ligne appuyée sert maintenant à la déplacer : sans cela, iOS
+   * ouvre sa loupe de sélection de texte par-dessus le geste, et le rangement
+   * se transforme en copier-coller.
+   */
+  .ligne-tache {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/*
+ * LA COLONNE VISÉE pendant un déplacement.
+ *
+ * Sans elle, amener une tâche « quelque part à droite » se faisait à l'aveugle :
+ * on découvrait où elle atterrissait en la lâchant. Le cadre s'allume dès que
+ * la colonne est visée — on sait AVANT de lâcher, et on peut corriger.
+ *
+ * Dessiné en `::after` posé en dehors du flux : une bordure sur la colonne
+ * elle-même la ferait grandir de deux pixels au moment où on la vise, et toute
+ * la liste sauterait sous le doigt.
+ */
+.zone-niveau {
+  position: relative;
+}
+
+.zone-niveau.zone-visee::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 14px;
+  border: 2px dashed var(--color-mag);
+  background: rgba(255, 61, 139, 0.05);
+  pointer-events: none;
+  animation: zoneVisee 0.16s ease-out both;
+}
+
+@keyframes zoneVisee {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zone-niveau.zone-visee::after {
+    animation: none;
+  }
+}
+
 /* ================================================================== */
 /* La todo — la carte autour de laquelle l'OS est bâti                 */
 /* ================================================================== */

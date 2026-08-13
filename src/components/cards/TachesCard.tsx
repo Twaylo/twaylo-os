@@ -38,6 +38,7 @@ type Cible = { id: string | null; niveau: Niveau; apres: boolean };
 /** navigator.vibrate n'est pas dans tous les typages ; on le decrit ici. */
 type NavVibr = Navigator & { vibrate?: (pattern: number | number[]) => boolean };
 
+
 /**
  * TÂCHES CLÉS — la carte prioritaire de l'OS (spec Partie 6).
  *
@@ -116,6 +117,15 @@ export function TachesCard() {
     if (el) zoneRefs.current.set(niveau, el);
     else zoneRefs.current.delete(niveau);
   };
+  /** Le cadre des trois colonnes — voir l'écouteur anti-défilement plus bas. */
+  const grilleRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Un glissement est-il en cours ?
+   *
+   * En ref et non en état : l'écouteur anti-défilement est posé une fois pour
+   * toutes et doit lire la valeur fraîche à chaque `touchmove`.
+   */
+  const enGlissementRef = useRef(false);
 
   // Le clone flottant (dans document.body), la position du pointeur, l'offset
   // de prise, et les identifiants d'animation à annuler proprement.
@@ -271,6 +281,7 @@ export function TachesCard() {
     const armer = () => {
       arme = true;
       glissementArmeRef.current = true;
+      enGlissementRef.current = true;
       preArmRef.current = null;
       idPointeurRef.current = idPointeur;
       aReordonneRef.current = false;
@@ -367,7 +378,7 @@ export function TachesCard() {
       const distance = Math.hypot(ev.clientX - sx, ev.clientY - sy);
       if (seuilSouris) {
         if (distance > 6) armer();
-      } else if (distance > 8) {
+      } else if (distance > 10) {
         // Au doigt, s'éloigner avant l'appui long, c'est vouloir faire défiler
         // la page : on abandonne et on laisse le geste au navigateur.
         nettoyerPre();
@@ -386,8 +397,79 @@ export function TachesCard() {
     window.addEventListener("pointermove", surMovePre, { passive: true });
     window.addEventListener("pointerup", nettoyerPre, { once: true });
     window.addEventListener("pointercancel", nettoyerPre, { once: true });
-    if (tactile) preArmRef.current = setTimeout(armer, delai);
+    if (tactile) {
+      /*
+       * Le second garde-fou, posé sur le nœud TOUCHÉ lui-même.
+       *
+       * Celui du cadre (plus bas) suffit tant que la ligne reste où elle est.
+       * Mais dès qu'elle change de colonne, React la détache du DOM pour la
+       * reconstruire dans l'autre — et un évènement tactile continue de viser
+       * le nœud d'origine, désormais hors de l'arbre : il ne remonte plus
+       * jusqu'au cadre, le garde-fou cesse d'être appelé, le navigateur reprend
+       * le geste pour faire défiler, et il annule le pointeur.
+       *
+       * C'était ça, le bug qui restait : mesuré, le geste mourait EXACTEMENT au
+       * premier changement de colonne. Les petits trajets s'en sortaient (le
+       * changement arrivait juste avant le lâcher), les longs se posaient dans
+       * la colonne traversée en chemin. D'où l'impression d'un glisser qui
+       * marche une fois sur deux.
+       *
+       * Un écouteur posé sur le nœud touché suit ce nœud, détaché ou non.
+       */
+      const touche = e.target as HTMLElement;
+      const bloquer = (ev: TouchEvent) => {
+        if (arme && ev.cancelable) ev.preventDefault();
+      };
+      const oublier = () => {
+        touche.removeEventListener("touchmove", bloquer);
+        window.removeEventListener("touchend", oublier);
+        window.removeEventListener("touchcancel", oublier);
+      };
+      touche.addEventListener("touchmove", bloquer, { passive: false });
+      window.addEventListener("touchend", oublier);
+      window.addEventListener("touchcancel", oublier);
+      preArmRef.current = setTimeout(armer, delai);
+    }
   }
+
+  /*
+   * LE DÉFILEMENT QUI VOLE LE GESTE — la vraie panne du glisser au doigt.
+   *
+   * Tenir une ligne appuyée l'armait bien au bout de 220 ms. Puis le premier
+   * millimètre parcouru partait en défilement de page, le navigateur annulait
+   * le pointeur (`pointercancel`), et la tâche restait où elle était — ou pire,
+   * atterrissait dans la colonne traversée en chemin. Mesuré au doigt : SIX
+   * glissements sur six annulés. Les rares fois où ça « marchait », la tâche se
+   * posait par chance là où le geste passait au moment de l'annulation. Voilà
+   * le « trop de bugs ».
+   *
+   * Ce qui ne marche pas, et pourquoi :
+   *  · `touch-action: none` sur les lignes — la propriété est lue quand le
+   *    doigt se pose, donc avant de savoir s'il s'agit d'un appui long ou d'un
+   *    défilement. Les lignes couvrent l'écran : la todo ne défilerait plus ;
+   *  · `preventDefault()` sur un `pointermove` tactile — il n'arrête rien ;
+   *  · un `touchmove` non passif posé au moment de l'appui — TESTÉ, inopérant.
+   *    Le navigateur fige au contact du doigt la liste des zones qui peuvent
+   *    l'interrompre ; un écouteur ajouté après n'y figure pas, et son
+   *    `preventDefault` arrive sur un évènement déjà non annulable.
+   *
+   * Il faut donc que l'écouteur soit là AVANT que le doigt ne se pose. Il est
+   * posé une fois pour toutes sur le cadre des trois colonnes — pas sur la
+   * fenêtre : seuls les gestes qui commencent dans la todo passent par le fil
+   * principal, le reste de la page continue de défiler sans rien demander à
+   * personne. Et il ne bloque QUE si un glissement est armé : un défilement
+   * parti d'une ligne reste un défilement.
+   */
+  useEffect(() => {
+    const cadre = grilleRef.current;
+    if (!cadre) return;
+    const bloquer = (ev: TouchEvent) => {
+      if (enGlissementRef.current && ev.cancelable) ev.preventDefault();
+    };
+    cadre.addEventListener("touchmove", bloquer, { passive: false });
+    return () => cadre.removeEventListener("touchmove", bloquer);
+  }, []);
+
 
   // Écoute du geste une fois armé : pointermove coalescé dans un seul rAF (une
   // cible + un auto-scroll par frame), et le lâcher qui fait atterrir le clone
@@ -445,9 +527,20 @@ export function TachesCard() {
         const milieu = (r.top + r.bottom) / 2;
         if (clientY >= r.top && clientY <= r.bottom) {
           const d = clientY - milieu;
-          // Zone morte de 4 px autour du milieu : tue le clignotement d'un cran
-          // quand le doigt hésite pile à la frontière.
-          if (Math.abs(d) < 4) return null;
+          /*
+           * Zone morte de 4 px autour du milieu : elle tue le clignotement d'un
+           * cran quand le doigt hésite pile à la frontière.
+           *
+           * Mais SEULEMENT à l'intérieur de la colonne où la tâche se trouve
+           * déjà. Appliquée partout, elle suspendait tout le ciblage — donc
+           * aussi le changement de colonne : amener une tâche des annexes vers
+           * le focus et la lâcher pile au milieu d'une ligne ne faisait rien,
+           * et elle restait dans la colonne traversée en chemin. Mesuré au
+           * doigt : elle atterrissait en « secondaire » au lieu de
+           * « principal ». Quatre pixels sur un écran de téléphone, c'est un
+           * hasard — pas une intention.
+           */
+          if (Math.abs(d) < 4 && zone === niveauRef.current) return null;
           return { id, niveau: zone, apres: d > 0 };
         }
         const dm = Math.abs(clientY - milieu);
@@ -558,6 +651,7 @@ export function TachesCard() {
       if (e.pointerId !== idPointeurRef.current) return;
       if (relache) return;
       relache = true;
+      enGlissementRef.current = false;
       cancelAnimationFrame(rafProxy.current);
       stopScroll();
       // Un pointermove peut avoir programmé un `process` juste avant le lâcher :
@@ -567,6 +661,23 @@ export function TachesCard() {
         cancelAnimationFrame(rafMove.current);
         rafMove.current = null;
       }
+
+      /*
+       * UN DERNIER CIBLAGE, à l'endroit exact où le doigt s'est levé.
+       *
+       * Chaque changement de colonne réorganise la liste : la colonne quittée
+       * rétrécit, celle d'arrivée s'allonge, et tout ce qui est en dessous
+       * remonte — SOUS le doigt. Un long trajet (des annexes vers le focus)
+       * traversait donc une colonne intermédiaire, la mise en page bougeait, et
+       * la tâche se posait là où la colonne visée se trouvait AVANT le
+       * décalage : mesuré, elle atterrissait en « secondaire » alors qu'on
+       * l'avait amenée sur « principal ».
+       *
+       * On recalcule donc une dernière fois, mise en page stabilisée, à partir
+       * de la dernière position connue du doigt. C'est ce que l'œil voit au
+       * moment du lâcher qui fait foi.
+       */
+      appliquerCible();
 
       const w = proxyRef.current;
       const idAuDrop = dragId!;
@@ -889,7 +1000,10 @@ export function TachesCard() {
         égalité. En dessous de 1 024 px, on reste empilé — deux colonnes de
         180 px ne rendraient service à personne.
       */}
-      <div className="mt-[11px] grid grid-cols-1 items-start gap-[13px] lg:grid-cols-[1.35fr_1fr] lg:gap-x-[18px]">
+      <div
+        ref={grilleRef}
+        className="mt-[11px] grid grid-cols-1 items-start gap-[13px] lg:grid-cols-[1.35fr_1fr] lg:gap-x-[18px]"
+      >
         {parNiveau.map(({ niveau, meta, items }) => {
           const faites = items.filter(({ t }) => t.done).length;
           const titres = enTetes(items);
@@ -906,11 +1020,18 @@ export function TachesCard() {
                * niveau sans tâche se réduit à son titre et on ne peut plus
                * rien y déposer.
                */
-              className={
+              className={[
+                "zone-niveau",
+                // Le cadre s'allume sur la colonne visée pendant un
+                // déplacement : on sait où la tâche va atterrir AVANT de
+                // lâcher, au lieu de le découvrir après.
+                dragId && niveauCourant === niveau ? "zone-visee" : "",
                 niveau === "principal"
                   ? "lg:col-start-1 lg:row-span-2"
-                  : "lg:col-start-2"
-              }
+                  : "lg:col-start-2",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               style={{ minHeight: items.length === 0 ? 92 : undefined }}
             >
               <div className="mb-[5px] flex items-baseline justify-between gap-2">
@@ -1051,16 +1172,20 @@ export function TachesCard() {
                         />
                       )}
 
-                      {/* La poignée. Toujours visible (le survol n'existe pas au
-                          doigt), `touch-action:none` pour que le glissement ne
-                          fasse pas défiler la page. */}
+                      {/*
+                        La poignée. Toujours visible — le survol n'existe pas au
+                        doigt — et dimensionnée dans `globals.css` : 40 px au
+                        doigt, 22 px à la souris. Elle mesurait 14 px, et comme
+                        elle est la seule prise qui porte `touch-action: none`,
+                        elle était à la fois indispensable et invisable.
+                      */}
                       {id && (
                         <button
                           type="button"
                           aria-label={`Déplacer ${t.text}`}
                           title="Glisser pour ranger"
                           onPointerDown={(e) => commencerDrag(e, id, niveau, true)}
-                          className="flex-none touch-none select-none px-[2px] text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
+                          className="poignee-tache flex flex-none items-center justify-center text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
                           style={{ cursor: tire ? "grabbing" : "grab" }}
                         >
                           ⠿
