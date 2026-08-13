@@ -46,6 +46,11 @@ export function ObjectifsView() {
    * ont coûté cher à régler une fois ; elles ne se réécrivent pas ici.
    */
   const actifsPourGlisser = (objectifs ?? []).filter((o) => o.statut === "en_cours");
+  /*
+   * Par une table, pas par un parcours : le moteur du glissement demande
+   * l'horizon d'une carte une fois par carte À CHAQUE IMAGE.
+   */
+  const porteeParId = new Map(actifsPourGlisser.map((o) => [o.id, o.portee]));
   const {
     dragId,
     ordreVisuel,
@@ -56,7 +61,7 @@ export function ObjectifsView() {
     grilleRef,
   } = useGlisser<string>({
     ordre: actifsPourGlisser.map((o) => o.id),
-    zoneDe: (id) => actifsPourGlisser.find((o) => o.id === id)?.portee ?? "semaine",
+    zoneDe: (id) => porteeParId.get(id) ?? "semaine",
     onDepot: (ids, changement) =>
       deposerObjectif(
         ids,
