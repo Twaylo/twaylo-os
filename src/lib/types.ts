@@ -99,6 +99,14 @@ export type Task = {
    * des journées où rien n'avait été fait.
    */
   faiteLe?: string;
+  /**
+   * Le jour local où elle a été notée (`AAAA-MM-JJ`), ou absent.
+   *
+   * Sert à montrer l'âge d'une tâche dans la liste. Absent pour les tâches
+   * qui n'ont pas encore atteint la base — une tâche qu'on vient de taper n'a
+   * de toute façon pas d'âge à afficher.
+   */
+  creeLe?: string;
 };
 
 /**

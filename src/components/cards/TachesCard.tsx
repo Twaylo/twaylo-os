@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useOs } from "@/lib/os-context";
 import { NIVEAUX, type Niveau } from "@/lib/types";
 import { localDateKey } from "@/lib/local-date";
-import { emojiPourTache } from "@/lib/emoji-tache";
+import { ageEnJours, vieillesse } from "@/lib/age-tache";
+import { emojiPourTache, familleDeTache } from "@/lib/emoji-tache";
 import { CheckRow, EmptyState } from "@/components/ui";
 import { Panel } from "@/components/Panel";
 
@@ -25,10 +26,43 @@ function deplacer(ids: string[], id: string, survole: string, apres: boolean): s
   return sans;
 }
 
-type Cible = { id: string; niveau: Niveau; apres: boolean };
+/**
+ * Où la tâche tirée va atterrir.
+ *
+ * `id` vaut `null` quand la colonne visée est VIDE : il n'y a alors aucune
+ * ligne devant ou derrière laquelle s'insérer, mais le niveau, lui, change.
+ * C'est le cas qu'on ne savait pas traiter — déposer dans un bloc vide ne
+ * faisait rien.
+ */
+type Cible = { id: string | null; niveau: Niveau; apres: boolean };
 
 /** navigator.vibrate n'est pas dans tous les typages ; on le decrit ici. */
 type NavVibr = Navigator & { vibrate?: (pattern: number | number[]) => boolean };
+
+/**
+ * Combien de tâches un seul collage peut créer.
+ *
+ * Le vidage de tête du matin fait cinq à quinze lignes. Au-delà, c'est un
+ * document collé par erreur, et on ne veut pas voir trente lignes de contrat
+ * atterrir dans la todo — ni trente requêtes partir d'un coup.
+ */
+const MAX_COLLAGE = 20;
+
+/**
+ * Les lignes utiles d'un texte collé.
+ *
+ * On accepte les retours à la ligne ET les puces d'une liste copiée ailleurs
+ * (« - », « • », « * », « 1. ») : c'est exactement ce qu'on récupère d'une note
+ * ou d'un message, et les retirer à la main annulerait tout le gain.
+ */
+function lignesCollees(texte: string): string[] {
+  return texte
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:[-–—•*]|\d+[.)])\s+/, "").trim())
+    .filter((l) => l.length > 0)
+    .slice(0, MAX_COLLAGE);
+}
+
 
 /**
  * TÂCHES CLÉS — la carte prioritaire de l'OS (spec Partie 6).
@@ -75,10 +109,42 @@ export function TachesCard() {
   const [menu, setMenu] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
 
+  /**
+   * LA SUPPRESSION EN SURSIS.
+   *
+   * Supprimer était le seul geste irréversible de la todo : un doigt qui
+   * dérape sur un écran de téléphone, et la tâche n'existe plus — pas de
+   * corbeille, pas de retour en arrière, rien à retaper de mémoire puisqu'on
+   * ne se souvient plus de ce qu'il y avait écrit.
+   *
+   * On ne supprime donc plus tout de suite. La ligne disparaît de l'écran,
+   * une barre propose « Annuler », et l'effacement ne part vraiment qu'au bout
+   * de six secondes. Annuler ne recrée rien : la tâche n'a jamais quitté la
+   * liste, elle réapparaît exactement à sa place, avec son identifiant, son
+   * niveau et son âge.
+   */
+  const [aSupprimer, setASupprimer] = useState<{ id: string; texte: string } | null>(null);
+  /** Posé par « Annuler » pour que le nettoyage de l'effet n'efface pas. */
+  const annuleRef = useRef(false);
+
+  /**
+   * L'arrivée en cascade — vrai le temps de la première liste, puis plus jamais.
+   *
+   * Sans cet interrupteur, la classe d'animation resterait sur chaque ligne et
+   * le moindre rendu (une case cochée, une tâche déplacée) relancerait toute la
+   * colonne. Une animation qui se rejoue à chaque geste cesse d'être une
+   * arrivée pour devenir un tic.
+   */
+  const [entree, setEntree] = useState(true);
+
   /** Le bouton « passer au jour suivant » demande confirmation avant de vider. */
   const [confirmeCloture, setConfirmeCloture] = useState(false);
   const [clotureEnCours, setClotureEnCours] = useState(false);
-  const clotureeAujourdhui = todoCloturee === localDateKey();
+  // Le jour local, calculé une fois : il sert à la clôture ET à l'âge des
+  // tâches, et deux lectures d'horloge dans le même rendu pourraient tomber de
+  // part et d'autre de minuit.
+  const aujourdhui = localDateKey();
+  const clotureeAujourdhui = todoCloturee === aujourdhui;
 
   /* ------------------------------------------------------------------ */
   /* Glisser-déposer                                                     */
@@ -95,6 +161,28 @@ export function TachesCard() {
   const niveauRef = useRef<Niveau>("secondaire");
   const niveauInitialRef = useRef<Niveau>("secondaire");
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  /**
+   * Le cadre de chaque colonne de niveau.
+   *
+   * Indispensable depuis que les trois niveaux ne sont plus empilés : viser
+   * « secondaire » à droite demande de savoir OÙ est secondaire, pas seulement
+   * à quelle hauteur. C'est aussi ce qui permet de déposer dans une colonne
+   * vide, qui n'offre aucune ligne à viser.
+   */
+  const zoneRefs = useRef(new Map<Niveau, HTMLDivElement>());
+  const setZoneRef = (niveau: Niveau) => (el: HTMLDivElement | null) => {
+    if (el) zoneRefs.current.set(niveau, el);
+    else zoneRefs.current.delete(niveau);
+  };
+  /** Le cadre des trois colonnes — voir l'écouteur anti-défilement plus bas. */
+  const grilleRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Un glissement est-il en cours ?
+   *
+   * En ref et non en état : l'écouteur anti-défilement est posé une fois pour
+   * toutes et doit lire la valeur fraîche à chaque `touchmove`.
+   */
+  const enGlissementRef = useRef(false);
 
   // Le clone flottant (dans document.body), la position du pointeur, l'offset
   // de prise, et les identifiants d'animation à annuler proprement.
@@ -178,6 +266,39 @@ export function TachesCard() {
    * bougé de plus de 8 px — sinon un simple défilement partant de la poignée
    * déclencherait un tri par accident. À la souris, c'est immédiat.
    */
+  /*
+   * L'ordre REGROUPÉ : les tâches de même nature deviennent voisines.
+   *
+   * Trois scripts dispersés entre un appel et une facture, ce sont trois
+   * changements de contexte — et c'est le changement de contexte qui fatigue,
+   * pas le travail. Côte à côte, ils se font en une passe.
+   *
+   * Le tri est STABLE et se fait sur la première apparition de la famille :
+   * l'ordre qu'on a rangé à la main est donc préservé à l'intérieur d'une
+   * famille, et tirer une tâche en tête de liste y emmène toute sa famille
+   * plutôt que de la laisser revenir en arrière toute seule.
+   *
+   * C'est l'ORDRE qui est trié, pas seulement l'affichage : le glissement lit
+   * la même liste (voir `ordreRef` au démarrage d'un tri), donc rien ne saute
+   * au moment où l'on pose le doigt.
+   */
+  const ordreGroupe = useMemo(() => {
+    const rang = new Map<string, number>();
+    for (const [i, t] of tasks.entries()) {
+      const cle = `${t.niveau ?? "secondaire"}:${familleDeTache(t.text)?.id ?? `seul-${i}`}`;
+      if (!rang.has(cle)) rang.set(cle, i);
+    }
+    return tasks
+      .map((t, i) => ({ t, i }))
+      .sort((a, b) => {
+        const ca = `${a.t.niveau ?? "secondaire"}:${familleDeTache(a.t.text)?.id ?? `seul-${a.i}`}`;
+        const cb = `${b.t.niveau ?? "secondaire"}:${familleDeTache(b.t.text)?.id ?? `seul-${b.i}`}`;
+        return (rang.get(ca) ?? 0) - (rang.get(cb) ?? 0) || a.i - b.i;
+      })
+      .map(({ t }) => t.id)
+      .filter((x): x is string => Boolean(x));
+  }, [tasks]);
+
   function commencerDrag(
     e: React.PointerEvent,
     id: string,
@@ -217,6 +338,7 @@ export function TachesCard() {
     const armer = () => {
       arme = true;
       glissementArmeRef.current = true;
+      enGlissementRef.current = true;
       preArmRef.current = null;
       idPointeurRef.current = idPointeur;
       aReordonneRef.current = false;
@@ -276,9 +398,15 @@ export function TachesCard() {
        * moment où il compte : la composition du corps envoyé au serveur
        * (voir `deposerTache`).
        */
-      const ordre = tasks
-        .map((t) => (t as { id?: string }).id)
-        .filter((x): x is string => Boolean(x));
+      /*
+       * L'ordre REGROUPÉ, pas l'ordre brut : c'est celui qui est à l'écran.
+       * Partir de l'autre ferait sauter toute la liste au premier appui.
+       *
+       * Lu par fermeture plutôt que par une référence : cette fonction est
+       * redéclarée à chaque rendu, elle voit donc l'ordre qui était affiché au
+       * moment où le doigt s'est posé — exactement ce qu'il faut.
+       */
+      const ordre = ordreGroupe;
       ordreRef.current = ordre;
       niveauRef.current = niveau;
       niveauInitialRef.current = niveau;
@@ -307,7 +435,7 @@ export function TachesCard() {
       const distance = Math.hypot(ev.clientX - sx, ev.clientY - sy);
       if (seuilSouris) {
         if (distance > 6) armer();
-      } else if (distance > 8) {
+      } else if (distance > 10) {
         // Au doigt, s'éloigner avant l'appui long, c'est vouloir faire défiler
         // la page : on abandonne et on laisse le geste au navigateur.
         nettoyerPre();
@@ -326,8 +454,79 @@ export function TachesCard() {
     window.addEventListener("pointermove", surMovePre, { passive: true });
     window.addEventListener("pointerup", nettoyerPre, { once: true });
     window.addEventListener("pointercancel", nettoyerPre, { once: true });
-    if (tactile) preArmRef.current = setTimeout(armer, delai);
+    if (tactile) {
+      /*
+       * Le second garde-fou, posé sur le nœud TOUCHÉ lui-même.
+       *
+       * Celui du cadre (plus bas) suffit tant que la ligne reste où elle est.
+       * Mais dès qu'elle change de colonne, React la détache du DOM pour la
+       * reconstruire dans l'autre — et un évènement tactile continue de viser
+       * le nœud d'origine, désormais hors de l'arbre : il ne remonte plus
+       * jusqu'au cadre, le garde-fou cesse d'être appelé, le navigateur reprend
+       * le geste pour faire défiler, et il annule le pointeur.
+       *
+       * C'était ça, le bug qui restait : mesuré, le geste mourait EXACTEMENT au
+       * premier changement de colonne. Les petits trajets s'en sortaient (le
+       * changement arrivait juste avant le lâcher), les longs se posaient dans
+       * la colonne traversée en chemin. D'où l'impression d'un glisser qui
+       * marche une fois sur deux.
+       *
+       * Un écouteur posé sur le nœud touché suit ce nœud, détaché ou non.
+       */
+      const touche = e.target as HTMLElement;
+      const bloquer = (ev: TouchEvent) => {
+        if (arme && ev.cancelable) ev.preventDefault();
+      };
+      const oublier = () => {
+        touche.removeEventListener("touchmove", bloquer);
+        window.removeEventListener("touchend", oublier);
+        window.removeEventListener("touchcancel", oublier);
+      };
+      touche.addEventListener("touchmove", bloquer, { passive: false });
+      window.addEventListener("touchend", oublier);
+      window.addEventListener("touchcancel", oublier);
+      preArmRef.current = setTimeout(armer, delai);
+    }
   }
+
+  /*
+   * LE DÉFILEMENT QUI VOLE LE GESTE — la vraie panne du glisser au doigt.
+   *
+   * Tenir une ligne appuyée l'armait bien au bout de 220 ms. Puis le premier
+   * millimètre parcouru partait en défilement de page, le navigateur annulait
+   * le pointeur (`pointercancel`), et la tâche restait où elle était — ou pire,
+   * atterrissait dans la colonne traversée en chemin. Mesuré au doigt : SIX
+   * glissements sur six annulés. Les rares fois où ça « marchait », la tâche se
+   * posait par chance là où le geste passait au moment de l'annulation. Voilà
+   * le « trop de bugs ».
+   *
+   * Ce qui ne marche pas, et pourquoi :
+   *  · `touch-action: none` sur les lignes — la propriété est lue quand le
+   *    doigt se pose, donc avant de savoir s'il s'agit d'un appui long ou d'un
+   *    défilement. Les lignes couvrent l'écran : la todo ne défilerait plus ;
+   *  · `preventDefault()` sur un `pointermove` tactile — il n'arrête rien ;
+   *  · un `touchmove` non passif posé au moment de l'appui — TESTÉ, inopérant.
+   *    Le navigateur fige au contact du doigt la liste des zones qui peuvent
+   *    l'interrompre ; un écouteur ajouté après n'y figure pas, et son
+   *    `preventDefault` arrive sur un évènement déjà non annulable.
+   *
+   * Il faut donc que l'écouteur soit là AVANT que le doigt ne se pose. Il est
+   * posé une fois pour toutes sur le cadre des trois colonnes — pas sur la
+   * fenêtre : seuls les gestes qui commencent dans la todo passent par le fil
+   * principal, le reste de la page continue de défiler sans rien demander à
+   * personne. Et il ne bloque QUE si un glissement est armé : un défilement
+   * parti d'une ligne reste un défilement.
+   */
+  useEffect(() => {
+    const cadre = grilleRef.current;
+    if (!cadre) return;
+    const bloquer = (ev: TouchEvent) => {
+      if (enGlissementRef.current && ev.cancelable) ev.preventDefault();
+    };
+    cadre.addEventListener("touchmove", bloquer, { passive: false });
+    return () => cadre.removeEventListener("touchmove", bloquer);
+  }, []);
+
 
   // Écoute du geste une fois armé : pointermove coalescé dans un seul rAF (une
   // cible + un auto-scroll par frame), et le lâcher qui fait atterrir le clone
@@ -337,27 +536,79 @@ export function TachesCard() {
     let derniere: string | null = null;
     let relache = false;
 
-    function cibleSous(clientY: number): Cible | null {
+    /**
+     * La COLONNE visée, d'abord.
+     *
+     * Le ciblage était purement vertical : il cherchait la ligne la plus proche
+     * en hauteur, tous niveaux confondus. Tant que les trois niveaux étaient
+     * empilés, cela suffisait. Côte à côte, c'est faux — amener une tâche à
+     * droite la faisait retomber dans la colonne de gauche, à la même hauteur.
+     *
+     * On décide donc du niveau par la position HORIZONTALE ET verticale, puis
+     * de la place dans ce niveau par la hauteur seule. Hors de toute colonne
+     * (au-dessus, en dessous, dans la gouttière), on prend la plus proche en
+     * distance réelle plutôt que d'abandonner : un doigt qui dépasse un peu du
+     * cadre veut visiblement y déposer.
+     */
+    function zoneSous(x: number, y: number): Niveau | null {
+      let proche: Niveau | null = null;
+      let distance = Infinity;
+      for (const [niveau, el] of zoneRefs.current) {
+        const r = el.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return niveau;
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        const d = Math.hypot(dx, dy);
+        if (d < distance) {
+          distance = d;
+          proche = niveau;
+        }
+      }
+      return proche;
+    }
+
+    function cibleSous(clientX: number, clientY: number): Cible | null {
+      const zone = zoneSous(clientX, clientY);
+      if (!zone) return null;
+
       let meilleur: Cible | null = null;
       let distance = Infinity;
+      let vide = true;
+
       for (const [id, el] of rowRefs.current) {
         if (id === dragId) continue;
+        // On ne compare QU'AUX lignes de la colonne visée.
+        if (((el.dataset.niveau as Niveau) || "secondaire") !== zone) continue;
+        vide = false;
         const r = el.getBoundingClientRect();
-        const niveau = (el.dataset.niveau as Niveau) || "secondaire";
         const milieu = (r.top + r.bottom) / 2;
         if (clientY >= r.top && clientY <= r.bottom) {
           const d = clientY - milieu;
-          // Zone morte de 4 px autour du milieu : tue le clignotement d'un cran
-          // quand le doigt hésite pile à la frontière.
-          if (Math.abs(d) < 4) return null;
-          return { id, niveau, apres: d > 0 };
+          /*
+           * Zone morte de 4 px autour du milieu : elle tue le clignotement d'un
+           * cran quand le doigt hésite pile à la frontière.
+           *
+           * Mais SEULEMENT à l'intérieur de la colonne où la tâche se trouve
+           * déjà. Appliquée partout, elle suspendait tout le ciblage — donc
+           * aussi le changement de colonne : amener une tâche des annexes vers
+           * le focus et la lâcher pile au milieu d'une ligne ne faisait rien,
+           * et elle restait dans la colonne traversée en chemin. Mesuré au
+           * doigt : elle atterrissait en « secondaire » au lieu de
+           * « principal ». Quatre pixels sur un écran de téléphone, c'est un
+           * hasard — pas une intention.
+           */
+          if (Math.abs(d) < 4 && zone === niveauRef.current) return null;
+          return { id, niveau: zone, apres: d > 0 };
         }
         const dm = Math.abs(clientY - milieu);
         if (dm < distance) {
           distance = dm;
-          meilleur = { id, niveau, apres: clientY > milieu };
+          meilleur = { id, niveau: zone, apres: clientY > milieu };
         }
       }
+
+      // Colonne vide : rien à viser, mais le niveau change quand même.
+      if (vide) return { id: null, niveau: zone, apres: false };
       return meilleur;
     }
 
@@ -377,13 +628,23 @@ export function TachesCard() {
        */
       const centreCarte =
         pointerRef.current.y - grabRef.current.y + hauteurRef.current / 2;
-      const c = cibleSous(centreCarte);
+      /*
+       * En X on suit le DOIGT, pas le centre de la carte.
+       *
+       * La carte est large : son centre peut déborder dans la colonne voisine
+       * alors que le doigt vise clairement celle d'à côté. Le doigt est ce
+       * qu'on pointe, c'est donc lui qui décide de la colonne.
+       */
+      const c = cibleSous(pointerRef.current.x, centreCarte);
       if (c && (c.id !== derniere || c.niveau !== niveauRef.current)) {
         derniere = c.id;
         aReordonneRef.current = true;
-        const nx = deplacer(ordreRef.current, dragId!, c.id, c.apres);
-        ordreRef.current = nx;
-        setOrdreVisuel(nx);
+        // Colonne vide : on ne réordonne rien, on change juste de niveau.
+        if (c.id) {
+          const nx = deplacer(ordreRef.current, dragId!, c.id, c.apres);
+          ordreRef.current = nx;
+          setOrdreVisuel(nx);
+        }
         setNiveauCourant(c.niveau);
         niveauRef.current = c.niveau;
       }
@@ -447,6 +708,7 @@ export function TachesCard() {
       if (e.pointerId !== idPointeurRef.current) return;
       if (relache) return;
       relache = true;
+      enGlissementRef.current = false;
       cancelAnimationFrame(rafProxy.current);
       stopScroll();
       // Un pointermove peut avoir programmé un `process` juste avant le lâcher :
@@ -456,6 +718,23 @@ export function TachesCard() {
         cancelAnimationFrame(rafMove.current);
         rafMove.current = null;
       }
+
+      /*
+       * UN DERNIER CIBLAGE, à l'endroit exact où le doigt s'est levé.
+       *
+       * Chaque changement de colonne réorganise la liste : la colonne quittée
+       * rétrécit, celle d'arrivée s'allonge, et tout ce qui est en dessous
+       * remonte — SOUS le doigt. Un long trajet (des annexes vers le focus)
+       * traversait donc une colonne intermédiaire, la mise en page bougeait, et
+       * la tâche se posait là où la colonne visée se trouvait AVANT le
+       * décalage : mesuré, elle atterrissait en « secondaire » alors qu'on
+       * l'avait amenée sur « principal ».
+       *
+       * On recalcule donc une dernière fois, mise en page stabilisée, à partir
+       * de la dernière position connue du doigt. C'est ce que l'œil voit au
+       * moment du lâcher qui fait foi.
+       */
+      appliquerCible();
 
       const w = proxyRef.current;
       const idAuDrop = dragId!;
@@ -510,6 +789,49 @@ export function TachesCard() {
       // couvert par l'effet dédié ci-dessous.
     };
   }, [dragId, deposerTache]);
+
+  /*
+   * La cascade s'éteint une fois jouée. Le minuteur ne démarre qu'à l'arrivée
+   * de la première liste : les tâches viennent du cache puis de la base, et
+   * partir du montage ferait tomber le rideau avant que rien n'ait été peint.
+   */
+  useEffect(() => {
+    if (!entree || tasks.length === 0) return;
+    const t = setTimeout(() => setEntree(false), 900);
+    return () => clearTimeout(t);
+  }, [entree, tasks.length]);
+
+  /*
+   * Le compte à rebours de la suppression.
+   *
+   * Le nettoyage de l'effet couvre TOUS les départs : le délai écoulé, une
+   * seconde suppression qui prend la place, et le démontage de la carte. Dans
+   * les trois cas l'effacement part pour de bon — seul « Annuler » lève le
+   * drapeau qui l'en empêche. Sans ça, quitter l'accueil dans les six secondes
+   * ferait réapparaître une tâche qu'on croyait supprimée.
+   */
+  useEffect(() => {
+    if (!aSupprimer) return;
+    const { id } = aSupprimer;
+    let parti = false;
+    const partir = () => {
+      if (parti) return;
+      parti = true;
+      supprimerTache(id);
+    };
+    const minuterie = setTimeout(() => {
+      partir();
+      setASupprimer((p) => (p?.id === id ? null : p));
+    }, 6000);
+    return () => {
+      clearTimeout(minuterie);
+      if (annuleRef.current) {
+        annuleRef.current = false;
+        return;
+      }
+      partir();
+    };
+  }, [aSupprimer, supprimerTache]);
 
   // Filet de démontage : si le composant disparaît en plein glissement (ou en
   // plein appui-long), on coupe le minuteur, la boucle du clone et le clone.
@@ -633,6 +955,8 @@ export function TachesCard() {
   const parIndex = new Map(
     tasks.map((t, index) => [(t as { id?: string }).id, { t, index }]),
   );
+
+
   const flat: { t: (typeof tasks)[number]; index: number; niveau: Niveau }[] = dragId
     ? (() => {
         const vus = new Set(ordreVisuel);
@@ -654,13 +978,64 @@ export function TachesCard() {
           .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
         return [...suite, ...extras];
       })()
-    : tasks.map((t, index) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+    : (() => {
+        const vus = new Set(ordreGroupe);
+        const suite = ordreGroupe
+          .map((id) => parIndex.get(id))
+          .filter((e): e is { t: (typeof tasks)[number]; index: number } => Boolean(e))
+          .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+        // Une tâche sans identifiant (amorçage) n'est pas dans l'ordre.
+        const extras = tasks
+          .map((t, index) => ({ t, index }))
+          .filter(({ t }) => !vus.has(t.id ?? ""))
+          .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
+        return [...suite, ...extras];
+      })();
+
+  // La tâche en sursis quitte l'écran tout de suite — c'est ce qu'on attend
+  // d'une suppression — mais elle est toujours dans la liste, prête à revenir.
+  const visibles = aSupprimer ? flat.filter((f) => f.t.id !== aSupprimer.id) : flat;
 
   const parNiveau = ORDRE_NIVEAUX.map((niveau) => ({
     niveau,
     meta: NIVEAUX[niveau],
-    items: flat.filter((f) => f.niveau === niveau),
+    items: visibles.filter((f) => f.niveau === niveau),
   }));
+
+  /**
+   * Où poser un intertitre de famille.
+   *
+   * Seulement quand la famille compte AU MOINS DEUX tâches dans ce niveau :
+   * un intertitre au-dessus d'une ligne unique n'apprend rien et double la
+   * hauteur de la liste. Renvoie, pour chaque position, la famille à annoncer
+   * ou `null`.
+   */
+  const enTetes = (
+    items: typeof flat,
+  ): ({ famille: NonNullable<ReturnType<typeof familleDeTache>>; combien: number; restent: number } | null)[] => {
+    const combien = new Map<string, number>();
+    const restent = new Map<string, number>();
+    for (const { t } of items) {
+      const f = familleDeTache(t.text);
+      if (!f) continue;
+      combien.set(f.id, (combien.get(f.id) ?? 0) + 1);
+      if (!t.done) restent.set(f.id, (restent.get(f.id) ?? 0) + 1);
+    }
+    let precedente: string | null = null;
+    return items.map(({ t }) => {
+      const f = familleDeTache(t.text);
+      const groupe = f && (combien.get(f.id) ?? 0) >= 2 ? f : null;
+      const nouvelle = groupe && groupe.id !== precedente ? groupe : null;
+      precedente = groupe ? groupe.id : null;
+      return nouvelle
+        ? {
+            famille: nouvelle,
+            combien: combien.get(nouvelle.id) ?? 0,
+            restent: restent.get(nouvelle.id) ?? 0,
+          }
+        : null;
+    });
+  };
 
   return (
     <Panel
@@ -717,6 +1092,37 @@ export function TachesCard() {
         </div>
       </div>
 
+      {/*
+        LA JAUGE DE LA JOURNÉE.
+
+        Le « 3/8 » disait déjà tout, et ne montrait rien : deux chiffres à lire
+        et à diviser de tête. La barre se voit sans être lue, et surtout elle
+        BOUGE quand on coche — c'est la récompense qui manquait entre le clic
+        et la fin de journée. Elle prend le dégradé de l'OS et se teinte en vert
+        quand tout est plié.
+
+        Elle compte le focus et le secondaire, pas les annexes : vingt annexes
+        en attente ne doivent pas donner l'impression d'une journée ratée.
+      */}
+      {compte.length > 0 && (
+        <div
+          className="jauge-todo mt-[7px]"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(intensite * 100)}
+          aria-label="Avancement de la journée"
+        >
+          <span
+            className="jauge-todo-plein"
+            style={{
+              width: `${Math.round(intensite * 100)}%`,
+              background: toutFait ? "var(--color-ver)" : "var(--grad)",
+            }}
+          />
+        </div>
+      )}
+
       {enChargement && tasks.length === 0 && (
         <div className="py-6 text-center text-[12px] font-bold text-white/25">
           Lecture des tâches…
@@ -729,12 +1135,88 @@ export function TachesCard() {
         </EmptyState>
       )}
 
-      <div className="mt-[11px] flex flex-col gap-[13px]">
+      {/*
+        Deux colonnes à partir du grand écran : le focus principal à gauche,
+        large, et les deux autres empilés à droite.
+
+        Empilés sur toute la largeur, les trois niveaux donnaient des lignes de
+        1 300 px de long pour un texte de trois mots, et il fallait défiler pour
+        passer du focus aux annexes. Le focus garde la plus grande colonne :
+        c'est ce qui fait la journée, il ne se met pas à côté du reste à
+        égalité. En dessous de 1 024 px, on reste empilé — deux colonnes de
+        180 px ne rendraient service à personne.
+      */}
+      {/*
+        La barre du sursis. Le compte à rebours se voit — une ligne qui se vide
+        en six secondes — parce qu'« Annuler » sans savoir combien de temps il
+        reste, c'est un bouton qu'on n'ose pas quitter des yeux.
+      */}
+      {aSupprimer && (
+        <div
+          className="sas-in relative mt-[9px] flex items-center gap-[9px] overflow-hidden rounded-[11px] px-[10px] py-[7px]"
+          role="status"
+          style={{
+            background: "rgba(255,61,139,0.10)",
+            border: "1px solid rgba(255,61,139,0.28)",
+          }}
+        >
+          <span className="text-[13px] leading-none">🗑️</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-white/70">
+            « {aSupprimer.texte} » supprimée
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              annuleRef.current = true;
+              setASupprimer(null);
+            }}
+            className="flex-none cursor-pointer rounded-[8px] px-[11px] py-[7px] text-[11px] font-black transition-all hover:brightness-125"
+            style={{
+              minHeight: 36,
+              color: "var(--color-fg)",
+              background: "rgba(255,61,139,0.30)",
+            }}
+          >
+            Annuler
+          </button>
+          <span className="sablier-suppr" aria-hidden />
+        </div>
+      )}
+
+      <div
+        ref={grilleRef}
+        className="mt-[11px] grid grid-cols-1 items-start gap-[13px] lg:grid-cols-[1.35fr_1fr] lg:gap-x-[18px]"
+      >
         {parNiveau.map(({ niveau, meta, items }) => {
           const faites = items.filter(({ t }) => t.done).length;
+          const titres = enTetes(items);
 
           return (
-            <div key={niveau}>
+            <div
+              key={niveau}
+              ref={setZoneRef(niveau)}
+              data-zone={niveau}
+              /*
+               * Le focus occupe les deux rangées de la colonne de gauche ; les
+               * deux autres se suivent à droite. `min-height` pour qu'une
+               * colonne vide reste une cible atteignable : sans elle, un
+               * niveau sans tâche se réduit à son titre et on ne peut plus
+               * rien y déposer.
+               */
+              className={[
+                "zone-niveau",
+                // Le cadre s'allume sur la colonne visée pendant un
+                // déplacement : on sait où la tâche va atterrir AVANT de
+                // lâcher, au lieu de le découvrir après.
+                dragId && niveauCourant === niveau ? "zone-visee" : "",
+                niveau === "principal"
+                  ? "lg:col-start-1 lg:row-span-2"
+                  : "lg:col-start-2",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={{ minHeight: items.length === 0 ? 92 : undefined }}
+            >
               <div className="mb-[5px] flex items-baseline justify-between gap-2">
                 <div className="min-w-0">
                   <div
@@ -748,11 +1230,57 @@ export function TachesCard() {
                   </div>
                 </div>
                 {items.length > 0 && (
-                  <span className="flex-none font-mono text-[9.5px] font-bold text-white/30">
-                    {faites}/{items.length}
+                  <span
+                    className="flex-none font-mono text-[9.5px] font-bold"
+                    style={{
+                      color:
+                        faites === items.length ? "var(--color-ver)" : "rgba(255,255,255,0.3)",
+                    }}
+                  >
+                    {faites === items.length ? "✓ plié" : `${faites}/${items.length}`}
                   </span>
                 )}
               </div>
+
+              {/*
+                La jauge de la colonne, à la couleur du niveau. Une colonne
+                pliée n'est pas la même chose qu'une colonne à moitié faite, et
+                le rapport « 2/5 » demandait de calculer pour s'en rendre
+                compte.
+              */}
+              {items.length > 0 && (
+                <div className="jauge-todo jauge-todo-fine mb-[6px]">
+                  <span
+                    className="jauge-todo-plein"
+                    style={{
+                      width: `${Math.round((faites / items.length) * 100)}%`,
+                      background:
+                        faites === items.length ? "var(--color-ver)" : meta.couleur,
+                    }}
+                  />
+                </div>
+              )}
+
+              {/*
+                UN FOCUS, PAS CINQ.
+
+                Le niveau « principal » ne vaut que par sa rareté : dès qu'il
+                contient toute la journée, il ne désigne plus rien et la todo
+                redevient une liste à plat. Un mot, jamais un blocage — c'est sa
+                journée, pas la nôtre.
+              */}
+              {niveau === "principal" && items.filter(({ t }) => !t.done).length > 3 && (
+                <div
+                  className="mb-[6px] rounded-[8px] px-[8px] py-[5px] text-[10px] font-bold leading-[1.35]"
+                  style={{
+                    color: "var(--color-amb)",
+                    background: "rgba(255,176,32,0.09)",
+                    border: "1px solid rgba(255,176,32,0.22)",
+                  }}
+                >
+                  {`${items.filter(({ t }) => !t.done).length} focus en même temps — un focus, ce n'est pas cinq. Glisse le reste en secondaire.`}
+                </div>
+              )}
 
               {/*
                 Le champ d'ajout EN TÊTE de pile, jamais en bas : plus la liste
@@ -772,6 +1300,30 @@ export function TachesCard() {
                   onChange={(e) =>
                     setNouvelle((p) => ({ ...p, [niveau]: e.target.value }))
                   }
+                  /*
+                   * COLLER UNE LISTE CRÉE TOUTE LA LISTE.
+                   *
+                   * Un champ de saisie écrase les retours à la ligne d'un
+                   * collage : les six tâches notées sur son téléphone
+                   * arrivaient sur une seule ligne, qu'il fallait redécouper à
+                   * la main. On lit donc le presse-papiers avant que le
+                   * navigateur ne l'aplatisse, et chaque ligne devient une
+                   * tâche. Un collage d'une seule ligne suit le chemin normal.
+                   */
+                  onPaste={(e) => {
+                    const brut = e.clipboardData.getData("text");
+                    if (!brut.includes("\n")) return;
+                    const lignes = lignesCollees(brut);
+                    if (lignes.length < 2) return;
+                    e.preventDefault();
+                    void (async () => {
+                      // À l'envers : chaque ajout se pose en tête de pile, donc
+                      // partir de la fin remet la liste dans l'ordre tapé.
+                      for (const l of [...lignes].reverse()) {
+                        await ajouterTache(l, niveau);
+                      }
+                    })();
+                  }}
                   placeholder={`+ ${meta.nom.toLowerCase()}`}
                   aria-label={`Ajouter une tâche — ${meta.nom.toLowerCase()}`}
                   className="w-full rounded-[8px] px-[9px] py-[5px] text-[11px] font-semibold text-white outline-none transition-colors focus:border-white/25"
@@ -783,7 +1335,7 @@ export function TachesCard() {
               </form>
 
               <div className="flex flex-col gap-[4px]">
-                {items.map(({ t, index }) => {
+                {items.map(({ t, index }, i) => {
                   const id = (t as { id?: string }).id;
 
                   // En cours de renommage : le champ remplace la ligne.
@@ -821,9 +1373,48 @@ export function TachesCard() {
 
                   const tire = dragId === id;
                   const ouvert = Boolean(id) && menu === id;
+                  const enTete = titres[i];
 
                   return (
                     <Fragment key={id ?? t.text}>
+                    {/*
+                      L'intertitre d'une famille : « 🎬 Vidéo · 3 ».
+                      Il n'apparaît qu'à partir de deux tâches de même nature —
+                      au-dessus d'une ligne unique, il n'apprendrait rien et
+                      doublerait la hauteur de la liste.
+                    */}
+                    {enTete && !tire && (
+                      <div className="famille-titre mt-[3px] flex items-center gap-[7px] pl-[2px] first:mt-0">
+                        <span className="text-[12px] leading-none">
+                          {enTete.famille.emoji}
+                        </span>
+                        <span className="text-[9.5px] font-black tracking-[0.1em] text-white/35">
+                          {enTete.famille.nom.toUpperCase()}
+                        </span>
+                        {/*
+                          Combien il en reste, pas combien il y en a.
+                          « ÉCRITURE · 3 » alors que deux sont déjà cochées ne
+                          dit rien de ce qu'il y a à faire. Le chiffre sert à
+                          décider d'enchaîner la famille d'une traite : c'est
+                          donc le reste à faire qui compte, et il s'éteint
+                          quand la famille est finie.
+                        */}
+                        <span
+                          className="flex-none rounded-[5px] px-[4px] py-[1px] font-mono text-[9px] font-black leading-none"
+                          style={
+                            enTete.restent > 0
+                              ? { color: "var(--color-fg)", background: "rgba(255,255,255,0.08)" }
+                              : { color: "var(--color-ver)", background: "rgba(255,255,255,0.04)" }
+                          }
+                        >
+                          {enTete.restent > 0 ? enTete.restent : "✓"}
+                        </span>
+                        <span
+                          className="h-[1px] flex-1 rounded-full"
+                          style={{ background: "rgba(255,255,255,0.07)" }}
+                        />
+                      </div>
+                    )}
                     <div
                       ref={id ? setRowRef(id) : undefined}
                       data-niveau={niveau}
@@ -833,11 +1424,33 @@ export function TachesCard() {
                       onPointerDown={
                         id ? (e) => commencerDrag(e, id, niveau, false) : undefined
                       }
-                      className="group relative flex items-stretch gap-[5px]"
+                      /*
+                       * `tache-entree` : L'ARRIVÉE EN CASCADE, une seule fois
+                       * par ouverture.
+                       *
+                       * La liste apparaissait d'un bloc, comme un tableau qu'on
+                       * affiche. Elle se pose maintenant ligne à ligne, 35 ms
+                       * d'écart — assez pour que l'œil descende la colonne et
+                       * voie ce qu'il y a à faire, assez peu pour que la
+                       * dernière soit là avant qu'on ait fini de regarder.
+                       * Plafonné à dix crans : au-delà on attendrait la liste
+                       * au lieu de la lire.
+                       *
+                       * `entree` ne vaut vrai qu'au premier affichage : sans
+                       * ça, cocher une case rejouerait toute l'animation.
+                       */
+                      className={`group relative flex items-stretch gap-[5px]${
+                        entree ? " tache-entree" : ""
+                      }`}
                       // Pendant le tri, la ligne tirée devient un trou invisible
                       // (elle garde sa boîte = l'emplacement de dépôt) : tout le
                       // visuel passe par le clone flottant.
-                      style={tire ? { visibility: "hidden" } : undefined}
+                      style={{
+                        ...(tire ? { visibility: "hidden" as const } : null),
+                        ...(entree
+                          ? ({ "--retard": `${Math.min(i, 10) * 35}ms` } as React.CSSProperties)
+                          : null),
+                      }}
                     >
                       {/* Cible de dépôt. `visibility:visible` la ré-affiche
                           malgré le parent masqué : un descendant visible d'un
@@ -854,16 +1467,20 @@ export function TachesCard() {
                         />
                       )}
 
-                      {/* La poignée. Toujours visible (le survol n'existe pas au
-                          doigt), `touch-action:none` pour que le glissement ne
-                          fasse pas défiler la page. */}
+                      {/*
+                        La poignée. Toujours visible — le survol n'existe pas au
+                        doigt — et dimensionnée dans `globals.css` : 40 px au
+                        doigt, 22 px à la souris. Elle mesurait 14 px, et comme
+                        elle est la seule prise qui porte `touch-action: none`,
+                        elle était à la fois indispensable et invisable.
+                      */}
                       {id && (
                         <button
                           type="button"
                           aria-label={`Déplacer ${t.text}`}
                           title="Glisser pour ranger"
                           onPointerDown={(e) => commencerDrag(e, id, niveau, true)}
-                          className="flex-none touch-none select-none px-[2px] text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
+                          className="poignee-tache flex flex-none items-center justify-center text-[13px] leading-none text-white/25 transition-colors hover:text-white/60"
                           style={{ cursor: tire ? "grabbing" : "grab" }}
                         >
                           ⠿
@@ -885,6 +1502,7 @@ export function TachesCard() {
                            */
                           label={`${emojiPourTache(t.text, niveau)} ${t.text}`.trim()}
                           meta={t.categorie}
+                          badge={vieillesse(ageEnJours(t.creeLe, aujourdhui))}
                           done={t.done}
                           accent={meta.couleur}
                           intensite={intensite}
@@ -1012,7 +1630,9 @@ export function TachesCard() {
                           <button
                             type="button"
                             onClick={() => {
-                              supprimerTache(id);
+                              // En sursis : la barre « Annuler » décide de la
+                              // suite. Voir l'effet du compte à rebours.
+                              setASupprimer({ id, texte: t.text });
                               setMenu(null);
                             }}
                             className="min-h-[44px] flex-1 cursor-pointer rounded-[10px] text-[12px] font-extrabold transition-all hover:brightness-125"

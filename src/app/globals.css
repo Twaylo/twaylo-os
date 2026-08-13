@@ -1437,3 +1437,280 @@ details[open] .chevron-section {
     padding-right: 48px;
   }
 }
+
+/*
+ * LA POIGNÉE DE RANGEMENT — d'où venait « j'arrive pas à déplacer mes tâches ».
+ *
+ * Elle mesurait 14 px de large. Mesuré dans un navigateur avec de VRAIS
+ * évènements tactiles, pas supposé : un pouce en couvre quarante. Et c'est
+ * précisément elle qu'il fallait viser, parce qu'elle seule porte
+ * `touch-action: none` — la propriété qui empêche le navigateur de confisquer
+ * le geste pour faire défiler la page. Une prise indispensable et invisable :
+ * le glissement « ne marchait pas » alors qu'il marchait, à condition de
+ * toucher une bande de quatorze pixels.
+ *
+ * 40 px au doigt, 22 px à la souris, où l'on vise au pixel près.
+ */
+.poignee-tache {
+  width: 22px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+@media (hover: none) {
+  .poignee-tache {
+    width: 40px;
+    font-size: 16px;
+    /* Sans survol, il n'y a pas d'autre moment pour se signaler. */
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  /*
+   * Sur téléphone, la catégorie d'une tâche disparaît — et la place revient au
+   * texte.
+   *
+   * Une ligne de todo doit porter trois choses de front sur 390 px : une prise
+   * de 40 px, le bouton d'actions de 40 px, et l'intitulé. Avec « BUSINESS » ou
+   * « CONTENU » en plus, il ne restait que 263 px : « Répondre au sponsor
+   * NordVPN (18h) » tenait sur trois lignes, et la liste redevenait le pavé
+   * qu'on venait d'éviter. La catégorie n'apprend d'ailleurs presque rien ici :
+   * l'emoji en tête de ligne et l'intertitre de famille (« ✍️ ÉCRITURE ») disent
+   * déjà de quoi il s'agit, en moins de place. Elle reste sur grand écran, où
+   * la largeur ne manque pas.
+   */
+  .ligne-tache .etiquette-meta {
+    display: none;
+  }
+
+  /*
+   * Tenir une ligne appuyée sert maintenant à la déplacer : sans cela, iOS
+   * ouvre sa loupe de sélection de texte par-dessus le geste, et le rangement
+   * se transforme en copier-coller.
+   */
+  .ligne-tache {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/*
+ * LA COLONNE VISÉE pendant un déplacement.
+ *
+ * Sans elle, amener une tâche « quelque part à droite » se faisait à l'aveugle :
+ * on découvrait où elle atterrissait en la lâchant. Le cadre s'allume dès que
+ * la colonne est visée — on sait AVANT de lâcher, et on peut corriger.
+ *
+ * Dessiné en `::after` posé en dehors du flux : une bordure sur la colonne
+ * elle-même la ferait grandir de deux pixels au moment où on la vise, et toute
+ * la liste sauterait sous le doigt.
+ */
+.zone-niveau {
+  position: relative;
+}
+
+.zone-niveau.zone-visee::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 14px;
+  border: 2px dashed var(--color-mag);
+  background: rgba(255, 61, 139, 0.05);
+  pointer-events: none;
+  animation: zoneVisee 0.16s ease-out both;
+}
+
+@keyframes zoneVisee {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zone-niveau.zone-visee::after {
+    animation: none;
+  }
+}
+
+/* ================================================================== */
+/* La todo — la carte autour de laquelle l'OS est bâti                 */
+/* ================================================================== */
+
+/*
+ * LE SABLIER DE LA SUPPRESSION.
+ *
+ * Une ligne qui se vide en six secondes, posée en bas de la barre « Annuler ».
+ * Sans elle, le bouton apparaît et disparaît sans prévenir : on ne sait pas
+ * s'il reste une seconde ou dix, donc on n'ose pas quitter la barre des yeux.
+ * Six secondes visibles, c'est six secondes qu'on peut ignorer tranquillement.
+ */
+.sablier-suppr {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-mag);
+  animation: sablierSuppr 6s linear both;
+}
+
+@keyframes sablierSuppr {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sablier-suppr {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/*
+ * LES JAUGES DE LA TODO — celle de la journée, et une par colonne.
+ *
+ * Un rapport « 3/8 » dit tout et ne montre rien : deux nombres à lire et à
+ * diviser de tête. Une barre se voit sans être lue, et surtout elle BOUGE au
+ * moment où l'on coche. C'est la récompense qui manquait entre le clic et la
+ * fin de journée.
+ *
+ * La transition porte sur la largeur et non sur un `transform` : la barre part
+ * du bord gauche et pousse, ce qui est le mouvement qu'on attend d'une jauge.
+ * À cette taille, aucun coût.
+ */
+.jauge-todo {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.jauge-todo-fine {
+  height: 3px;
+}
+
+.jauge-todo-plein {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jauge-todo-plein {
+    transition: none;
+  }
+}
+
+/*
+ * L'intertitre d'une famille.
+ *
+ * Il apparaît et disparaît au fil des tâches ajoutées : sans transition, la
+ * liste sautait d'un cran à chaque fois qu'une deuxième tâche de même nature
+ * arrivait. Ici il se déploie, et le reste suit.
+ */
+.famille-titre {
+  animation: familleIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes familleIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * L'ARRIVÉE DE LA LISTE, ligne à ligne.
+ *
+ * La todo apparaissait d'un bloc, comme un tableau qu'on affiche. Elle se pose
+ * maintenant de haut en bas, 35 ms d'écart entre deux lignes : le regard suit
+ * la colonne au lieu de tomber sur un mur de texte, et on a lu ce qu'il y a à
+ * faire avant même de l'avoir cherché.
+ *
+ * `both` avec un retard : la ligne reste invisible jusqu'à son tour, sinon
+ * elles seraient toutes là dès la première image et la cascade ne servirait à
+ * rien. Le retard est plafonné côté composant — au-delà de dix crans, on
+ * attendrait une liste au lieu de la lire.
+ */
+.tache-entree {
+  animation: tacheEntree 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--retard, 0ms);
+}
+
+@keyframes tacheEntree {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * L'entrée d'une tâche : elle glisse depuis la gauche, sans pousser le reste.
+ *
+ * `animation-fill-mode: both` et une durée courte : une tâche qu'on vient de
+ * taper doit être là AVANT qu'on ait fini de lever le doigt. Au-delà de
+ * 300 ms, l'animation cesse d'être une confirmation et devient une attente.
+ */
+.tache-neuve {
+  animation: tacheIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tacheIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * La case de « aujourd'hui je vais » : un battement lent tant qu'elle est
+ * vide, rien une fois cochée. C'est la seule chose de l'écran qui réclame
+ * quelque chose, elle a le droit de se signaler.
+ */
+.chose-case:not([aria-pressed="true"]) {
+  animation: choseBat 2.6s ease-in-out infinite;
+}
+
+@keyframes choseBat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 61, 139, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 61, 139, 0.13);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .famille-titre,
+  .tache-neuve,
+  .tache-entree,
+  .chose-case:not([aria-pressed="true"]) {
+    animation: none;
+  }
+}

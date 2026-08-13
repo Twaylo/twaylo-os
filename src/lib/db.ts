@@ -936,6 +936,19 @@ export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
       l.statut === "faite" && l.completed_at
         ? localDateKey(new Date(l.completed_at))
         : undefined,
+    /*
+     * Le jour de naissance de la tâche part maintenant au navigateur.
+     *
+     * Il restait côté serveur, où seul l'onglet « Oubliés » s'en servait pour
+     * archiver ce qui traîne depuis quatre jours. Mais l'archivage arrive trop
+     * tard : ce qui compte, c'est de VOIR une tâche vieillir pendant qu'elle
+     * est encore sous les yeux. Une liste sans âge donne le même poids à ce
+     * qu'on vient de noter et à ce qu'on repousse depuis une semaine.
+     *
+     * Ramené au jour local, comme la date de coche : une tâche créée à minuit
+     * et demie appartient à sa nuit.
+     */
+    creeLe: l.created_at ? localDateKey(new Date(l.created_at)) : undefined,
   }));
 }
 

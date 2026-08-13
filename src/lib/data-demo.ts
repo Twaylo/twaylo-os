@@ -1,4 +1,15 @@
+import { localDateKeyOffset } from "./local-date";
 import type { OsData } from "./types";
+
+/**
+ * L'âge des tâches de démonstration, compté depuis aujourd'hui.
+ *
+ * En dur, une date de création se serait périmée dès le lendemain : la démo
+ * aurait affiché « 431j » sur toutes les lignes. Relative, elle montre ce que
+ * l'OS montre vraiment — une tâche notée ce matin, une qui traîne depuis trois
+ * jours, une qui pourrit depuis une semaine.
+ */
+const ilYA = (jours: number) => localDateKeyOffset(-jours);
 
 /**
  * Jeu de démonstration (spec Partie 3 : « mode démo obligatoire »).
@@ -31,11 +42,16 @@ export const DEMO_DATA: OsData = {
    * démonstration doit ressembler à l'outil, pas à une version dégradée.
    */
   tasks: [
-    { id: "demo-1", text: "Finaliser le montage — Vérité #12", done: false, categorie: "Contenu", niveau: "principal" },
-    { id: "demo-2", text: "Répondre au sponsor NordVPN (18h)", done: false, categorie: "Business", niveau: "principal" },
-    { id: "demo-3", text: "Valider la miniature du Short", done: true, categorie: "Contenu", niveau: "secondaire" },
-    { id: "demo-4", text: "Repérage lieux — tournage Bolivie", done: false, categorie: "Contenu", niveau: "secondaire" },
-    { id: "demo-5", text: "Appeler l'agence de fixing (Congo)", done: false, categorie: "Business", niveau: "annexe" },
+    { id: "demo-1", text: "Finaliser le montage — Vérité #12", done: false, categorie: "Contenu", niveau: "principal", creeLe: ilYA(1) },
+    { id: "demo-2", text: "Répondre au sponsor NordVPN (18h)", done: false, categorie: "Business", niveau: "principal", creeLe: ilYA(3) },
+    { id: "demo-3", text: "Valider la miniature du Short", done: true, categorie: "Contenu", niveau: "secondaire", creeLe: ilYA(0) },
+    { id: "demo-4", text: "Repérage lieux — tournage Bolivie", done: false, categorie: "Contenu", niveau: "secondaire", creeLe: ilYA(2) },
+    { id: "demo-5", text: "Appeler l'agence de fixing (Congo)", done: false, categorie: "Business", niveau: "annexe", creeLe: ilYA(7) },
+    // Deux scripts et deux appels : c'est ce qui montre le regroupement par
+    // famille, la mécanique la plus visible de la todo.
+    { id: "demo-6", text: "Écrire le script du short de lundi", done: false, categorie: "Contenu", niveau: "secondaire", creeLe: ilYA(0) },
+    { id: "demo-7", text: "Script du format long — Congo", done: false, categorie: "Contenu", niveau: "secondaire", creeLe: ilYA(5) },
+    { id: "demo-8", text: "Appeler le monteur pour les rushes", done: false, categorie: "Contenu", niveau: "annexe", creeLe: ilYA(1) },
   ],
 
   // Les habitudes vivent en base (date sentinelle) et sont modifiables par

@@ -164,10 +164,31 @@ export type BlocAccueil = {
   module?: Tab;
   /** Toute la largeur, sous la grille compactée. */
   large?: boolean;
+  /**
+   * Posé sur l'accueil tant que personne n'a rien réglé.
+   *
+   * « Vide veut dire tout » était une bonne règle tant que le catalogue tenait
+   * en six cartes. À quinze, l'accueil par défaut était devenu un mur, où la
+   * todo — la seule chose autour de laquelle l'OS est bâti — se retrouvait
+   * noyée. Le défaut est donc désormais un CHOIX, court ; tout le reste
+   * s'installe en deux appuis depuis « Personnaliser ».
+   */
+  defaut?: boolean;
   profils: string[];
 };
 
 export const BLOCS: BlocAccueil[] = [
+  {
+    id: "chose",
+    titre: "Aujourd'hui je vais",
+    emoji: "🎯",
+    description: "La seule chose qui compte aujourd'hui, en une ligne.",
+    // Pleine largeur : c'est un bandeau, pas une carte parmi d'autres. Serré
+    // dans un tiers d'écran, il redevenait un réglage au lieu d'une décision.
+    large: true,
+    defaut: true,
+    profils: TOUS,
+  },
   {
     id: "operateur",
     titre: "Opérateur",
@@ -180,6 +201,7 @@ export const BLOCS: BlocAccueil[] = [
     titre: "Progression",
     emoji: "⚡",
     description: "Niveau, XP du jour, et ce qu'il reste à prendre avant ce soir.",
+    defaut: true,
     profils: TOUS,
   },
   {
@@ -187,6 +209,8 @@ export const BLOCS: BlocAccueil[] = [
     titre: "Tâches clés",
     emoji: "✅",
     description: "Focus principal, secondaire, annexes — rangés par ce qui compte.",
+    defaut: true,
+    large: true,
     profils: TOUS,
   },
   {
@@ -194,6 +218,7 @@ export const BLOCS: BlocAccueil[] = [
     titre: "Quêtes du jour",
     emoji: "🎲",
     description: "Trois objectifs tirés chaque matin. Ils changent tous les jours.",
+    defaut: true,
     profils: TOUS,
   },
   {
@@ -209,6 +234,7 @@ export const BLOCS: BlocAccueil[] = [
     titre: "Habitudes",
     emoji: "☑️",
     description: "Ce qui revient chaque jour, et la série de chacune.",
+    defaut: true,
     profils: TOUS,
   },
   {
@@ -307,6 +333,27 @@ export function tousLesModules(): string[] {
 
 export function tousLesBlocs(): string[] {
   return BLOCS.map((b) => b.id);
+}
+
+/**
+ * L'accueil de quelqu'un qui n'a rien réglé.
+ *
+ * Cinq blocs : ce qu'on va faire aujourd'hui, la todo EN PLEINE LARGEUR, puis
+ * les trois qui la soutiennent. Tout le reste — journée type, revenus,
+ * nutrition, pipeline, opérateur, journal — existe toujours au catalogue.
+ * On ne l'impose simplement plus à l'ouverture.
+ */
+export function blocsParDefaut(): string[] {
+  /*
+   * L'ORDRE est écrit ici, pas déduit du catalogue.
+   *
+   * La todo passe en deuxième, juste sous « aujourd'hui je vais » : c'est elle
+   * qui fait avancer tout le reste, elle ne peut pas arriver après trois
+   * cartes de statistiques. Le catalogue, lui, garde son ordre de rangement.
+   */
+  const ordre = ["chose", "taches", "progression", "quetes", "habitudes"];
+  const defauts = new Set(BLOCS.filter((b) => b.defaut).map((b) => b.id));
+  return ordre.filter((id) => defauts.has(id));
 }
 
 /* ------------------------------------------------------------------ */
