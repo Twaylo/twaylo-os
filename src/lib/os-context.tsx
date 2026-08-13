@@ -52,6 +52,7 @@ import {
   synchroniserJour,
 } from "./sync";
 import { localDateKey } from "./local-date";
+import { cloturerTodo } from "./cloture";
 import type { EvenementAgenda } from "./agenda-types";
 import type {
   Blocage,
@@ -212,6 +213,13 @@ type OsState = {
   supprimerTache: (id: string) => void;
   /** Corrige le texte d'une tâche sans la recréer. */
   renommerTache: (id: string, titre: string) => void;
+  /**
+   * Gèle ou dégèle une tâche : celles qui reviennent tous les jours.
+   *
+   * Une tâche gelée n'est pas supprimée au passage au jour suivant — elle est
+   * décochée et reste à sa place.
+   */
+  basculerGelTache: (id: string) => void;
   /** Échange deux tâches de place, par leurs index dans `tasks`. */
   echangerTaches: (a: number, b: number) => void;
   /**
@@ -1735,6 +1743,30 @@ export function OsProvider({ children }: { children: ReactNode }) {
     [noterGesteProvisoire],
   );
 
+  /**
+   * Geler ou dégeler — la tâche qui revient tous les jours.
+   *
+   * L'écran bascule tout de suite ; la base suit. Rien à mettre de côté pour
+   * une tâche encore provisoire : geler quelque chose qu'on vient de taper à
+   * l'instant n'a pas de sens, et la ligne sera là au prochain chargement.
+   */
+  const basculerGelTache = useCallback((id: string) => {
+    let gelee = false;
+    setTasks((prev) =>
+      prev.map((t) => {
+        if ((t as { id?: string }).id !== id) return t;
+        gelee = !t.gelee;
+        return { ...t, gelee };
+      }),
+    );
+    if (demoModeRef.current || estProvisoire(id)) return;
+    void fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, gelee }),
+    }).catch((err) => console.error("[taches] gel impossible :", err));
+  }, []);
+
   const renommerTache = useCallback(
     (id: string, titre: string) => {
       const propre = titre.trim();
@@ -2354,9 +2386,31 @@ export function OsProvider({ children }: { children: ReactNode }) {
     setTodoCloturee(jour);
     writeJSON("twaylo-todo-cloturee", jour);
 
-    // 3. Retirer les tâches faites — l'écran d'abord, la base ensuite. Les
-    //    inachevées restent et deviennent la todo de demain.
-    setTasks((prev) => prev.filter((t) => !t.done));
+    /*
+     * 3. Ce qui reste, ce qui se décoche, ce qui s'en va — décidé d'un bloc
+     *    par `cloturerTodo`, la seule règle de l'OS qui détruit des données.
+     *    Elle vit à part pour être vérifiable hors ligne, cas par cas.
+     */
+    const { restantes, aDegeler } = cloturerTodo(actuelles);
+    setTasks(restantes);
+
+    /*
+     * LES GELÉES SONT DÉCOCHÉES AVANT LE MÉNAGE, et l'ordre n'est pas un
+     * détail de style : le vidage qui suit efface EN BASE toutes les lignes
+     * marquées faites, sans distinction. Une gelée encore cochée à cet
+     * instant partirait avec les autres — présente à l'écran, disparue de la
+     * base, et absente au rechargement du lendemain.
+     */
+    await Promise.all(
+      aDegeler.map((id) =>
+        basculerTacheDistante(id, false).catch((err) =>
+          console.error("[todo] dégel impossible :", err),
+        ),
+      ),
+    );
+
+    // 4. Le ménage en base : les faites s'en vont. Les gelées n'en font déjà
+    //    plus partie.
     try {
       await fetch("/api/tasks?faites=1", { method: "DELETE" });
     } catch (err) {
@@ -2575,6 +2629,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTache: supprimerTacheLocale,
       renommerTache,
+      basculerGelTache,
       echangerTaches,
       deposerTache,
       passerJourSuivant,
@@ -2641,6 +2696,7 @@ export function OsProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       supprimerTacheLocale,
       renommerTache,
+      basculerGelTache,
       echangerTaches,
       deposerTache,
       passerJourSuivant,

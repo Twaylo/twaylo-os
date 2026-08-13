@@ -1544,6 +1544,53 @@ details[open] .chevron-section {
 /* ================================================================== */
 
 /*
+ * UNE TÂCHE GELÉE — celle qui revient tous les jours.
+ *
+ * Elle ne se distingue pas par une couleur de plus (la liste en a déjà trois,
+ * une par niveau) mais par une TEXTURE : un liseré froid sur le bord gauche,
+ * là où l'œil descend la colonne. On voit d'un coup ce qui est permanent et ce
+ * qui ne l'est pas, sans avoir à lire.
+ *
+ * Le liseré est posé sur la ligne, pas sur la poignée : celle-ci reste la
+ * prise du glisser, et lui coller une bordure brouillerait la seule chose
+ * qu'elle doit dire.
+ */
+.tache-gelee .ligne-tache .check-row {
+  border-left: 3px solid var(--color-cya) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(34, 211, 238, 0.09),
+    rgba(255, 255, 255, 0.045) 42%
+  ) !important;
+}
+
+/*
+ * L'instant où elle gèle : un souffle froid qui traverse la ligne.
+ *
+ * Le double-tap coche puis décoche en une fraction de seconde — sans ce
+ * signal, on ne saurait pas si le geste a été compris ou si l'on vient de
+ * cocher deux fois pour rien.
+ */
+.tache-gelee .ligne-tache .check-row {
+  animation: gelSouffle 0.5s ease-out;
+}
+
+@keyframes gelSouffle {
+  from {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 9px rgba(34, 211, 238, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tache-gelee .ligne-tache .check-row {
+    animation: none;
+  }
+}
+
+/*
  * L'EMOJI QUI APPARAÎT DANS LE CHAMP DE SAISIE.
  *
  * Il surgit et se pose, à chaque fois qu'il change. Le mouvement fait toute la

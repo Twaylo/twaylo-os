@@ -95,6 +95,7 @@ export function TachesCard() {
     ajouterTache,
     supprimerTache,
     renommerTache,
+    basculerGelTache,
     changerNiveauTache,
     deposerTache,
     passerJourSuivant,
@@ -149,6 +150,19 @@ export function TachesCard() {
   const [aSupprimer, setASupprimer] = useState<{ id: string; texte: string } | null>(null);
   /** Posé par « Annuler » pour que le nettoyage de l'effet n'efface pas. */
   const annuleRef = useRef(false);
+
+  /**
+   * Le dernier appui, pour reconnaître le DOUBLE-TAP qui gèle une tâche.
+   *
+   * Pourquoi un double-tap et pas un bouton : geler, c'est dire « celle-là,
+   * je la refais tous les jours ». C'est un geste qu'on fait une fois par
+   * tâche, sur la ligne elle-même, sans ouvrir de menu. Le bouton existe
+   * quand même dans le panneau ⋯ — pour qui ne connaît pas le raccourci.
+   */
+  const dernierTapRef = useRef<{ id: string | null; quand: number }>({
+    id: null,
+    quand: 0,
+  });
 
   /**
    * L'arrivée en cascade — vrai le temps de la première liste, puis plus jamais.
@@ -1490,7 +1504,7 @@ export function TachesCard() {
                        */
                       className={`group relative flex items-stretch gap-[5px]${
                         entree ? " tache-entree" : ""
-                      }`}
+                      }${t.gelee ? " tache-gelee" : ""}`}
                       // Pendant le tri, la ligne tirée devient un trou invisible
                       // (elle garde sa boîte = l'emplacement de dépôt) : tout le
                       // visuel passe par le clone flottant.
@@ -1551,7 +1565,23 @@ export function TachesCard() {
                            */
                           label={`${emojiPourTache(t.text, niveau)} ${t.text}`.trim()}
                           meta={t.categorie}
-                          badge={vieillesse(ageEnJours(t.creeLe, aujourdhui))}
+                          /*
+                           * Pas d'âge sur une tâche gelée : elle est vieille
+                           * par nature. « Poster sur Snap » date du jour où on
+                           * l'a écrite et ne bougera plus — la marquer « 12j »
+                           * serait un reproche adressé à une corvée faite tous
+                           * les jours. Le flocon dit déjà ce qu'elle est.
+                           */
+                          badge={
+                            t.gelee
+                              ? {
+                                  texte: "❄️",
+                                  couleur: "var(--color-cya)",
+                                  titre:
+                                    "Gelée : elle revient tous les jours et survit au passage au jour suivant",
+                                }
+                              : vieillesse(ageEnJours(t.creeLe, aujourdhui))
+                          }
                           done={t.done}
                           accent={meta.couleur}
                           intensite={intensite}
@@ -1575,6 +1605,34 @@ export function TachesCard() {
                               glissementArmeRef.current = false;
                               return;
                             }
+
+                            /*
+                             * DEUX APPUIS RAPPROCHÉS : on gèle.
+                             *
+                             * Le premier appui a déjà coché — et c'est
+                             * volontaire. Retarder la coche de 300 ms pour
+                             * voir si un second appui arrive rendrait
+                             * poussif le geste le plus fréquent de l'OS. On
+                             * coche donc tout de suite, et le second appui
+                             * ANNULE le premier avant de geler : la case
+                             * revient où elle était, et la tâche prend son
+                             * flocon.
+                             */
+                            const maintenant = Date.now();
+                            const suite =
+                              id &&
+                              dernierTapRef.current.id === id &&
+                              maintenant - dernierTapRef.current.quand < 380;
+                            if (suite && id) {
+                              dernierTapRef.current = { id: null, quand: 0 };
+                              toggleTask(index);
+                              basculerGelTache(id);
+                              if (!reduireRef.current) {
+                                (navigator as NavVibr).vibrate?.([10, 40, 10]);
+                              }
+                              return;
+                            }
+                            dernierTapRef.current = { id: id ?? null, quand: maintenant };
                             toggleTask(index);
                           }}
                         />
@@ -1731,6 +1789,33 @@ export function TachesCard() {
                             );
                           })}
                         </div>
+                        {/*
+                          GELER — le même geste que le double-tap, mais nommé.
+                          Le raccourci ne se devine pas ; ce bouton l'apprend,
+                          et sert à ceux qui préfèrent viser.
+                        */}
+                        <button
+                          type="button"
+                          onClick={() => basculerGelTache(id)}
+                          className="mt-[2px] min-h-[44px] cursor-pointer rounded-[10px] px-[10px] text-left text-[11px] font-extrabold leading-[1.3] transition-all hover:brightness-125"
+                          style={
+                            t.gelee
+                              ? {
+                                  color: "var(--color-cya)",
+                                  background: "rgba(34,211,238,0.12)",
+                                  border: "1.5px solid var(--color-cya)",
+                                }
+                              : {
+                                  color: "rgba(255,255,255,0.7)",
+                                  background: "rgba(255,255,255,0.05)",
+                                }
+                          }
+                        >
+                          {t.gelee
+                            ? "❄️ Gelée — elle revient chaque jour. Appuyer pour dégeler"
+                            : "❄️ Geler — la garder tous les jours (ou double-tap)"}
+                        </button>
+
                         <div className="mt-[2px] flex gap-[5px]">
                           <button
                             type="button"

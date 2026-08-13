@@ -95,7 +95,9 @@ const REGLES: Regle[] = [
     emoji: "📤",
     id: "envoi",
     nom: "À envoyer",
-    mots: ["envoy", "expedi", "poster", "publier", "upload", "livrer", "mise en ligne", "mettre en ligne", "programmer la"],
+    // Pas de « poster » ici : dans une todo d'aujourd'hui, poster veut dire
+    // poster sur un réseau, pas déposer une lettre à la boîte.
+    mots: ["envoy", "expedi", "publier", "upload", "livrer", "mise en ligne", "mettre en ligne", "programmer la"],
   },
   {
     emoji: "🧹",
@@ -112,7 +114,7 @@ const REGLES: Regle[] = [
    * molette. Le bricolage garde ses verbes à lui, qui ne prêtent à rien.
    */
   {
-    emoji: "🛠",
+    emoji: "🛠️",
     id: "bricolage",
     nom: "Bricolage",
     mots: ["repar", "bricol", "install", "visser", "percer", "changer la pile", "changer l'ampoule"],
@@ -152,7 +154,7 @@ const REGLES: Regle[] = [
    * général.
    */
   {
-    emoji: "🖼",
+    emoji: "🖼️",
     id: "visuel",
     nom: "Visuels",
     mots: ["miniature", "thumbnail", "thumb", "vignette", "visuel", "design", "maquette", "logo", "affiche", "banniere", "retouche", "photo"],
@@ -166,7 +168,7 @@ const REGLES: Regle[] = [
     exacts: ["cut", "cuts", "short", "shorts"],
   },
   {
-    emoji: "🎙",
+    emoji: "🎙️",
     id: "voix",
     nom: "Voix & son",
     mots: ["voix off", "voice", "podcast", "enregistr", "micro", "audio", "mixage", "musique", "jingle"],
@@ -185,6 +187,22 @@ const REGLES: Regle[] = [
     nom: "Communauté",
     mots: ["commentaire", "communaute", "community", "abonne", "audience", "sondage"],
     exacts: ["coms", "com"],
+  },
+  /*
+   * Les réseaux, à part de la vidéo et des envois.
+   *
+   * « Poster sur Snap et Facebook » tombait dans « à envoyer », avec les colis
+   * et les factures. Or c'est une corvée à part, qui revient tous les jours et
+   * se fait d'une traite : les regrouper, c'est les expédier en une passe au
+   * lieu de trois. Les noms des plateformes sont écrits en toutes lettres —
+   * personne n'écrit « réseaux sociaux » dans sa todo, on écrit « snap ».
+   */
+  {
+    emoji: "📱",
+    id: "reseaux",
+    nom: "Réseaux",
+    mots: ["snap", "instagram", "insta", "tiktok", "facebook", "twitter", "linkedin", "threads", "pinterest", "story", "stories", "reel", "carrousel", "publication"],
+    exacts: ["post", "poster", "posts", "fb", "ig", "x"],
   },
 
   /* ------------------------------------------------------------------ */
@@ -219,7 +237,7 @@ const REGLES: Regle[] = [
     exacts: ["gym", "abdos", "run"],
   },
   {
-    emoji: "🍽",
+    emoji: "🍽️",
     id: "repas",
     nom: "Repas",
     mots: ["repas", "manger", "cuisin", "courses", "dejeuner", "diner", "petit-dej", "cantine", "restaurant", "recette"],
@@ -313,22 +331,100 @@ const REGLES: Regle[] = [
 ];
 
 /**
- * Les motifs, compilés une fois pour toutes.
+ * Les motifs, compilés une fois pour toutes — un par motif, pas un par règle.
  *
- * Une expression par règle, avec `\b` devant chaque motif. C'est ce qui
- * distingue « répondre » de « correspondre », et « train » de
- * « entraînement » — la comparaison par simple inclusion attrapait les deux, et
- * ce genre d'erreur ne se voit pas : on obtient un emoji plausible, juste pas
- * le bon, sur une ligne parmi vingt.
+ * Chacun est ancré par `\b`. C'est ce qui distingue « répondre » de
+ * « correspondre », et « train » de « entraînement » : la comparaison par
+ * simple inclusion attrapait les deux, et ce genre d'erreur ne se voit pas —
+ * on obtient un emoji plausible, juste pas le bon, sur une ligne parmi vingt.
+ *
+ * Un par motif, parce qu'on ne veut plus seulement savoir SI une règle
+ * correspond, mais À QUEL POINT : quel mot a été reconnu, où, et combien.
  */
-const MOTIFS: { regle: Regle; test: RegExp }[] = REGLES.map((regle) => {
-  const echapper = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const morceaux = [
-    ...(regle.mots ?? []).map((m) => `\\b${echapper(m)}`),
-    ...(regle.exacts ?? []).map((m) => `\\b${echapper(m)}\\b`),
-  ];
-  return { regle, test: new RegExp(morceaux.join("|"), "u") };
-});
+const echapper = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const MOTIFS: { regle: Regle; motif: string; test: RegExp }[] = REGLES.flatMap((regle) => [
+  ...(regle.mots ?? []).map((m) => ({
+    regle,
+    motif: m,
+    test: new RegExp(`\\b${echapper(m)}`, "u"),
+  })),
+  ...(regle.exacts ?? []).map((m) => ({
+    regle,
+    motif: m,
+    test: new RegExp(`\\b${echapper(m)}\\b`, "u"),
+  })),
+]);
+
+/** Le rang d'une règle dans le catalogue — départage les scores égaux. */
+const RANG = new Map(REGLES.map((r, i) => [r.id, i]));
+
+/**
+ * LE CHOIX SE PÈSE, il ne se prend plus au premier venu.
+ *
+ * Avant : la première règle du catalogue qui reconnaissait un mot gagnait. Tout
+ * reposait donc sur l'ordre de la liste, et l'ordre ne peut pas avoir raison
+ * partout à la fois — « valider la miniature du Short » voulait les visuels
+ * avant la vidéo, « monter le Short » voulait l'inverse. Chaque cas réglé en
+ * déplaçait un autre.
+ *
+ * Maintenant on regarde TOUS les mots reconnus et on pèse :
+ *
+ *  · LA PRÉCISION du mot. « changer la pile » en dit plus long que « pile », et
+ *    « entrainement » plus que « train ». On compte donc sa longueur : un motif
+ *    long ne se déclenche que sur une vraie intention.
+ *
+ *  · LA PLACE dans l'intitulé. Ce qu'on écrit en premier est ce que la tâche
+ *    est : « Envoyer la facture » est un envoi, « Facture à envoyer » est une
+ *    histoire de sous. Le premier mot pèse donc dix points de plus — c'est ce
+ *    qui fait tenir la règle « le geste prime sur le sujet » sans dépendre de
+ *    l'ordre du catalogue.
+ *
+ *  · LA CONCORDANCE. Deux mots de la même famille dans la même phrase
+ *    (« monter le short »), c'est deux fois la même piste : trois points par
+ *    indice supplémentaire.
+ *
+ * À égalité parfaite, le catalogue tranche — les gestes y sont écrits avant
+ * les domaines.
+ */
+function peser(texteNu: string): Regle | null {
+  const finPremierMot = (() => {
+    const i = texteNu.search(/[\s:,;–—-]/);
+    return i === -1 ? texteNu.length : i;
+  })();
+
+  const scores = new Map<string, { regle: Regle; score: number; indices: number }>();
+
+  for (const { regle, test } of MOTIFS) {
+    const m = test.exec(texteNu);
+    if (!m) continue;
+    // 10 de base : reconnaître quelque chose vaut déjà mieux que rien.
+    let score = 10 + m[0].length;
+    if (m.index < finPremierMot) score += 10;
+
+    const vu = scores.get(regle.id);
+    if (!vu) {
+      scores.set(regle.id, { regle, score, indices: 1 });
+    } else {
+      vu.indices += 1;
+      vu.score = Math.max(vu.score, score);
+    }
+  }
+
+  let gagnant: { regle: Regle; total: number } | null = null;
+  for (const { regle, score, indices } of scores.values()) {
+    const total = score + (indices - 1) * 3;
+    if (
+      !gagnant ||
+      total > gagnant.total ||
+      (total === gagnant.total &&
+        (RANG.get(regle.id) ?? 999) < (RANG.get(gagnant.regle.id) ?? 999))
+    ) {
+      gagnant = { regle, total };
+    }
+  }
+  return gagnant?.regle ?? null;
+}
 
 /** Le repli quand rien ne correspond : la couleur du niveau, pas un emoji au hasard. */
 const PAR_NIVEAU: Record<string, string> = {
@@ -345,11 +441,9 @@ function nu(texte: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
-/** La règle qui reconnaît ce texte, ou rien. */
+/** La règle qui décrit le mieux ce texte, ou rien. */
 function regleDe(texte: string): Regle | null {
-  const t = nu(texte);
-  for (const { regle, test } of MOTIFS) if (test.test(t)) return regle;
-  return null;
+  return peser(nu(texte));
 }
 
 /**
@@ -477,6 +571,7 @@ const ORDRE_PALETTE = [
   "voix",
   "chaine",
   "communaute",
+  "reseaux",
   "appel",
   "message",
   "rdv",

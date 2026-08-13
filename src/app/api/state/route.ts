@@ -9,6 +9,7 @@ import {
   lireHabitudesDef,
   lireJour,
   lireOrdreTaches,
+  lireTachesGelees,
   lireTaches,
   lireVideos,
   statsDeals,
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
 
   try {
     // En parallèle : ces lectures ne dépendent pas les unes des autres.
-    const [taches, journee, captures, videos, contacts, deals, habitudes, serie, blocages, ordreTaches] =
+    const [taches, journee, captures, videos, contacts, deals, habitudes, serie, blocages, ordreTaches, gelees] =
       await Promise.all([
         lireTaches(),
         lireJour(jour),
@@ -62,12 +63,19 @@ export async function GET(req: Request) {
         calculerSerie(jour),
         lireBlocages(),
         lireOrdreTaches(),
+        lireTachesGelees(),
       ]);
 
     return NextResponse.json({
       connecte: true,
       jour,
-      taches: trierSelon(versTaches(taches), ordreTaches),
+      // Le gel est marqué ICI, sur la liste déjà triée : il vit sur la
+      // sentinelle et non dans la table `tasks`, `versTaches` ne peut donc pas
+      // le connaître.
+      taches: trierSelon(versTaches(taches), ordreTaches).map((t) => ({
+        ...t,
+        gelee: gelees.includes(t.id),
+      })),
       habitudes,
       serie,
       blocages,

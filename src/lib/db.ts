@@ -5,7 +5,7 @@ import { REAL_DATA } from "./data-real";
 import { NIVEAUX, niveauDepuisUrgence } from "./types";
 import { localDateKey } from "./local-date";
 import { chiffrerJourStocke, jourALaisseUneTrace } from "./xp";
-import { JOUR_SENTINELLE, majSentinelle } from "./sentinelle";
+import { JOUR_SENTINELLE, lireSentinelle, majSentinelle } from "./sentinelle";
 import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
 
 /**
@@ -1294,6 +1294,48 @@ export async function lireOrdreTaches(): Promise<string[]> {
 
 export async function ecrireOrdreTaches(ordreTaches: string[]): Promise<void> {
   await majSentinelle({ ordreTaches });
+}
+
+/**
+ * LES TÂCHES GELÉES — celles qui reviennent tous les jours.
+ *
+ * « Poster sur Snap et Facebook » n'est pas une tâche qu'on finit : c'est une
+ * tâche qu'on refait. Cochée le soir, elle disparaissait au passage au jour
+ * suivant avec toutes les autres, et il fallait la retaper chaque matin.
+ * Gelée, elle est simplement décochée et reste à sa place.
+ *
+ * Une liste d'identifiants sur la sentinelle, comme l'ordre des tâches : la
+ * table `tasks` n'a pas de colonne pour ça et aucune migration n'est possible
+ * (le jeton d'accès a été révoqué).
+ *
+ * Bornée à 60 : une todo dont la moitié est quotidienne n'est plus une todo,
+ * c'est une journée type — et celle-là existe déjà, dans son onglet.
+ */
+const MAX_GELEES = 60;
+
+export async function lireTachesGelees(): Promise<string[]> {
+  const brut = (await lireSentinelle()).tachesGelees;
+  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * Gèle ou dégèle une tâche.
+ *
+ * Passe par l'écrivain vérifié de la sentinelle, comme tout le reste : geler
+ * une tâche pendant que l'OS enregistre l'ordre des tâches ne doit pas effacer
+ * l'un ou l'autre.
+ */
+export async function basculerTacheGelee(id: string, gelee: boolean): Promise<string[]> {
+  const actuelles = await lireTachesGelees();
+  const suivantes = gelee
+    ? actuelles.includes(id)
+      ? actuelles
+      : [id, ...actuelles].slice(0, MAX_GELEES)
+    : actuelles.filter((x) => x !== id);
+  if (suivantes.length !== actuelles.length) {
+    await majSentinelle({ tachesGelees: suivantes });
+  }
+  return suivantes;
 }
 
 export async function lireBlocages(): Promise<BlocageStocke[]> {
