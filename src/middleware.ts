@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCES_COOKIE, accesValide } from "@/lib/acces";
-import { estCheminOutil, estHoteOS } from "@/lib/hotes";
+import { HOTE_OUTILS, estCheminDemenage, estCheminOutil, estHoteOS } from "@/lib/hotes";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -158,6 +158,24 @@ export async function middleware(req: NextRequest) {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
+  } else if (estCheminDemenage(pathname)) {
+    /*
+     * L'ancienne porte, refermée en douceur.
+     *
+     * Les Tway'tools répondaient aussi sous l'adresse de l'OS, puisqu'ils y
+     * sont nés. Or c'est exactement ce qu'il fallait faire disparaître : un
+     * lien partagé en commentaire de vidéo ne doit pas porter le nom du
+     * tableau de bord personnel. Tout ce qui frappe encore ici est donc
+     * renvoyé vers l'adresse publique — rien n'est perdu, aucun lien déjà
+     * diffusé ne casse.
+     *
+     * 307 et non 308 : une redirection permanente se grave dans le cache des
+     * navigateurs et deviendrait très pénible à défaire. Celle-ci se révoque
+     * en une ligne, ce qui compte tant qu'un domaine tout neuf n'a pas fait
+     * ses preuves. La méthode HTTP est préservée dans les deux cas, ce dont
+     * le formulaire d'inscription a besoin.
+     */
+    return NextResponse.redirect(`https://${HOTE_OUTILS}${pathname}${search}`, 307);
   }
 
   if (
