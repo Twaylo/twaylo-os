@@ -1655,6 +1655,23 @@ details[open] .chevron-section {
 }
 
 /*
+ * Le bouton « Regrouper » : une vraie cible, pas une étiquette.
+ *
+ * Il vit dans l'en-tête de la carte, à côté du compteur, là où tout est
+ * minuscule. Sans hauteur minimale il faisait 14 px — visible, mais pas
+ * touchable.
+ */
+.bouton-regrouper {
+  min-height: 30px;
+}
+
+@media (hover: none) {
+  .bouton-regrouper {
+    min-height: 40px;
+  }
+}
+
+/*
  * LES JAUGES DE LA TODO — celle de la journée, et une par colonne.
  *
  * Un rapport « 3/8 » dit tout et ne montre rien : deux nombres à lire et à

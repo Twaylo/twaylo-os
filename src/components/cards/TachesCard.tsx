@@ -155,21 +155,35 @@ export function TachesCard() {
   /* ------------------------------------------------------------------ */
 
   /*
-   * L'ORDRE REGROUPÉ : les tâches de même nature deviennent voisines.
+   * L'ORDRE AFFICHÉ EST L'ORDRE ENREGISTRÉ. Point.
    *
-   * Trois scripts dispersés entre un appel et une facture, ce sont trois
-   * changements de contexte — et c'est le changement de contexte qui fatigue,
-   * pas le travail. Côte à côte, ils se font en une passe.
+   * Il ne l'était pas : la liste était re-triée à chaque rendu pour mettre les
+   * tâches de même nature côte à côte. L'intention était bonne — enchaîner
+   * trois scripts coûte moins cher que d'alterner script, appel, facture.
+   * L'effet, lui, était insupportable : on posait une tâche en tête, le tri se
+   * rejouait aussitôt, elle atterrissait deuxième, et DEUX AUTRES lignes qu'on
+   * n'avait pas touchées changeaient de place au passage. Mesuré, pas supposé.
    *
-   * Le tri est STABLE et se fait sur la première apparition de la famille :
-   * l'ordre rangé à la main est préservé à l'intérieur d'une famille, et tirer
-   * une tâche en tête de liste y emmène toute sa famille plutôt que de la
-   * laisser revenir en arrière toute seule.
-   *
-   * C'est l'ORDRE qui est trié, pas seulement l'affichage : le glissement lit
-   * la même liste, donc rien ne saute au moment où l'on pose le doigt.
+   * Un rangement à la main ne peut pas être arbitré par une règle : ou bien
+   * c'est la règle qui décide, ou bien c'est le doigt — jamais les deux, sinon
+   * le geste ne veut plus rien dire. C'est donc le doigt. Le regroupement
+   * reste, mais il devient un GESTE : le bouton « Regrouper » range la liste
+   * quand Twaylo le demande, et le résultat est un ordre enregistré comme un
+   * autre, que plus rien ne défait.
    */
-  const ordreGroupe = useMemo(() => {
+  const ordreAffiche = useMemo(
+    () => tasks.map((t) => t.id).filter((x): x is string => Boolean(x)),
+    [tasks],
+  );
+
+  /**
+   * L'ordre que donnerait un regroupement par famille.
+   *
+   * Tri STABLE sur la première apparition de la famille dans chaque niveau :
+   * ce qui est déjà rangé à la main le reste à l'intérieur d'une famille, et
+   * les familles gardent l'ordre où elles apparaissent.
+   */
+  const ordreRegroupe = useMemo(() => {
     const rang = new Map<string, number>();
     for (const [i, t] of tasks.entries()) {
       const cle = `${t.niveau ?? "secondaire"}:${familleDeTache(t.text)?.id ?? `seul-${i}`}`;
@@ -186,6 +200,9 @@ export function TachesCard() {
       .filter((x): x is string => Boolean(x));
   }, [tasks]);
 
+  /** Le bouton ne s'affiche que s'il a quelque chose à faire. */
+  const regroupementUtile = ordreRegroupe.join("|") !== ordreAffiche.join("|");
+
   /** Le niveau d'une tâche, tel qu'il est affiché — sans le glissement. */
   const niveauDe = (id: string): Niveau =>
     tasks.find((t) => t.id === id)?.niveau ?? "secondaire";
@@ -200,7 +217,7 @@ export function TachesCard() {
     grilleRef,
     glissementArmeRef,
   } = useGlisser<Niveau>({
-    ordre: ordreGroupe,
+    ordre: ordreAffiche,
     zoneDe: niveauDe,
     onDepot: (ids, changement) =>
       deposerTache(ids, changement ? { id: changement.id, niveau: changement.zone } : null),
@@ -357,8 +374,8 @@ export function TachesCard() {
         return [...suite, ...extras];
       })()
     : (() => {
-        const vus = new Set(ordreGroupe);
-        const suite = ordreGroupe
+        const vus = new Set(ordreAffiche);
+        const suite = ordreAffiche
           .map((id) => parIndex.get(id))
           .filter((e): e is { t: (typeof tasks)[number]; index: number } => Boolean(e))
           .map(({ t, index }) => ({ t, index, niveau: t.niveau ?? "secondaire" }));
@@ -388,31 +405,47 @@ export function TachesCard() {
    * hauteur de la liste. Renvoie, pour chaque position, la famille à annoncer
    * ou `null`.
    */
+  /**
+   * Où poser un intertitre de famille.
+   *
+   * Sur des SUITES, et seulement sur des suites d'au moins deux lignes. C'est
+   * la conséquence directe de l'ordre rendu à la main : deux scripts séparés
+   * par un appel ne forment plus un groupe, et prétendre le contraire
+   * afficherait deux fois « ✍️ ÉCRITURE 2 » dans la même colonne, pour deux
+   * lignes qui ne se touchent pas. Un intertitre annonce ce qui suit
+   * immédiatement, sinon il ment.
+   *
+   * Le compteur donne ce qu'il RESTE à faire dans la suite : c'est ce qui
+   * donne envie de l'enchaîner d'une traite, et il passe au vert une fois la
+   * suite bouclée.
+   */
   const enTetes = (
     items: typeof flat,
   ): ({ famille: NonNullable<ReturnType<typeof familleDeTache>>; combien: number; restent: number } | null)[] => {
-    const combien = new Map<string, number>();
-    const restent = new Map<string, number>();
-    for (const { t } of items) {
-      const f = familleDeTache(t.text);
-      if (!f) continue;
-      combien.set(f.id, (combien.get(f.id) ?? 0) + 1);
-      if (!t.done) restent.set(f.id, (restent.get(f.id) ?? 0) + 1);
+    const familles = items.map(({ t }) => familleDeTache(t.text));
+    const sorties: ({ famille: NonNullable<ReturnType<typeof familleDeTache>>; combien: number; restent: number } | null)[] =
+      items.map(() => null);
+
+    let i = 0;
+    while (i < items.length) {
+      const f = familles[i];
+      if (!f) {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j + 1 < items.length && familles[j + 1]?.id === f.id) j += 1;
+      const longueur = j - i + 1;
+      if (longueur >= 2) {
+        sorties[i] = {
+          famille: f,
+          combien: longueur,
+          restent: items.slice(i, j + 1).filter(({ t }) => !t.done).length,
+        };
+      }
+      i = j + 1;
     }
-    let precedente: string | null = null;
-    return items.map(({ t }) => {
-      const f = familleDeTache(t.text);
-      const groupe = f && (combien.get(f.id) ?? 0) >= 2 ? f : null;
-      const nouvelle = groupe && groupe.id !== precedente ? groupe : null;
-      precedente = groupe ? groupe.id : null;
-      return nouvelle
-        ? {
-            famille: nouvelle,
-            combien: combien.get(nouvelle.id) ?? 0,
-            restent: restent.get(nouvelle.id) ?? 0,
-          }
-        : null;
-    });
+    return sorties;
   };
 
   return (
@@ -462,11 +495,35 @@ export function TachesCard() {
           </span>
           TÂCHES CLÉS
         </div>
-        <div
-          className="font-mono text-[11.5px] font-extrabold"
-          style={{ color: "var(--color-mag-soft)" }}
-        >
-          {done}/{tasks.length}
+        <div className="flex items-center gap-[7px]">
+          {/*
+            REGROUPER — le tri par famille, à la demande.
+            Il se faisait tout seul à chaque rendu, et défaisait les
+            rangements à la main : on posait une tâche en tête, elle
+            atterrissait deuxième. Devenu un geste, il range quand on le
+            demande, et le résultat est un ordre enregistré que rien ne défait.
+          */}
+          {regroupementUtile && (
+            <button
+              type="button"
+              onClick={() => deposerTache(ordreRegroupe, null)}
+              title="Mettre les tâches de même nature côte à côte"
+              className="bouton-regrouper cursor-pointer rounded-[8px] px-[8px] text-[10px] font-black tracking-[0.06em] transition-all hover:brightness-125"
+              style={{
+                color: "var(--color-mag-soft)",
+                background: "rgba(255,61,139,0.12)",
+                border: "1px solid rgba(255,61,139,0.28)",
+              }}
+            >
+              ⇅ REGROUPER
+            </button>
+          )}
+          <div
+            className="font-mono text-[11.5px] font-extrabold"
+            style={{ color: "var(--color-mag-soft)" }}
+          >
+            {done}/{tasks.length}
+          </div>
         </div>
       </div>
 

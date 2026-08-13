@@ -340,26 +340,40 @@ export function TopRail() {
    * tant que la connexion n'a pas répondu, puis abonnés / vues 30 j / RPM. En
    * démo, le jeu factice.
    */
+  /*
+   * CHAQUE CHIFFRE EST VÉRIFIÉ, pas seulement comparé à `null`.
+   *
+   * Le test était `!== null` : une réponse où le champ MANQUE passait donc au
+   * travers, et `undefined.toLocaleString()` levait une erreur pendant le
+   * rendu. Une erreur de rendu React n'abîme pas un coin de l'écran, elle
+   * démonte l'arbre entier — l'OS devenait une page blanche. Un hoquet de
+   * l'API YouTube, une réponse tronquée par le réseau, et la todo disparaissait
+   * avec le reste. Trois compteurs décoratifs ne doivent jamais pouvoir faire
+   * ça.
+   */
+  const nombre = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+
   const tickers =
     !demoMode && youtube?.connecte
       ? [
           {
             label: "ABONNÉS",
-            valeur:
-              youtube.abonnesTotal !== null
-                ? youtube.abonnesTotal.toLocaleString("fr-FR")
-                : "—",
-            delta: youtube.abonnesGagnes ? `+${youtube.abonnesGagnes.toLocaleString("fr-FR")}` : "",
+            valeur: nombre(youtube.abonnesTotal)?.toLocaleString("fr-FR") ?? "—",
+            delta: nombre(youtube.abonnesGagnes)
+              ? `+${nombre(youtube.abonnesGagnes)!.toLocaleString("fr-FR")}`
+              : "",
           },
           {
             label: "VUES 30J",
-            valeur: youtube.vues.toLocaleString("fr-FR"),
+            valeur: nombre(youtube.vues)?.toLocaleString("fr-FR") ?? "—",
             delta: "",
           },
           {
             label: "RPM",
-            valeur:
-              youtube.rpm !== null ? `${youtube.rpm.toFixed(2).replace(".", ",")} €` : "—",
+            valeur: nombre(youtube.rpm) !== null
+              ? `${nombre(youtube.rpm)!.toFixed(2).replace(".", ",")} €`
+              : "—",
             delta: "",
           },
         ]
