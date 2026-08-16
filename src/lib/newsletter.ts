@@ -28,6 +28,23 @@ import { supabaseAdmin } from "./supabase";
 export type Statut = "en_attente" | "confirme" | "desabonne";
 
 /**
+ * D'où part l'inscription.
+ *
+ * L'adresse IP n'est pas là pour pister : c'est la PREUVE DE CONSENTEMENT.
+ * Le jour où quelqu'un affirme ne s'être jamais inscrit, c'est la seule
+ * chose qui dise quand et d'où la demande est partie.
+ *
+ * Le pays et la ville sont posés par Vercel dans les en-têtes de la requête.
+ * Aucun service tiers n'est appelé, aucune adresse n'est envoyée nulle part :
+ * la géolocalisation est faite par le réseau qui sert déjà la page.
+ */
+export type Provenance = {
+  ip: string | null;
+  pays: string | null;
+  ville: string | null;
+};
+
+/**
  * Une adresse plausible, sans plus.
  *
  * On ne cherche pas à valider une adresse par une expression régulière — le
@@ -95,6 +112,7 @@ export async function inscrire(
   prenom: string,
   source: string,
   langue: "fr" | "en",
+  provenance: Provenance = { ip: null, pays: null, ville: null },
 ): Promise<{ jeton: string; dejaInscrit: boolean }> {
   const adresse = normaliserEmail(email);
   const db = supabaseAdmin();
@@ -127,6 +145,9 @@ export async function inscrire(
       jeton_expire: null,
       source,
       langue,
+      ip: provenance.ip,
+      pays: provenance.pays,
+      ville: provenance.ville,
     },
     { onConflict: "email" },
   );
@@ -206,6 +227,9 @@ export type Inscrit = {
   statut: Statut;
   source: string;
   langue: string;
+  ip: string | null;
+  pays: string | null;
+  ville: string | null;
   created_at: string;
 };
 
@@ -220,7 +244,7 @@ export type Inscrit = {
 export async function listerInscrits(): Promise<Inscrit[]> {
   const { data, error } = await supabaseAdmin()
     .from("newsletter")
-    .select("prenom, email, statut, source, langue, created_at")
+    .select("prenom, email, statut, source, langue, ip, pays, ville, created_at")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Inscrit[];

@@ -91,6 +91,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ erreur: "indisponible" }, { status: 503 });
   }
 
+  /*
+   * D'où part l'inscription.
+   *
+   * Vercel pose lui-même le pays et la ville dans les en-têtes de chaque
+   * requête, à partir de son propre réseau. Aucun service de géolocalisation
+   * n'est appelé, aucune adresse IP n'est envoyée à qui que ce soit : on lit
+   * ce qui est déjà là. C'est la seule façon d'avoir cette information sans
+   * trahir la promesse « zéro tiers » faite aux visiteurs.
+   *
+   * La ville arrive encodée pour l'URL — « Saint%20Denis » — d'où le
+   * décodage, protégé : un en-tête mal formé ferait planter `decodeURI`.
+   */
+  const entete = (nom: string) => req.headers.get(nom) || null;
+  const decoder = (v: string | null) => {
+    if (!v) return null;
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v;
+    }
+  };
+  const provenance = {
+    ip: ip === "inconnue" ? null : ip,
+    pays: entete("x-vercel-ip-country"),
+    ville: decoder(entete("x-vercel-ip-city")),
+  };
+
   const langueSure = langue === "en" ? "en" : "fr";
   const sourceSure =
     typeof source === "string" && /^[a-z0-9-]{1,40}$/.test(source) ? source : "inconnue";
@@ -120,7 +147,7 @@ export async function POST(req: Request) {
   for (let essai = 0; essai < 2 && !enregistre; essai += 1) {
     try {
       if (essai > 0) await new Promise((r) => setTimeout(r, 400));
-      const resultat = await inscrire(email, prenomSur, sourceSure, langueSure);
+      const resultat = await inscrire(email, prenomSur, sourceSure, langueSure, provenance);
       jeton = resultat.jeton;
       enregistre = true;
     } catch (erreur) {

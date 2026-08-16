@@ -32,6 +32,26 @@ export const dynamic = "force-dynamic";
 const echapper = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/**
+ * Le drapeau d'un pays, à partir de son code à deux lettres.
+ *
+ * Les deux lettres sont décalées vers les « indicateurs régionaux » d'Unicode :
+ * « FR » devient 🇫🇷. Aucune image, aucune bibliothèque — le système dessine.
+ */
+function drapeau(code: string | null): string {
+  if (!code || !/^[A-Za-z]{2}$/.test(code)) return "";
+  return String.fromCodePoint(
+    ...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65),
+  );
+}
+
+/** « FR · Paris », ou ce qu'on a. */
+function lieu(l: Inscrit): string {
+  const morceaux = [l.pays, l.ville].filter(Boolean);
+  if (!morceaux.length) return "—";
+  return `${drapeau(l.pays)} ${morceaux.join(" · ")}`.trim();
+}
+
 const jour = (iso: string) =>
   new Intl.DateTimeFormat("fr-FR", {
     day: "numeric",
@@ -47,12 +67,25 @@ function page(lignes: Inscrit[]): string {
   const partis = lignes.length - inscrits.length;
   const nombre = new Intl.NumberFormat("fr-FR");
 
+  /* D'où viennent les inscrits, du pays le plus représenté au moins. */
+  const parPays = new Map<string, number>();
+  for (const l of inscrits) {
+    if (l.pays) parPays.set(l.pays, (parPays.get(l.pays) ?? 0) + 1);
+  }
+  const resume = [...parPays.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([code, n]) => `${drapeau(code)} ${echapper(code)} ${n}`)
+    .join(" · ");
+
   const rangees = lignes
     .map(
       (l) => `<tr${l.statut === "desabonne" ? ' class="parti"' : ""}>
       <td>${echapper(l.prenom ?? "—")}</td>
       <td class="mail">${echapper(l.email)}</td>
       <td>${echapper(l.source)}</td>
+      <td class="lieu">${echapper(lieu(l))}</td>
+      <td class="ip">${echapper(l.ip ?? "—")}</td>
       <td class="date">${jour(l.created_at)}</td>
       <td>${l.statut === "desabonne" ? "désabonné" : "inscrit"}</td>
     </tr>`,
@@ -86,6 +119,9 @@ function page(lignes: Inscrit[]): string {
   .mail { font-family:ui-monospace,Menlo,monospace; font-size:13px }
   .date, td:last-child { color:var(--faible); white-space:nowrap }
   .parti td { opacity:.45 }
+  .pays { margin:-16px 0 22px; color:var(--doux); font-size:14px; letter-spacing:.02em }
+  .lieu { white-space:nowrap }
+  .ip { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--faible) }
   .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 20px }
   .bouton.second { background:transparent; color:var(--doux); border:1px solid var(--bord);
                    font:600 15px/1 system-ui,sans-serif; cursor:pointer }
@@ -95,13 +131,17 @@ function page(lignes: Inscrit[]): string {
   .verdict[data-ton="mal"] { border-color:#ff7a6b; background:rgba(255,122,107,.08); color:#ffd2cc }
   .vide { padding:34px; text-align:center; color:var(--faible);
           background:var(--surface); border:1px solid var(--bord); border-radius:12px }
-  @media (max-width:640px){ .date{display:none} th:nth-child(4){display:none} }
+  /* Sur téléphone, on garde l'essentiel : prénom, adresse, lieu. */
+  @media (max-width:760px){
+    .date, .ip, th:nth-child(5), th:nth-child(6) { display:none }
+  }
 </style></head>
 <body><div class="large">
 <h1>Liste de diffusion</h1>
 <p class="sous"><span class="compte">${nombre.format(inscrits.length)}</span> inscrit${inscrits.length > 1 ? "s" : ""}${
     partis ? ` · ${nombre.format(partis)} désabonné${partis > 1 ? "s" : ""}` : ""
   }</p>
+${resume ? `<p class="pays">${resume}</p>` : ""}
 <p class="actions">
   <a class="bouton" href="/liste?csv=1">Télécharger en CSV</a>
   <button class="bouton second" id="essai" type="button">Tester l'enregistrement</button>
@@ -110,7 +150,7 @@ function page(lignes: Inscrit[]): string {
 ${
   lignes.length
     ? `<table>
-  <thead><tr><th>Prénom</th><th>Adresse</th><th>Venu de</th><th>Inscrit le</th><th>État</th></tr></thead>
+  <thead><tr><th>Prénom</th><th>Adresse</th><th>Venu de</th><th>Où</th><th>IP</th><th>Inscrit le</th><th>État</th></tr></thead>
   <tbody>
 ${rangees}
   </tbody>
@@ -209,8 +249,28 @@ export async function GET(req: Request) {
 
   if (csv) {
     const fichier = versCsv(
-      ["Prénom", "Adresse e-mail", "Statut", "Source", "Langue", "Inscrit le"],
-      lignes.map((l) => [l.prenom, l.email, l.statut, l.source, l.langue, l.created_at]),
+      [
+        "Prénom",
+        "Adresse e-mail",
+        "Statut",
+        "Source",
+        "Langue",
+        "Pays",
+        "Ville",
+        "Adresse IP",
+        "Inscrit le",
+      ],
+      lignes.map((l) => [
+        l.prenom,
+        l.email,
+        l.statut,
+        l.source,
+        l.langue,
+        l.pays,
+        l.ville,
+        l.ip,
+        l.created_at,
+      ]),
     );
     return new Response(fichier, {
       headers: {

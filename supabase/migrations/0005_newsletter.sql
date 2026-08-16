@@ -79,8 +79,26 @@ create index if not exists newsletter_jeton on newsletter (jeton) where jeton is
 -- peut ni la lire ni y écrire. Seule la clé de service, qui reste sur le
 -- serveur, y accède.
 -- ============================================================================
--- Ajoutée après coup : cette ligne rattrape les bases où la table existait
--- déjà sans le prénom. Sur une base neuve elle ne fait rien.
+-- Ajoutées après coup : ces lignes rattrapent les bases où la table existait
+-- déjà sans ces colonnes. Sur une base neuve elles ne font rien.
 alter table newsletter add column if not exists prenom text;
+
+-- ============================================================================
+-- D'où vient l'inscription.
+--
+-- L'adresse IP n'est pas là pour pister qui que ce soit : c'est la PREUVE DE
+-- CONSENTEMENT. En cas de contestation — « je ne me suis jamais inscrit » —
+-- c'est la seule chose qui permette de montrer quand et d'où la demande est
+-- partie. Tous les services de diffusion sérieux la conservent pour cette
+-- raison, et le RGPD la considère comme une donnée à conserver, pas à fuir.
+--
+-- Le pays et la ville viennent des en-têtes que Vercel ajoute lui-même à
+-- chaque requête. Aucun service tiers n'est appelé, aucune adresse IP n'est
+-- envoyée nulle part : la géolocalisation est faite par le réseau qui sert
+-- déjà la page.
+-- ============================================================================
+alter table newsletter add column if not exists ip text;
+alter table newsletter add column if not exists pays text;
+alter table newsletter add column if not exists ville text;
 
 alter table newsletter enable row level security;
