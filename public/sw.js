@@ -227,6 +227,20 @@ self.addEventListener("fetch", (evt) => {
   if (url.pathname === "/tway-tools" || url.pathname.startsWith("/tway-tools/")) return;
 
   /*
+   * La liste de diffusion non plus, et pour une raison qu'on a vue en vrai.
+   *
+   * C'est une navigation : elle tombait donc dans `page()`, qui sert le
+   * réseau d'abord et le cache en secours. Or le secours, quand la page n'est
+   * pas encore en cache, c'est la copie de « / » — l'écran de l'OS. Résultat
+   * observé : on ouvre « /liste », on obtient l'OS, et on croit que le lien
+   * est faux.
+   *
+   * Cette page n'a de toute façon aucun intérêt hors réseau : elle n'existe
+   * que pour lire ce que la base contient à l'instant.
+   */
+  if (url.pathname === "/liste") return;
+
+  /*
    * Les données ne sont jamais mises en cache.
    *
    * L'application garde déjà, elle-même, ce qu'il faut pour se peindre hors
