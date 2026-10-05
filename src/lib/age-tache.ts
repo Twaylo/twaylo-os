@@ -50,7 +50,7 @@ export type Vieillesse = { texte: string; couleur: string; titre: string };
  * survécu à deux clôtures de journée.
  *
  * Deux paliers seulement, parce que trois nuances de gravité sur une étiquette
- * de dix pixels ne se lisent pas : ambre = ça traîne, rose = ça pourrit.
+ * de dix pixels ne se lisent pas : ambre = ça traîne, rouge = ça pourrit.
  */
 export function vieillesse(jours: number | null): Vieillesse | null {
   if (jours === null || jours < 2) return null;
@@ -58,13 +58,13 @@ export function vieillesse(jours: number | null): Vieillesse | null {
   if (jours >= 5) {
     return {
       texte,
-      couleur: "var(--color-mag)",
+      couleur: "var(--p90-danger)",
       titre: `Notée il y a ${jours} jours — à faire ou à retirer`,
     };
   }
   return {
     texte,
-    couleur: "var(--color-amb)",
+    couleur: "var(--p90-alerte)",
     titre: `Notée il y a ${jours} jours`,
   };
 }

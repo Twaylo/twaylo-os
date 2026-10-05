@@ -17,38 +17,40 @@ import {
 import { ageEnJours, vieillesse } from "@/lib/age-tache";
 import { emojiVisible } from "@/lib/emoji-tache";
 import type { TacheVue } from "@/lib/p90-context";
-import { Bouton, Champ, Puce, formaterJour } from "@/components/p90/ui";
+import { Bouton, Champ, Etiq, Meta, Puce, formaterJour } from "@/components/p90/ui";
 
 /**
  * UNE LIGNE DE LA TODO, et son éditeur.
  *
- * La ligne montre ce qui se lit d'un coup d'œil : la case, le titre, et les
- * trois choses qui décident de son rang — objectif, responsable, échéance.
- * Tout le reste (impact, bloc, gel, suppression) vit dans le panneau ⋯, qu'on
- * ouvre quand on veut modifier, c'est-à-dire rarement.
+ * La ligne montre ce qui se lit d'un coup d'œil : la case, le titre, et une
+ * ligne de gris en dessous — objectif, qui, échéance. Tout le reste (impact,
+ * bloc, gel, suppression) vit dans le panneau ⋯, qu'on ouvre quand on veut
+ * modifier, c'est-à-dire rarement.
  *
  * Le découpage est délibéré : une liste de vingt lignes où chacune affiche sept
  * champs n'est plus une liste, c'est un tableur — et on ne lit pas un tableur
  * le matin en buvant son café.
+ *
+ * Même règle pour la couleur : elle ne sert qu'au RETARD. Une tâche datée
+ * d'aujourd'hui est le cas normal — une todo n'en contient quasiment que ça —
+ * et la peindre en rouge rendait l'écran rouge, donc illisible le jour où une
+ * ligne est vraiment en retard.
  */
 
-/** Le ton d'une échéance : ce qui doit alarmer, et ce qui ne doit pas. */
-function tonEcheance(jours: number | null): "neutre" | "accent" | "alerte" | "danger" {
-  if (jours === null) return "neutre";
-  if (jours < 0) return "danger";
-  if (jours === 0) return "danger";
-  if (jours <= 2) return "alerte";
-  if (jours <= 7) return "accent";
-  return "neutre";
-}
-
-function texteEcheance(echeance: string | undefined, jours: number | null): string {
-  if (!echeance) return "sans date";
+/**
+ * L'échéance en clair, ou rien du tout.
+ *
+ * Rien, pour une tâche sans date : afficher « sans date » sur les lignes qui
+ * n'en ont pas, c'est écrire partout qu'il ne se passe rien. L'absence se lit
+ * très bien comme une absence.
+ */
+function texteEcheance(echeance: string | undefined, jours: number | null): string | null {
+  if (!echeance) return null;
   if (jours === null) return formaterJour(echeance);
-  if (jours < 0) return `J${jours} · ${formaterJour(echeance)}`;
-  if (jours === 0) return `aujourd'hui`;
-  if (jours === 1) return `demain`;
-  return `J+${jours} · ${formaterJour(echeance)}`;
+  if (jours < 0) return `${-jours} j de retard`;
+  if (jours === 0) return "aujourd'hui";
+  if (jours === 1) return "demain";
+  return formaterJour(echeance);
 }
 
 export function LigneTache({
@@ -81,6 +83,8 @@ export function LigneTache({
   const [renomme, setRenomme] = useState<string | null>(null);
 
   const jours = joursRestants(tache.meta.echeance, aujourdhui);
+  const echeance = texteEcheance(tache.meta.echeance, jours);
+  const enRetard = jours !== null && jours < 0;
   const age = vieillesse(ageEnJours(tache.creeLe, aujourdhui));
   const emoji = emojiVisible(tache.titre);
 
@@ -99,7 +103,7 @@ export function LigneTache({
       >
         {/* La poignée : la seule zone qui ne défile pas sous le doigt. */}
         <span
-          className="poignee flex flex-none select-none items-center justify-center text-[13px] leading-none text-[var(--p90-texte-2)] opacity-40 transition-opacity group-hover:opacity-100"
+          className="poignee flex flex-none select-none items-center justify-center text-[13px] leading-none text-[var(--p90-texte-2)]"
           onPointerDown={(e) => {
             e.stopPropagation();
             surPointerDown(e, true);
@@ -161,34 +165,26 @@ export function LigneTache({
             />
           )}
 
-          {/* Les trois repères qui décident du rang, et rien d'autre. */}
-          <div className="mt-[3px] flex flex-wrap items-center gap-[4px]">
-            {tache.meta.objectif && (
-              <Puce ton={tache.meta.objectif === "momentum" ? "accent" : "neutre"}>
-                {nomObjectif(tache.meta.objectif)}
-              </Puce>
-            )}
-            {tache.meta.responsables.map((r) => (
-              <Puce key={r}>{r}</Puce>
-            ))}
-            <Puce ton={tonEcheance(jours)}>{texteEcheance(tache.meta.echeance, jours)}</Puce>
-            {tache.meta.bloque && <Puce ton="danger">bloqué</Puce>}
-            {tache.enCours && <Puce ton="accent">en cours</Puce>}
-            {tache.gelee && <Puce titre="Revient tous les jours">❄ quotidien</Puce>}
-            {tache.meta.impact === 3 && <Puce ton="alerte">impact fort</Puce>}
-            {age && !tache.faite && (
-              <Puce ton="alerte" titre={age.titre}>
-                {age.texte}
-              </Puce>
-            )}
-          </div>
+          {/* Le contexte, en gris, sur une seule ligne. */}
+          <Meta
+            className="mt-[2px]"
+            bouts={[
+              tache.meta.objectif ? { texte: nomObjectif(tache.meta.objectif) } : null,
+              tache.meta.responsables.length > 0 ? { texte: tache.meta.responsables.join(", ") } : null,
+              echeance ? { texte: echeance, ton: enRetard ? "danger" : "neutre", fort: enRetard } : null,
+              tache.meta.bloque ? { texte: "bloqué", ton: "danger", fort: true } : null,
+              tache.enCours ? { texte: "en cours", ton: "accent" } : null,
+              tache.gelee ? { texte: "❄", titre: "Revient tous les jours" } : null,
+              age && !tache.faite ? { texte: age.texte, ton: "alerte", titre: age.titre } : null,
+            ]}
+          />
         </div>
 
         <button
           type="button"
           onClick={() => surOuvrir(ouvert ? null : tache.id)}
           aria-label="Modifier la tâche"
-          className="flex-none cursor-pointer rounded-[6px] px-[7px] py-[3px] text-[13px] leading-none text-[var(--p90-texte-2)] opacity-0 transition-opacity group-hover:opacity-100"
+          className="modifier-ligne flex-none cursor-pointer rounded-[6px] px-[7px] py-[3px] text-[13px] leading-none text-[var(--p90-texte-2)]"
         >
           ⋯
         </button>
@@ -202,9 +198,7 @@ export function LigneTache({
       {ouvert && !tire && (
         <div className="carte-haute entree-ligne mt-[3px] space-y-[9px] p-[11px]">
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[72px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
-              Objectif
-            </span>
+            <Etiq l="w-[72px]">Objectif</Etiq>
             {OBJECTIFS_P90.map((o) => (
               <Puce
                 key={o.id}
@@ -230,9 +224,7 @@ export function LigneTache({
           </div>
 
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[72px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
-              Qui
-            </span>
+            <Etiq l="w-[72px]">Qui</Etiq>
             {RESPONSABLES.map((r) => (
               <Puce
                 key={r}
@@ -251,9 +243,7 @@ export function LigneTache({
           </div>
 
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[72px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
-              Bloc
-            </span>
+            <Etiq l="w-[72px]">Bloc</Etiq>
             {BLOCS.map((b) => (
               <Puce
                 key={b.id}
@@ -267,9 +257,7 @@ export function LigneTache({
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <span className="w-[72px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
-              Échéance
-            </span>
+            <Etiq l="w-[72px]">Échéance</Etiq>
             <Champ
               type="date"
               valeur={tache.meta.echeance ?? ""}
@@ -277,9 +265,7 @@ export function LigneTache({
               aria="Échéance"
               className="w-[150px]"
             />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
-              Impact
-            </span>
+            <Etiq l="">Impact</Etiq>
             {([1, 2, 3] as Impact[]).map((i) => (
               <Puce
                 key={i}

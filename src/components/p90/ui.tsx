@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode, Ref } from "react";
 /**
  * LES BRIQUES DU COCKPIT.
  *
- * Six composants, et volontairement six : l'ancien fichier d'interface en
+ * Sept composants, et volontairement sept : l'ancien fichier d'interface en
  * portait douze, dont des badges de format vidéo et un bouton de dictée pour
  * des onglets qui n'existent plus.
  *
@@ -48,11 +48,59 @@ export function Surtitre({ children, className = "" }: { children: ReactNode; cl
   return <div className={`surtitre ${className}`}>{children}</div>;
 }
 
+/** Les cinq tons du thème, nommés une fois et partagés par tout le cockpit. */
+export const TONS = {
+  neutre: "var(--p90-texte-2)",
+  accent: "var(--p90-accent)",
+  succes: "var(--p90-succes)",
+  alerte: "var(--p90-alerte)",
+  danger: "var(--p90-danger)",
+} as const;
+
+export type Ton = keyof typeof TONS;
+
 /**
- * Une étiquette. `ton` choisit sa couleur parmi les états du thème.
+ * UNE LIGNE DE CONTEXTE — du texte, pas des étiquettes.
+ *
+ * Une tâche porte cinq informations autour d'elle : son objectif, qui s'en
+ * occupe, son échéance, son état, son âge. Encadrées, ça fait cinq petites
+ * boîtes par ligne — cent boîtes sur un écran de vingt tâches, et l'intitulé,
+ * la seule chose qu'on vient lire, se noie au milieu.
+ *
+ * Elles redeviennent donc du gris séparé par des points médians. La règle qui
+ * en découle tient en une phrase : LE CADRE EST RÉSERVÉ À CE SUR QUOI ON
+ * CLIQUE — un filtre, un choix dans l'éditeur. Ce qui s'informe se lit, et
+ * seul ce qui alarme garde une couleur.
+ */
+export type Bout = { texte: string; ton?: Ton; titre?: string; fort?: boolean };
+
+export function Meta({ bouts, className = "" }: { bouts: (Bout | null | false | undefined)[]; className?: string }) {
+  const vivants = bouts.filter((b): b is Bout => Boolean(b));
+  if (vivants.length === 0) return null;
+  return (
+    <div className={`text-[10px] leading-[15px] text-[var(--p90-texte-2)] ${className}`}>
+      {vivants.map((b, i) => (
+        <span key={`${b.texte}-${i}`}>
+          {i > 0 && <span className="opacity-30"> · </span>}
+          <span
+            title={b.titre}
+            className={b.fort ? "font-semibold" : undefined}
+            style={b.ton && b.ton !== "neutre" ? { color: TONS[b.ton] } : undefined}
+          >
+            {b.texte}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Une étiquette qu'on allume. `ton` choisit sa couleur parmi les états du thème.
  *
  * `onClick` la rend cliquable — un filtre du Kanban est une puce qu'on allume,
- * pas une liste déroulante : un geste au lieu de trois.
+ * pas une liste déroulante : un geste au lieu de trois. Sans `onClick` elle
+ * n'est qu'un cadre autour d'un mot : préférer `Meta`.
  */
 export function Puce({
   children,
@@ -63,19 +111,13 @@ export function Puce({
   className = "",
 }: {
   children: ReactNode;
-  ton?: "neutre" | "accent" | "succes" | "alerte" | "danger";
+  ton?: Ton;
   actif?: boolean;
   onClick?: () => void;
   titre?: string;
   className?: string;
 }) {
-  const couleur = {
-    neutre: "var(--p90-texte-2)",
-    accent: "var(--p90-accent)",
-    succes: "var(--p90-succes)",
-    alerte: "var(--p90-alerte)",
-    danger: "var(--p90-danger)",
-  }[ton];
+  const couleur = TONS[ton];
 
   const style: CSSProperties = {
     color: actif ? "var(--p90-fond)" : couleur,
@@ -97,6 +139,21 @@ export function Puce({
     <button type="button" onClick={onClick} title={titre} className={`${classes} cursor-pointer hover:brightness-125`} style={style}>
       {children}
     </button>
+  );
+}
+
+/**
+ * L'intitulé d'une rangée de réglages — « Objectif », « Qui », « Bloc ».
+ *
+ * Il existait en six exemplaires, chacun avec sa propre largeur fixe et sa
+ * propre suite de classes : trois rangées d'un même panneau ne s'alignaient
+ * pas tout à fait, ce qui se voit sans qu'on sache pourquoi.
+ */
+export function Etiq({ children, l = "w-[62px]" }: { children: ReactNode; l?: string }) {
+  return (
+    <span className={`surtitre flex-none ${l}`} style={{ letterSpacing: "0.08em" }}>
+      {children}
+    </span>
   );
 }
 
@@ -183,7 +240,18 @@ export function Bouton({
   );
 }
 
-/** Un champ de saisie, à l'allure du thème. */
+/**
+ * Un champ de saisie.
+ *
+ * Ses couleurs viennent de `.champ`, en CSS, et non d'un `style` en ligne :
+ * un style en ligne l'emporte sur toute classe, donc sur le `:focus` — le
+ * liseré vert du champ actif ne s'allumait jamais.
+ *
+ * `fantome` l'efface tant qu'on n'écrit pas dedans. La todo en affiche un par
+ * bloc, soit quatre en permanence : quatre boîtes vides encadrées pèsent plus
+ * lourd à l'œil que les tâches qu'elles servent à créer. Réduit à une ligne
+ * grise, le champ redevient un champ dès qu'on le touche.
+ */
 export function Champ({
   valeur,
   onChange,
@@ -192,6 +260,7 @@ export function Champ({
   onBlur,
   onKeyDown,
   autoFocus = false,
+  fantome = false,
   className = "",
   aria,
 }: {
@@ -202,6 +271,7 @@ export function Champ({
   onBlur?: () => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   autoFocus?: boolean;
+  fantome?: boolean;
   className?: string;
   aria?: string;
 }) {
@@ -215,13 +285,7 @@ export function Champ({
       autoFocus={autoFocus}
       placeholder={placeholder}
       aria-label={aria}
-      className={`min-w-0 rounded-[8px] px-[9px] py-[7px] text-[13px] outline-none transition-all placeholder:text-[var(--p90-texte-2)] placeholder:opacity-50 focus:border-[var(--p90-accent)] ${className}`}
-      style={{
-        background: "var(--p90-fond)",
-        border: "1px solid var(--p90-bord)",
-        color: "var(--p90-texte)",
-        transitionDuration: "var(--p90-vitesse)",
-      }}
+      className={`champ ${fantome ? "champ-fantome" : ""} min-w-0 rounded-[8px] px-[9px] py-[7px] text-[13px] outline-none placeholder:text-[var(--p90-texte-2)] placeholder:opacity-50 ${className}`}
     />
   );
 }

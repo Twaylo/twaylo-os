@@ -3,15 +3,13 @@
 import { useMemo, useState } from "react";
 import {
   OBJECTIFS_P90,
-  P90_FIN,
-  P90_OUVERTURE,
   ecartJours,
   progression,
   tresorerie,
   type ObjectifP90,
 } from "@/lib/p90";
 import { useCockpit, type ObjectifVue } from "@/lib/p90-context";
-import { Barre, Bouton, Carte, Champ, Euros, Puce, Surtitre, formaterJour, formaterNombre } from "@/components/p90/ui";
+import { Barre, Bouton, Carte, Champ, Euros, formaterJour, formaterNombre } from "@/components/p90/ui";
 
 /**
  * LES OBJECTIFS — cinq chiffres, et ce qui reste à faire pour les atteindre.
@@ -105,11 +103,12 @@ function BlocObjectif({
         <div className="min-w-0">
           <div className="flex items-center gap-[7px]">
             <span
-              className="nombres flex-none rounded-[6px] px-[5px] text-[10px] font-bold leading-[18px]"
+              className="nombres flex-none text-center text-[10px] font-bold leading-[18px]"
               style={{
-                color: def.rang === 1 ? "#0b0b0c" : "var(--p90-texte-2)",
+                width: 18,
+                borderRadius: 5,
+                color: def.rang === 1 ? "var(--p90-fond)" : "var(--p90-texte-2)",
                 background: def.rang === 1 ? "var(--p90-accent)" : "transparent",
-                border: `1px solid ${def.rang === 1 ? "var(--p90-accent)" : "var(--p90-bord)"}`,
               }}
               title={def.rang === 1 ? "Objectif n°1 : il pèse le plus dans la priorisation" : `Rang ${def.rang}`}
             >
@@ -152,7 +151,7 @@ function BlocObjectif({
       <div className="mt-[9px] flex flex-wrap items-center gap-[7px]">
         {tresor ? (
           <span className="text-[11px] text-[var(--p90-texte-2)]">
-            Calculée depuis les OP passées en « Payé » — rien à saisir ici.
+            Déduite des OP payées.
           </span>
         ) : saisie === null ? (
           <Bouton onClick={() => setSaisie(suivi?.valeur ?? "")} titre="Mettre à jour le chiffre atteint">
@@ -182,7 +181,6 @@ function BlocObjectif({
 
       {/* Les jalons, cochables. */}
       <div className="mt-[9px] space-y-[3px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
-        <Surtitre>Jalons</Surtitre>
         {def.jalons.map((j) => {
           const fait = Boolean(coches.get(j.texte));
           const jours = j.date ? ecartJours(aujourdhui, j.date) : null;
@@ -210,20 +208,24 @@ function BlocObjectif({
               </span>
               <span className={`min-w-0 flex-1 text-[12px] ${fait ? "line-through opacity-40" : ""}`}>{j.texte}</span>
               {j.date && (
-                <Puce ton={fait ? "succes" : jours !== null && jours < 0 ? "danger" : jours !== null && jours <= 7 ? "alerte" : "neutre"}>
+                <span
+                  className="nombres flex-none text-[10px]"
+                  style={{
+                    color:
+                      fait || jours === null
+                        ? "var(--p90-texte-2)"
+                        : jours < 0
+                          ? "var(--p90-danger)"
+                          : "var(--p90-texte-2)",
+                  }}
+                >
                   {formaterJour(j.date)}
-                </Puce>
+                </span>
               )}
             </button>
           );
         })}
       </div>
-
-      {def.id === "momentum" && (
-        <div className="mt-[7px] text-[10px] text-[var(--p90-texte-2)] opacity-70">
-          Ouverture le {formaterJour(P90_OUVERTURE)} au soir · tout se juge au {formaterJour(P90_FIN)}.
-        </div>
-      )}
     </Carte>
   );
 }

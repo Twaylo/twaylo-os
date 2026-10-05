@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { decoderMeta, nomObjectif } from "@/lib/p90";
 import { useCockpit } from "@/lib/p90-context";
-import { Bouton, Carte, Puce, Surtitre, Vide } from "@/components/p90/ui";
+import { Bouton, Carte, Meta, Surtitre, Vide } from "@/components/p90/ui";
 
 /**
  * LES OUBLIÉS — la sauvegarde.
@@ -69,11 +69,8 @@ export function OubliesView() {
     <div className="entree-vue space-y-[13px]">
       <Carte>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Surtitre>Oubliés — la sauvegarde</Surtitre>
+          <Surtitre>Supprimé de la todo</Surtitre>
           <span className="nombres text-[11px] text-[var(--p90-texte-2)]">{liste?.length ?? 0}</span>
-        </div>
-        <div className="mt-[3px] text-[11px] text-[var(--p90-texte-2)]">
-          Tout ce qui est supprimé de la todo arrive ici. Rien ne s&apos;y range tout seul.
         </div>
 
         {liste === null && <Vide>Lecture…</Vide>}
@@ -84,12 +81,16 @@ export function OubliesView() {
             const meta = decoderMeta(o.categorie);
             return (
               <div key={o.id} className="carte-haute flex flex-wrap items-center gap-[7px] p-[9px]">
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{o.titre}</span>
-                {meta.objectif && <Puce>{nomObjectif(meta.objectif)}</Puce>}
-                {meta.responsables.map((r) => (
-                  <Puce key={r}>{r}</Puce>
-                ))}
-                <Puce titre="Depuis combien de jours elle dort ici">{o.jours} j</Puce>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-medium">{o.titre}</div>
+                  <Meta
+                    bouts={[
+                      meta.objectif ? { texte: nomObjectif(meta.objectif) } : null,
+                      meta.responsables.length > 0 ? { texte: meta.responsables.join(", ") } : null,
+                      { texte: `ici depuis ${o.jours} j` },
+                    ]}
+                  />
+                </div>
                 <Bouton onClick={() => void reprendre(o.id)}>Remettre dans la todo</Bouton>
                 {confirme === o.id ? (
                   <>
