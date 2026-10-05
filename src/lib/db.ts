@@ -129,11 +129,21 @@ export async function lireTaches(): Promise<TacheDB[]> {
 
   if (error) throw error;
   const vivantes = (data ?? []) as TacheDB[];
-  if (vivantes.length > 0) return vivantes;
 
-  // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
-  if (await dejaSeme("p90TachesSemees")) return [];
-  if (await semisInterdit("p90TachesSemees")) return [];
+  /*
+   * LE DRAPEAU DÉCIDE, PAS LE VIDE DE LA TABLE.
+   *
+   * L'ancien semis ne partait que sur une table vide. Or la todo de Twaylo
+   * n'est pas vide : elle porte ses tâches du moment. Le plan des 90 jours ne
+   * serait donc jamais arrivé, et le cockpit se serait ouvert sans les
+   * vingt-six échéances qui le justifient.
+   *
+   * Semé une fois, marqué sur la sentinelle, et jamais rejoué : vider
+   * délibérément sa liste reste possible, le plan ne repousse pas. Les tâches
+   * déjà là ne sont pas touchées — rien n'est remplacé, le plan s'ajoute.
+   */
+  if (await dejaSeme("p90TachesSemees")) return vivantes;
+  if (await semisInterdit("p90TachesSemees")) return vivantes;
 
   const moi = await uid();
   const { error: erreurSemis } = await db.from("tasks").upsert(
@@ -165,10 +175,17 @@ export async function lireTaches(): Promise<TacheDB[]> {
    * Les 26 lignes partent dans un seul `upsert` : leurs `created_at` sont à la
    * milliseconde près identiques et leur ordre de retour n'est pas garanti. Le
    * plan est rangé par échéance — l'écrire dans la liste d'ordre fait que la
-   * première todo de Twaylo s'ouvre dans l'ordre du calendrier.
+   * todo s'ouvre dans l'ordre du calendrier.
+   *
+   * EN TÊTE de l'ordre existant, jamais à sa place : écraser la liste ferait
+   * repartir toutes les tâches déjà rangées à la main tout en bas, dans leur
+   * ordre de création. Le plan arrive devant, le reste garde sa place.
    */
   try {
-    await ecrireOrdreTaches(SEMIS_TACHES.map((t) => uuidStable(moi, t.titre)));
+    const existant = await lireOrdreTaches();
+    const semees = SEMIS_TACHES.map((t) => uuidStable(moi, t.titre));
+    const dejaLa = new Set(semees);
+    await ecrireOrdreTaches([...semees, ...existant.filter((x) => !dejaLa.has(x))]);
   } catch (err) {
     console.error("[taches] ordre du semis impossible :", err);
   }
@@ -883,10 +900,11 @@ export async function majObjectifP90(
  */
 export async function lireDealsP90(): Promise<DealDB[]> {
   const existantes = await lireDeals();
-  if (existantes.length > 0) return existantes;
 
-  if (await dejaSeme("p90OpsSemees")) return [];
-  if (await semisInterdit("p90OpsSemees")) return [];
+  // Le drapeau décide, pas le vide de la table : voir `lireTaches`. Les deals
+  // déjà saisis restent, les trois OP du plan s'ajoutent une seule fois.
+  if (await dejaSeme("p90OpsSemees")) return existantes;
+  if (await semisInterdit("p90OpsSemees")) return existantes;
 
   const moi = await uid();
   const { error } = await supabaseAdmin()

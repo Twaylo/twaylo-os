@@ -441,6 +441,23 @@ export function useGlisser<Z extends string>({
   useEffect(() => {
     if (!dragId) return;
     let derniere: string | null = null;
+    /**
+     * De quel CÔTÉ de cette ligne, et pas seulement laquelle.
+     *
+     * Le garde ne retenait que l'identifiant visé. Or « au-dessus de la
+     * première ligne » et « en dessous de la première ligne » visent la MÊME
+     * ligne : une fois la cible posée depuis le bas, remonter au-dessus ne
+     * changeait plus rien — le garde concluait « même cible » et n'appliquait
+     * pas le déplacement.
+     *
+     * Conséquence exacte, mesurée au doigt sur un écran de 390 px : amener une
+     * tâche en TÊTE de sa colonne, c'est-à-dire la faire passer par-dessus une
+     * seule voisine, ne marchait pas. La ligne revenait à sa place, et rien
+     * n'était écrit. C'est précisément le « les éléments se déposent pas bien »
+     * resté inexpliqué — les tests d'alors vérifiaient la colonne d'arrivée,
+     * jamais la position exacte.
+     */
+    let derniereApres: boolean | null = null;
     let relache = false;
 
     /**
@@ -537,8 +554,9 @@ export function useGlisser<Z extends string>({
        * vise clairement celle d'à côté.
        */
       const c = cibleSous(pointerRef.current.x, centreCarte);
-      if (c && (c.id !== derniere || c.zone !== zoneRef.current)) {
+      if (c && (c.id !== derniere || c.apres !== derniereApres || c.zone !== zoneRef.current)) {
         derniere = c.id;
+        derniereApres = c.apres;
         aReordonneRef.current = true;
         // Colonne vide : on ne réordonne rien, on change juste de colonne.
         if (c.id) {

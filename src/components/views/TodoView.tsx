@@ -68,7 +68,16 @@ export function TodoView() {
     cloturer,
   } = useCockpit();
 
-  const [vue, setVue] = useState<Vue>("aujourdhui");
+  /*
+   * « Semaine » par défaut, pas « Aujourd'hui ».
+   *
+   * Au 5 octobre, la vue du jour ne contient que les trois chantiers déjà
+   * lancés : un écran presque vide pour qui ouvre sa todo quarante fois par
+   * jour, et qui donne l'impression que l'OS a perdu la liste. La semaine, en
+   * revanche, est exactement ce qu'une todo montre — et le jour reste à une
+   * pression de doigt.
+   */
+  const [vue, setVue] = useState<Vue>("semaine");
   const [saisie, setSaisie] = useState<Record<string, string>>({});
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [entree, setEntree] = useState(true);
@@ -208,7 +217,19 @@ export function TodoView() {
     setSaisie((p) => ({ ...p, [bloc]: "" }));
 
     const lignes = lignesCollees(texte);
-    const meta: Partial<MetaTache> = {};
+
+    /*
+     * UNE TÂCHE NAÎT DATÉE D'AUJOURD'HUI.
+     *
+     * Sans date, elle tombait hors de la vue du jour ET hors de la semaine :
+     * on tapait « Appeler le fixeur », la ligne partait bien en base, et
+     * l'écran n'en montrait rien. Le pire défaut possible pour une todo — on
+     * croit avoir noté, on ne voit rien.
+     *
+     * La date est de toute façon juste : on l'ajoute dans le bloc horaire
+     * d'aujourd'hui, donc c'est pour aujourd'hui. Un geste la repousse.
+     */
+    const meta: Partial<MetaTache> = { echeance: aujourdhui };
     for (const ligne of lignes.length > 0 ? lignes : [texte]) {
       const ok = await ajouterTache(ligne, meta, bloc);
       // Un échec s'affiche en bandeau et conserve le texte : inutile d'enchaîner
@@ -288,6 +309,9 @@ export function TodoView() {
         </Puce>
         <Puce actif={vue === "semaine"} ton="accent" onClick={() => setVue("semaine")}>
           Semaine
+        </Puce>
+        <Puce actif={vue === "tout"} ton="accent" onClick={() => setVue("tout")}>
+          Tout
         </Puce>
         <span className="nombres text-[11px] text-[var(--p90-texte-2)]">
           {filtrees.length} tâche{filtrees.length > 1 ? "s" : ""}

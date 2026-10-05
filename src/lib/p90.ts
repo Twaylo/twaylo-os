@@ -564,7 +564,7 @@ export function troisPriorites<T extends TacheP90>(taches: T[], aujourdhui: stri
 /* Les deux vues : Aujourd'hui et Semaine                              */
 /* ------------------------------------------------------------------ */
 
-export type Vue = "aujourdhui" | "semaine";
+export type Vue = "aujourdhui" | "semaine" | "tout";
 
 /**
  * Aujourd'hui : ce qui est dû aujourd'hui, ce qui est en retard, et ce qui est
@@ -590,7 +590,18 @@ export function dansSemaine(t: TacheP90, aujourdhui: string): boolean {
   return j === null || j <= 7;
 }
 
+/**
+ * Tout : rien n'est filtré.
+ *
+ * Troisième vue, ajoutée après coup et pour une raison précise. Les deux
+ * autres montrent sept jours au plus — or le plan va jusqu'au 31 décembre :
+ * « Clôture des précommandes », datée du 30 novembre, n'apparaissait NULLE
+ * PART dans la todo. Vingt tâches sur vingt-six invisibles, sans qu'on puisse
+ * les atteindre autrement que par le Kanban. Une todo qui cache ce qu'on y a
+ * mis n'est pas une todo.
+ */
 export function filtrerVue<T extends TacheP90>(taches: T[], vue: Vue, aujourdhui: string): T[] {
+  if (vue === "tout") return taches;
   const garde = vue === "aujourdhui" ? dansAujourdhui : dansSemaine;
   return taches.filter((t) => garde(t, aujourdhui));
 }
@@ -839,7 +850,7 @@ export const SEUIL_MONTANT = 3_000;
  * dans le navigateur, sur Vercel et dans les tests. Un seuil affiché est du
  * texte, pas un calcul.
  */
-export const SEUIL_MONTANT_TEXTE = "3 000 €";
+export const SEUIL_MONTANT_TEXTE = "3 000 €";
 
 /**
  * Une OP livrée dont on n'attend aucune date : l'argent est dehors et rien ne
@@ -868,7 +879,9 @@ export function alertesOp(op: Op, aujourdhui: string): Alerte[] {
   const sorties: Alerte[] = [];
   const retard = joursDeRetard(op, aujourdhui);
   if (retard > SEUIL_RETARD) {
-    sorties.push({ ton: "danger", texte: `Payé en retard de ${retard} jours` });
+    // « Payé en retard » se lisait comme si l'argent était arrivé : c'est
+    // exactement l'inverse. Il n'est pas arrivé, et il est attendu depuis.
+    sorties.push({ ton: "danger", texte: `Paiement en retard de ${retard} jours` });
   }
   if (paiementAInscrire(op)) {
     sorties.push({ ton: "alerte", texte: "Date de paiement à renseigner" });
