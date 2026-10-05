@@ -18,9 +18,6 @@ import {
  * publique sans que rien ne le signale — aucun test n'échouerait, la route
  * répondrait simplement à tout le monde. Ouvrir un chemin doit rester un geste
  * délibéré.
- *
- * Le webhook Telegram doit rester public : Telegram s'authentifie avec son
- * propre secret d'en-tête, pas avec le cookie de session.
  */
 const CHEMINS_PUBLICS = new Set([
   "/login",
@@ -28,7 +25,6 @@ const CHEMINS_PUBLICS = new Set([
   // Créer un OS : forcément ouvert, personne n'a encore de compte.
   "/api/auth/creer",
   "/api/auth/logout",
-  "/api/telegram/webhook",
   /*
    * Le manifeste et les icônes : ouverts, et il le FAUT.
    *
