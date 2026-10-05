@@ -20,6 +20,11 @@ create table if not exists newsletter (
   -- soient la même personne. L'index unique plus bas s'appuie dessus.
   email        text not null,
 
+  -- Le prénom, tel qu'il a été tapé. Il sert à s'adresser à quelqu'un par son
+  -- nom dans un envoi, rien de plus — et il reste facultatif en base : une
+  -- ligne importée d'ailleurs n'en aurait pas.
+  prenom       text,
+
   statut       text not null default 'en_attente'
                  check (statut in ('en_attente', 'confirme', 'desabonne')),
 
@@ -39,9 +44,26 @@ create table if not exists newsletter (
 );
 
 -- Une adresse, une seule ligne. Se réinscrire ne crée pas de doublon : le
--- code fait un « upsert » sur cette contrainte et renvoie un nouveau jeton.
-create unique index if not exists newsletter_email_unique
-  on newsletter (lower(email));
+-- code fait un « upsert » sur cette contrainte.
+--
+-- SUR LA COLONNE, PAS SUR « lower(email) », ET C'EST TOUT LE SUJET.
+--
+-- La première version indexait l'expression « lower(email) ». C'est le
+-- réflexe — il rend « Twaylo@ » et « twaylo@ » équivalents — et il rendait
+-- ici TOUTE inscription impossible : PostgreSQL exige que la cible d'un
+-- « ON CONFLICT (email) » corresponde à un index portant exactement cette
+-- colonne. Un index sur une expression ne correspond pas, et l'insertion
+-- échouait avec l'erreur 42P10 — dès la première, pas seulement en cas de
+-- doublon. Résultat : la porte s'ouvrait, et aucune adresse n'était gardée.
+--
+-- Rien n'est perdu au passage : le code range déjà l'adresse en minuscules
+-- avant d'écrire (voir « normaliserEmail »), donc l'unicité sur la colonne
+-- fait exactement le même travail.
+create unique index if not exists newsletter_email_key on newsletter (email);
+
+-- L'ancien index, devenu inutile : deux index pour la même garantie, dont un
+-- qui ne sert plus à rien.
+drop index if exists newsletter_email_unique;
 
 -- Les deux lectures fréquentes : « combien de confirmés ? » et « à qui
 -- appartient ce jeton ? ».
@@ -57,4 +79,26 @@ create index if not exists newsletter_jeton on newsletter (jeton) where jeton is
 -- peut ni la lire ni y écrire. Seule la clé de service, qui reste sur le
 -- serveur, y accède.
 -- ============================================================================
+-- Ajoutées après coup : ces lignes rattrapent les bases où la table existait
+-- déjà sans ces colonnes. Sur une base neuve elles ne font rien.
+alter table newsletter add column if not exists prenom text;
+
+-- ============================================================================
+-- D'où vient l'inscription.
+--
+-- L'adresse IP n'est pas là pour pister qui que ce soit : c'est la PREUVE DE
+-- CONSENTEMENT. En cas de contestation — « je ne me suis jamais inscrit » —
+-- c'est la seule chose qui permette de montrer quand et d'où la demande est
+-- partie. Tous les services de diffusion sérieux la conservent pour cette
+-- raison, et le RGPD la considère comme une donnée à conserver, pas à fuir.
+--
+-- Le pays et la ville viennent des en-têtes que Vercel ajoute lui-même à
+-- chaque requête. Aucun service tiers n'est appelé, aucune adresse IP n'est
+-- envoyée nulle part : la géolocalisation est faite par le réseau qui sert
+-- déjà la page.
+-- ============================================================================
+alter table newsletter add column if not exists ip text;
+alter table newsletter add column if not exists pays text;
+alter table newsletter add column if not exists ville text;
+
 alter table newsletter enable row level security;

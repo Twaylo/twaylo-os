@@ -3,32 +3,55 @@ import { createHash, randomBytes } from "node:crypto";
 import { supabaseAdmin } from "./supabase";
 
 /**
- * La liste de diffusion, en double confirmation.
+ * La liste de diffusion : prénom, adresse, et la porte s'ouvre.
  *
- * Double confirmation veut dire qu'une adresse ne compte pas tant que son
- * propriétaire n'a pas cliqué le lien reçu. Ce n'est pas une formalité : sans
- * elle, n'importe qui peut inscrire n'importe qui — et le premier réflexe
- * d'un visiteur pressé est de taper une adresse qui n'est pas la sienne pour
- * passer la porte. Une liste bâtie ainsi ne vaut rien et abîme la réputation
- * d'expéditeur, donc la délivrabilité de tous les envois suivants.
+ * POURQUOI PAS DE DOUBLE CONFIRMATION
+ *
+ * La première version exigeait un clic dans un courriel avant d'ouvrir quoi
+ * que ce soit. C'est la bonne pratique, et c'était le mauvais choix ici :
+ * elle impose un service d'envoi configuré — sans lui, PERSONNE n'entre. Un
+ * lien posé sous une vidéo qui amène dix mille personnes ne peut pas dépendre
+ * d'une clé d'API dont l'absence ferme tout, silencieusement. Et chaque étape
+ * intercalée entre le clic et la carte fait perdre du monde.
+ *
+ * L'inscription est donc immédiate, et le consentement est donné là où il
+ * doit l'être : sur le formulaire, en toutes lettres, avant d'appuyer. Le
+ * désabonnement reste possible en un clic, par un jeton permanent posé dans
+ * chaque envoi. C'est légal, c'est honnête, et ça n'a besoin de rien d'autre
+ * qu'une base de données.
  *
  * Le jeton n'est JAMAIS stocké en clair. On garde son empreinte, comme un mot
- * de passe : quelqu'un qui lirait la base ne pourrait ni confirmer une
- * adresse à la place de son propriétaire, ni fabriquer son désabonnement.
+ * de passe : quelqu'un qui lirait la base ne pourrait pas fabriquer le
+ * désabonnement de quelqu'un d'autre.
  */
 
 export type Statut = "en_attente" | "confirme" | "desabonne";
 
-/** Durée de vie du lien de confirmation. Assez pour un e-mail lu le soir. */
-const VALIDITE_HEURES = 48;
+/**
+ * D'où part l'inscription.
+ *
+ * L'adresse IP n'est pas là pour pister : c'est la PREUVE DE CONSENTEMENT.
+ * Le jour où quelqu'un affirme ne s'être jamais inscrit, c'est la seule
+ * chose qui dise quand et d'où la demande est partie.
+ *
+ * Le pays et la ville sont posés par Vercel dans les en-têtes de la requête.
+ * Aucun service tiers n'est appelé, aucune adresse n'est envoyée nulle part :
+ * la géolocalisation est faite par le réseau qui sert déjà la page.
+ */
+export type Provenance = {
+  ip: string | null;
+  pays: string | null;
+  ville: string | null;
+};
 
 /**
  * Une adresse plausible, sans plus.
  *
  * On ne cherche pas à valider une adresse par une expression régulière — le
  * format réel est bien plus permissif que ce qu'on imagine, et la seule
- * preuve qu'une adresse existe est qu'un message y arrive. C'est justement ce
- * que fait la confirmation. Ici on écarte seulement l'absurde.
+ * preuve qu'une adresse existe est qu'un message y arrive — ce qu'aucun
+ * formulaire ne saura jamais. Ici on écarte seulement l'absurde, et une
+ * adresse qui rebondit se retire d'elle-même au premier envoi.
  */
 export function adressePlausible(brut: string): boolean {
   const v = brut.trim();
@@ -47,20 +70,50 @@ export function normaliserEmail(brut: string): string {
   return brut.trim().toLowerCase();
 }
 
+/**
+ * Le prénom, nettoyé sans être corrigé.
+ *
+ * On retire les caractères de contrôle, on resserre les espaces et on borne
+ * la longueur — rien de plus. Pas de majuscule imposée, pas d'accent retiré,
+ * aucune « validation » du genre « un prénom ne contient pas de chiffre » :
+ * ce sont des règles fausses dès qu'on sort de sa propre langue, et le seul
+ * résultat serait de refuser des gens sur leur nom.
+ */
+export function nettoyerPrenom(brut: string): string {
+  return (
+    brut
+      // Les caractères de contrôle, désignés par leur code : les poser en
+      // clair dans la source rendrait ce fichier « binaire » pour les outils
+      // de recherche, et invisible dans une revue.
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60)
+  );
+}
+
+/** Un prénom utilisable : au moins une lettre, pas un espace ni un point. */
+export function prenomPlausible(brut: string): boolean {
+  const v = nettoyerPrenom(brut);
+  return v.length >= 2 && /\p{L}/u.test(v);
+}
+
 const empreinte = (jeton: string) => createHash("sha256").update(jeton).digest("hex");
 
 /**
- * Inscrit une adresse et rend le jeton à envoyer par courriel.
+ * Inscrit quelqu'un, tout de suite, et rend son jeton de désabonnement.
  *
- * Rend `null` si l'adresse est déjà confirmée : inutile de renvoyer un lien à
- * quelqu'un qui est déjà sur la liste, et le lui envoyer quand même
- * apprendrait à un inconnu qu'elle y figure.
+ * Le jeton n'expire plus : ce n'est plus un lien de confirmation à usage
+ * unique mais la clé permanente qui permettra de partir en un clic depuis
+ * n'importe quel envoi.
  */
 export async function inscrire(
   email: string,
+  prenom: string,
   source: string,
   langue: "fr" | "en",
-): Promise<{ jeton: string | null; dejaConfirme: boolean }> {
+  provenance: Provenance = { ip: null, pays: null, ville: null },
+): Promise<{ jeton: string; dejaInscrit: boolean }> {
   const adresse = normaliserEmail(email);
   const db = supabaseAdmin();
 
@@ -71,40 +124,44 @@ export async function inscrire(
     .maybeSingle();
   if (erreurLecture) throw erreurLecture;
 
-  if (existant?.statut === "confirme") return { jeton: null, dejaConfirme: true };
-
   const jeton = randomBytes(32).toString("base64url");
-  const expire = new Date(Date.now() + VALIDITE_HEURES * 3_600_000).toISOString();
 
   /*
-   * Un « upsert » sur l'adresse : se réinscrire ne crée pas de doublon, et
-   * relance simplement un jeton neuf. C'est le cas normal de quelqu'un qui
-   * n'a pas trouvé le premier message.
+   * Un « upsert » sur l'adresse : revenir ne crée pas de doublon.
    *
-   * Une adresse désabonnée qui se réinscrit repart en attente : elle doit
-   * reconfirmer, on ne la remet pas sur la liste sur sa seule parole.
+   * Une personne qui s'était désabonnée et qui remplit à nouveau le
+   * formulaire redevient inscrite. Elle vient de redonner son accord, en
+   * toutes lettres, sur cet écran : le lui refuser au nom d'un refus plus
+   * ancien reviendrait à décider à sa place.
    */
   const { error } = await db.from("newsletter").upsert(
     {
       email: adresse,
-      statut: "en_attente" satisfies Statut,
+      prenom: nettoyerPrenom(prenom),
+      statut: "confirme" satisfies Statut,
+      confirme_le: new Date().toISOString(),
+      desabonne_le: null,
       jeton: empreinte(jeton),
-      jeton_expire: expire,
+      jeton_expire: null,
       source,
       langue,
+      ip: provenance.ip,
+      pays: provenance.pays,
+      ville: provenance.ville,
     },
     { onConflict: "email" },
   );
   if (error) throw error;
 
-  return { jeton, dejaConfirme: false };
+  return { jeton, dejaInscrit: existant?.statut === "confirme" };
 }
 
 /**
- * Confirme une inscription à partir du jeton reçu par courriel.
+ * Confirme une inscription à partir d'un jeton.
  *
- * Le jeton est effacé au passage : un lien de confirmation ne sert qu'une
- * fois, et ne doit pas rester valable dans une boîte mail pendant des mois.
+ * Gardée pour les liens de confirmation partis avant le passage à
+ * l'inscription immédiate : ils doivent continuer de fonctionner. Elle ne
+ * sert plus à personne d'autre, et n'est plus sur le chemin de l'entrée.
  */
 export async function confirmer(jeton: string): Promise<{ ok: boolean; email?: string }> {
   if (!jeton) return { ok: false };
@@ -161,6 +218,50 @@ export async function desabonner(jeton: string): Promise<boolean> {
     .eq("id", data.id);
   if (erreurMaj) throw erreurMaj;
   return true;
+}
+
+/** Une ligne de la liste, telle qu'on la relit. */
+export type Inscrit = {
+  prenom: string | null;
+  email: string;
+  statut: Statut;
+  source: string;
+  langue: string;
+  ip: string | null;
+  pays: string | null;
+  ville: string | null;
+  created_at: string;
+};
+
+/**
+ * Toute la liste, du plus récent au plus ancien.
+ *
+ * Sans pagination, et c'est un choix : une liste de diffusion se lit en
+ * entier ou ne se lit pas. À dix mille adresses la réponse pèse moins d'un
+ * mégaoctet, et elle n'est demandée que depuis l'OS, par une seule personne.
+ * Paginer ici compliquerait l'export sans rien économiser d'utile.
+ */
+export async function listerInscrits(): Promise<Inscrit[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("newsletter")
+    .select("prenom, email, statut, source, langue, ip, pays, ville, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Inscrit[];
+}
+
+/**
+ * Retire complètement une adresse de la table.
+ *
+ * À ne pas confondre avec `desabonner`, qui garde la trace du refus. Celle-ci
+ * efface, et ne sert qu'à nettoyer derrière l'essai d'enregistrement.
+ */
+export async function supprimerInscrit(email: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("newsletter")
+    .delete()
+    .eq("email", normaliserEmail(email));
+  if (error) throw error;
 }
 
 /** Combien de personnes ont confirmé — le seul chiffre qui compte vraiment. */
