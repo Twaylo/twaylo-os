@@ -1,45 +1,62 @@
 @import "tailwindcss";
 
+/**
+ * LE THÈME DU COCKPIT PROJECT 90 : noir, et une pointe de lime.
+ *
+ * Un seul accent, aucun dégradé. La version précédente en avait sept couleurs
+ * et un dégradé signature : joli sur une page de présentation, illisible sur
+ * un tableau de bord qu'on ouvre quarante fois par jour — chaque carte criait
+ * aussi fort que les autres et plus rien ne ressortait.
+ *
+ * Le lime ne sert QU'À ce qui demande une action ou dit « c'est fait » (deux
+ * nuances de la même teinte, pas deux couleurs). L'ambre et le rouge sont
+ * éteints exprès : ce sont des signaux, pas de la décoration, et ils ne
+ * servent qu'au retard et au danger. Tout le reste est gris.
+ */
 @theme {
-  /* Surfaces */
-  --color-ink-0: #07121d;
-  --color-ink-1: #0d1a27;
-  --color-fg: #eef3f8;
+  --color-fond: #0b0b0c;
+  --color-surface: #141416;
+  --color-haute: #1c1c1f;
+  --color-bord: #2a2a2e;
+  --color-texte: #f4f4f5;
+  --color-texte-2: #a1a1aa;
+  --color-accent: #a3e635;
+  --color-accent-vif: #bef264;
+  --color-succes: #84cc16;
+  --color-alerte: #d6a550;
+  --color-danger: #e05c5c;
 
-  /* Accents — les 7 couleurs de la maquette */
-  --color-mag: #ff3d8b;
-  --color-cor: #ff7a3d;
-  --color-amb: #ffc63d;
-  --color-ver: #3ddc84;
-  --color-cya: #22d3ee;
-  --color-ble: #4f9cff;
-  --color-vio: #b06bff;
-
-  /* Variantes désaturées, utilisées pour les libellés de cartes */
-  --color-mag-soft: #ff6ba3;
-  --color-cor-soft: #e6926a;
-  --color-amb-soft: #e6c060;
-  --color-ver-soft: #5fd39a;
-  --color-cya-soft: #61c9db;
-  --color-ble-soft: #8bb4ee;
-  --color-vio-soft: #b48cf0;
-
-  --font-sans: var(--font-nunito), system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), monospace;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
 }
 
+/*
+ * Les mêmes valeurs en variables CSS simples.
+ *
+ * `p90.ts` renvoie des couleurs sous forme de `var(--p90-…)` — les colonnes du
+ * Kanban, les étapes d'une OP, le ton d'une alerte. Le domaine ne doit pas
+ * connaître les noms internes de Tailwind, et ces noms-là ne sont pas garantis
+ * d'un passage de version à l'autre.
+ */
 :root {
-  --panel-bg: rgba(255, 255, 255, 0.035);
-  --panel-border: rgba(255, 255, 255, 0.07);
+  --p90-fond: #0b0b0c;
+  --p90-surface: #141416;
+  --p90-haute: #1c1c1f;
+  --p90-bord: #2a2a2e;
+  --p90-texte: #f4f4f5;
+  --p90-texte-2: #a1a1aa;
+  --p90-accent: #a3e635;
+  --p90-accent-vif: #bef264;
+  --p90-succes: #84cc16;
+  --p90-alerte: #d6a550;
+  --p90-danger: #e05c5c;
 
-  /* Dégradé signature — repris du triangle play du logo. L'ambiance choisie
-     dans « Personnaliser » peut le redéfinir (voir lib/custom.ts). */
-  --grad: linear-gradient(100deg, #ff3d8b, #ffc63d 38%, #3ddc84 68%, #22d3ee);
+  --p90-rayon: 10px;
+  --p90-vitesse: 150ms;
 
-  /* Les trois halos du fond — redéfinis eux aussi par l'ambiance. */
-  --halo-1: rgba(255, 61, 139, 0.13);
-  --halo-2: rgba(34, 211, 238, 0.11);
-  --halo-3: rgba(255, 198, 61, 0.07);
+  /* Une ombre portée, douce, et c'est tout : pas de lueur colorée. */
+  --p90-ombre: 0 8px 24px -16px rgba(0, 0, 0, 0.9);
+
+  color-scheme: dark;
 }
 
 * {
@@ -48,43 +65,24 @@
 
 body {
   margin: 0;
-  background: var(--color-ink-0);
-  color: var(--color-fg);
+  background: var(--p90-fond);
+  color: var(--p90-texte);
   font-family: var(--font-sans);
   /*
    * PAS d'`overflow` ici. Ni `hidden`, ni `clip`.
    *
-   * Le corps de page en portait un pour rogner les halos du fond. Deux
-   * ennuis, et le second est celui qui se sentait au doigt :
-   *
-   * - `hidden` fait basculer l'axe vertical laissé en `visible` vers `auto` :
-   *   le corps de page devient une zone défilante imbriquée dans celle de la
-   *   fenêtre. C'est le défaut qu'on croyait avoir réglé en passant à `clip`.
-   * - `clip` évite ça sur Chrome, mais la valeur posée sur le corps de page
-   *   est PROPAGÉE à la fenêtre, et chaque moteur applique ses propres règles
-   *   à cette propagation. Se reposer là-dessus pour un simple effet
-   *   décoratif, c'est parier sur un coin obscur de la spécification.
-   *
-   * Les halos se rognent maintenant eux-mêmes, dans leur propre cadre (voir
-   * `Glow` dans Shell.tsx). Il ne reste donc plus rien à masquer ici, et la
-   * fenêtre est l'unique zone défilante de l'application.
+   * `hidden` fait basculer l'axe laissé en `visible` vers `auto` : le corps de
+   * page devient une zone défilante imbriquée dans la fenêtre, et sur WebKit le
+   * premier geste de défilement est mangé par ce conteneur intérieur. La
+   * fenêtre reste donc l'unique zone défilante.
    */
+  -webkit-font-smoothing: antialiased;
 }
 
 /*
- * La hauteur du cadre de l'application.
- *
- * `100vh` ment sur iPhone : cette unité vaut la hauteur de l'écran BARRES
- * MASQUÉES, alors que la barre d'adresse est visible à l'ouverture. Le cadre
- * était donc systématiquement plus haut que la surface réellement visible —
- * une centaine de pixels de défilement qui n'affichent rien, que le premier
- * geste dépense à rétracter la barre au lieu de faire descendre la page. Ce
- * geste « qui ne sert à rien » est exactement ce qu'on ressent comme un
- * défilement qui bloque et qu'il faut relancer.
- *
- * `100svh` est la hauteur visible la PLUS PETITE, barres comprises : le cadre
- * couvre l'écran sans jamais inventer de course en trop. La ligne `100vh` qui
- * précède reste le repli des navigateurs trop anciens pour connaître `svh`.
+ * `100vh` ment sur iPhone : il compte la barre d'adresse, qui disparaît au
+ * premier défilement. `100svh` prend la plus petite hauteur visible, celle qui
+ * ne bouge pas.
  */
 .cadre-appli {
   min-height: 100vh;
@@ -92,39 +90,34 @@ body {
 }
 
 ::selection {
-  background: rgba(63, 184, 207, 0.35);
+  background: rgba(163, 230, 53, 0.26);
+}
+
+/*
+ * Les chiffres en chasse fixe, partout où ils comptent.
+ *
+ * Un compte à rebours qui passe de 27 à 28 jours ne doit pas décaler le texte
+ * d'à côté, et une colonne de montants doit s'aligner sur l'unité. C'est le
+ * seul moyen de lire une colonne de chiffres sans la relire.
+ */
+.nombres {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 /* ------------------------------------------------------------------ */
-/* Ce qui sépare une page web d'une application, au doigt              */
+/* Ce qui sépare une application d'une page web, au doigt              */
 /* ------------------------------------------------------------------ */
 
 /*
- * Quatre détails que personne ne remarque quand ils sont là, et qui trahissent
- * une page web dès qu'ils manquent.
- *
- * `touch-callout` : un appui maintenu sur un bouton fait surgir le menu iOS
- *   « Copier / Partager ». Sur une case à cocher, c'est absurde — et c'est ce
- *   qui arrive quand le doigt s'attarde un peu.
- * `user-select` : sans ça, le même appui surligne le libellé en bleu. Une
- *   application native ne surligne pas ses boutons.
- * `touch-action: manipulation` : supprime le double-appui pour zoomer sur les
- *   contrôles, et avec lui l'attente que Safari s'impose avant de valider un
- *   appui simple.
- *
- * Le texte des cartes, lui, reste sélectionnable : on peut vouloir copier une
- * ligne de journal ou un titre de vidéo.
- */
-/*
  * DANS `@layer base`, et ce n'est pas un détail de rangement.
  *
- * Tailwind 4 range ses classes utilitaires dans une couche `utilities`. Une
- * règle écrite HORS de toute couche l'emporte sur n'importe quelle couche,
- * quelle que soit sa spécificité : posée ici sans couche, `touch-action:
- * manipulation` écrasait le `touch-none` de la poignée de glissement des
- * tâches — et glisser une tâche se serait mis à faire défiler la page.
- * Dans `base`, ce sont de vraies valeurs par défaut : une classe posée sur un
- * élément précis les contredit, comme il se doit.
+ * Tailwind 4 range ses utilitaires dans une couche `utilities`. Une règle
+ * écrite HORS de toute couche l'emporte sur n'importe quelle couche, quelle que
+ * soit sa spécificité : posée sans couche, `touch-action: manipulation`
+ * écrasait le `touch-none` de la poignée de glissement — et glisser une tâche
+ * se mettait à faire défiler la page. Dans `base`, ce sont de vraies valeurs
+ * par défaut, qu'une classe posée sur un élément précis contredit.
  */
 @layer base {
   button,
@@ -137,197 +130,27 @@ body {
     touch-action: manipulation;
   }
 
-  /* Les champs de saisie DANS un label doivent rester sélectionnables. */
   input,
-  textarea {
-    -webkit-user-select: text;
-    user-select: text;
+  textarea,
+  select {
+    font-family: inherit;
+    /* iOS zoome sur un champ dont le texte fait moins de 16 px. */
+    font-size: 16px;
+    color: inherit;
   }
 
-  /*
-   * Le rebond de fin de page reste (il fait partie du toucher iOS), mais il ne
-   * déclenche plus de rechargement : en mode application, tirer vers le bas
-   * depuis le haut de l'accueil rechargeait l'OS pour rien.
-   */
-  html {
-    overscroll-behavior-y: contain;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Le pouce et l'œil, sur un écran de téléphone                        */
-/* ------------------------------------------------------------------ */
-
-@media (max-width: 1023px) {
-  /*
-   * Plancher de lisibilité.
-   *
-   * L'interface est dessinée pour un grand écran : 62 des 145 morceaux de
-   * texte de l'accueil descendaient sous 10 px, jusqu'à 8 px pour les
-   * étiquettes en capitales. À bout de bras sur un téléphone, ce n'est plus
-   * de la petite taille, c'est illisible. On remonte tout à 10 px — assez
-   * pour changer quelque chose, assez peu pour que rien ne se réorganise.
-   */
-  .text-\[8px\],
-  .text-\[8\.5px\],
-  .text-\[9px\],
-  .text-\[9\.5px\] {
-    font-size: 10px;
-  }
-
-  /*
-   * Les lignes qu'on coche sont les cibles les plus sollicitées de l'OS —
-   * habitudes, tâches, blocs de journée type. Apple recommande 44 px ; elles
-   * en faisaient une trentaine. Le geste rate, on recommence, et cocher
-   * devient pénible au lieu d'être satisfaisant.
-   */
-  .check-row,
-  .list-row {
-    min-height: 44px;
-  }
-
-}
-
-/*
- * Les champs de saisie descendaient à 17 px de haut — une ligne de texte sans
- * un pixel autour. Viser ça au pouce, c'est ouvrir le clavier une fois sur
- * deux. 36 px et non 44 : un champ n'est pas un bouton, il est presque
- * toujours posé dans une ligne déjà haute, et l'allonger davantage écarterait
- * les cartes pour rien. Les cases à cocher gardent leur taille : elles ont
- * leur propre zone d'appui.
- *
- * Dans `base` là encore : sans ça, ce plancher écrasait le `min-h-[104px]` du
- * grand champ de la Revue, qui se retrouvait rabougri À 64 px AVEC un
- * ascenseur interne — soit une zone défilante imbriquée, exactement le défaut
- * qu'on vient de faire disparaître. Une classe doit pouvoir demander plus.
- */
-@layer base {
-  @media (max-width: 1023px) {
-    main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-    main select,
-    main textarea {
-      min-height: 36px;
-    }
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* L'écran de lancement                                                 */
-/* ------------------------------------------------------------------ */
-
-/*
- * Ce qui sépare « un site qui s'ouvre » d'« une app qui démarre ».
- *
- * Il est écrit DANS LE HTML, pas monté par React : il doit être là à la
- * première image peinte, avant que la moindre ligne de JavaScript n'ait
- * tourné. Monté par React, il serait arrivé après le vide qu'il doit couvrir.
- *
- * Sur grand écran il n'a pas lieu d'être — on n'attend pas le démarrage d'un
- * onglet de navigateur. Il ne s'affiche donc qu'en mode application ou sur un
- * écran étroit.
- */
-.ecran-lancement {
-  display: none;
-}
-
-@media (display-mode: standalone), (max-width: 1023px) {
-  .ecran-lancement {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    background: var(--color-ink-0);
-    /*
-     * Le filet de sécurité, en CSS pur.
-     *
-     * Si le JavaScript ne se charge pas — réseau coupé au mauvais moment,
-     * paquet corrompu — l'écran de lancement resterait affiché pour toujours
-     * et l'OS serait mort à l'écran. Cette animation l'efface au bout de six
-     * secondes quoi qu'il arrive. Le chemin normal, lui, le retire bien plus
-     * tôt : dès que l'interface est peinte.
-     */
-    animation: filetLancement 0.45s ease 6s forwards;
-  }
-}
-
-@keyframes filetLancement {
-  to {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-}
-
-/* Retiré par le code dès que l'écran est prêt : une sortie franche, courte. */
-.ecran-lancement.parti {
-  animation: none;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity 0.32s ease,
-    visibility 0s linear 0.32s;
-}
-
-/* La barre de progression : indéterminée, elle dit « ça travaille ». */
-@keyframes lancementBarre {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(320%);
-  }
-}
-
-.lancement-piste {
-  position: relative;
-  width: 132px;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.lancement-piste::after {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 32%;
-  border-radius: 999px;
-  background: var(--grad);
-  animation: lancementBarre 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lancement-piste::after {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
+  button {
+    font-family: inherit;
+    color: inherit;
   }
 }
 
 /*
- * Sur un écran tactile, il n'y a PAS de survol.
+ * Au doigt, tout ce qui se révèle au survol est révélé d'office.
  *
- * Sept séries de boutons n'apparaissaient qu'au survol de la souris :
- * supprimer une tâche, la renommer, la déplacer d'un niveau, retirer un bloc
- * de journée type, supprimer une compétence, les outils des objectifs, ceux du
- * kanban. Sur iPhone, ils restaient à opacité zéro — techniquement cliquables,
- * mais invisibles, donc introuvables. La moitié des actions de l'OS était hors
- * d'atteinte au doigt.
- *
- * Le sélecteur vise la classe Tailwind telle qu'elle est écrite dans le HTML,
- * plutôt qu'une classe maison à poser à sept endroits : tout bouton conçu
- * demain sur le même modèle sera couvert sans qu'on ait à y penser. Et il est
- * HORS COUCHE, donc prioritaire sur l'`opacity-0` de Tailwind.
- *
- * `hover: none` et non une largeur d'écran : c'est bien l'absence de souris
- * qui pose problème, pas la taille de l'écran — une tablette large au doigt a
- * exactement le même besoin.
+ * `hover: none` et non une largeur d'écran : c'est l'absence de souris qui pose
+ * problème, pas la taille de l'écran. Hors couche, donc prioritaire sur
+ * l'`opacity-0` de Tailwind.
  */
 @media (hover: none) {
   [class*="group-hover:opacity-100"],
@@ -336,15 +159,19 @@ body {
   }
 }
 
-/*
- * Le rail d'onglets défile à l'horizontale sans montrer d'ascenseur : sur
- * téléphone il n'y en a pas, et sur un portable à trackpad une barre grise en
- * travers de la barre de navigation ferait sale. Le défilement reste au doigt
- * et au trackpad, et l'onglet actif est ramené dans le cadre par le code.
- */
+/* Les cibles tactiles ne descendent pas sous 44 px de haut. */
+@media (hover: none) {
+  .cible-doigt {
+    min-height: 44px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Le rail d'onglets                                                   */
+/* ------------------------------------------------------------------ */
+
 .rail-onglets {
   scrollbar-width: none;
-  /* Le rail s'arrête pile sur un onglet plutôt qu'à moitié dessus. */
   scroll-snap-type: x proximity;
 }
 .rail-onglets::-webkit-scrollbar {
@@ -354,1457 +181,185 @@ body {
   scroll-snap-align: center;
 }
 @media (min-width: 1024px) {
-  /* Sur grand écran le rail ne défile plus : l'accrochage n'a plus d'objet. */
   .rail-onglets {
     scroll-snap-type: none;
   }
 }
 
-a {
-  color: #3fb8cf;
-  text-decoration: none;
-}
-a:hover {
-  color: #5b93e0;
-}
-
-input,
-textarea {
-  font-family: inherit;
-}
-input::placeholder,
-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.32);
-}
-
-::-webkit-scrollbar {
-  height: 7px;
-  width: 7px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
-
-/* ---------- Primitives récurrentes ---------- */
-
-/* Carte en verre. La maquette en a deux densités : 20px de rayon sur
-   l'accueil, 16px sur les pages internes. */
-@utility panel {
-  position: relative;
-  overflow: hidden;
-  border-radius: 20px;
-  padding: 16px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-
-@utility panel-sm {
-  position: relative;
-  overflow: hidden;
-  border-radius: 16px;
-  padding: 16px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-
-/* Le lift au survol. Posé sur .panel/.panel-sm via une classe à part pour que
-   les cartes purement décoratives puissent s'en passer. */
-.panel-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-/* La barre fine d'accent en haut de chaque carte (spec Partie 3). */
-.panel-accent {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panel-hover:hover {
-    transform: none;
-  }
-}
-
-/* Sous-carte : posée à l'intérieur d'un panel, donc plus sombre. */
-@utility subpanel {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 13px;
-}
-
-/* Le petit libellé capitalisé en tête de chaque carte. */
-@utility eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
-
-@utility eyebrow-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-/* Ligne cliquable d'une checklist (tâches, habitudes). */
-@utility check-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  cursor: pointer;
-  border-radius: 11px;
-  padding: 8px 10px;
-  transition: all 0.2s;
-  text-align: left;
-  width: 100%;
-}
-
-@utility stat-box {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 11px;
-  padding: 8px 10px;
-}
-
-@utility list-row {
-  display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 11px;
-  padding: 10px 12px;
-}
-
-@utility bar-track {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-/* ---------- Animations ---------- */
-
-@keyframes pulseDot {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.35;
-    transform: scale(0.7);
-  }
-}
-
-@keyframes logoIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.35) rotate(-24deg);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(1.14) rotate(5deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0);
-  }
-}
-
-/*
- * Le reflet balaie le logo une fois, puis disparaît.
- *
- * La version précédente s'arrêtait à translateX(220%) : la bande fait 40 % de
- * la largeur, donc son bord gauche se figeait à 88 % et laissait un liseré
- * clair collé au bord droit du logo. On sort complètement du cadre et on
- * éteint l'opacité pour ne rien laisser derrière.
- */
-@keyframes logoSweep {
-  0% {
-    transform: translateX(-120%);
-    opacity: 1;
-  }
-  85% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(300%);
-    opacity: 0;
-  }
-}
-
-@keyframes wordIn {
-  0% {
-    opacity: 0;
-    transform: translateX(-10px);
-    letter-spacing: 0.28em;
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    letter-spacing: -0.02em;
-  }
-}
-
-@keyframes fadeUp {
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.pulse-dot {
-  animation: pulseDot 1.6s ease-in-out infinite;
-}
-.logo-mark {
-  animation: logoIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.logo-word {
-  animation: wordIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
-}
-.logo-sweep {
-  animation: logoSweep 1.1s ease 0.5s 1 forwards;
-}
-.view-in {
-  animation: fadeUp 0.32s ease both;
-}
-
 /* ------------------------------------------------------------------ */
-/* Cocher une case                                                     */
+/* Les surfaces                                                        */
 /* ------------------------------------------------------------------ */
 
-/*
- * Cocher est le geste le plus répété de l'OS. Il mérite une récompense —
- * mais courte : une animation qu'on subit vingt fois par jour devient une
- * attente. Tout se termine en moins de 500 ms, et rien ne décale la mise en
- * page (uniquement transform et opacity, qui ne déclenchent pas de reflow).
- */
-
-/* La case elle-même : un à-coup net, puis retour. */
-@keyframes coche {
-  0% {
-    transform: scale(1);
-  }
-  40% {
-    transform: scale(1.35);
-  }
-  70% {
-    transform: scale(0.92);
-  }
-  100% {
-    transform: scale(1);
-  }
+@utility carte {
+  background: var(--p90-surface);
+  border: 1px solid var(--p90-bord);
+  border-radius: var(--p90-rayon);
+  box-shadow: var(--p90-ombre);
 }
 
-/* Le ✓ se dessine au lieu d'apparaître. */
-@keyframes trace {
-  0% {
-    opacity: 0;
-    transform: scale(0.3) rotate(-25deg);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.2) rotate(6deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0);
-  }
+@utility carte-haute {
+  background: var(--p90-haute);
+  border: 1px solid var(--p90-bord);
+  border-radius: var(--p90-rayon);
 }
 
-/* Une onde part de la case et se dissipe. */
-@keyframes onde {
-  0% {
-    opacity: 0.55;
-    transform: scale(0.6);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(2.6);
-  }
-}
-
-/* Toute la ligne s'éclaire une fraction de seconde. */
-@keyframes ligneValidee {
-  0% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(3px);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-/*
- * L'intensité monte avec la journée.
- *
- * Cocher la première tâche du matin et cocher la dernière du soir ne valent
- * pas la même chose. Quatre paliers, calés sur la proportion de tâches faites :
- * discret au réveil, spectaculaire quand la journée est pliée. C'est la
- * demande de Twaylo, et c'est aussi ce qui rend le geste tenable — une
- * explosion à chaque case deviendrait une punition dès la troisième.
- */
-.case-cochee {
-  animation: coche 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.niveau-1 .case-cochee {
-  animation-duration: 0.5s;
-}
-.niveau-2 .case-cochee {
-  animation: coche 0.58s cubic-bezier(0.34, 1.9, 0.5, 1);
-}
-.niveau-3 .case-cochee {
-  animation: coche 0.7s cubic-bezier(0.34, 2.2, 0.45, 1);
-}
-.case-marque {
-  animation: trace 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.ligne-validee {
-  animation: ligneValidee 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* L'onde est purement décorative : elle ne doit jamais capter le clic. */
-.onde-validation {
-  position: absolute;
-  inset: -2px;
-  border-radius: 11px;
-  pointer-events: none;
-  animation: onde 0.55s ease-out forwards;
-}
-.niveau-2 .onde-validation {
-  animation-duration: 0.75s;
-}
-.niveau-3 .onde-validation {
-  animation-duration: 0.95s;
-}
-
-/* ---- Éclats ---- */
-
-/*
- * Chaque éclat part dans sa direction, portée par --dx / --dy posés en ligne.
- * Tout se joue sur transform et opacity : aucune de ces deux propriétés ne
- * déclenche de recalcul de mise en page, donc la grille ne peut pas sauter
- * pendant l'animation.
- */
-@keyframes eclat {
-  0% {
-    opacity: 1;
-    transform: translate(0, 0) scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(var(--rot, 180deg));
-  }
-}
-
-.eclat {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  pointer-events: none;
-  animation: eclat var(--duree, 0.7s) cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
-}
-
-/* Le halo qui balaie la ligne entière quand la journée est presque finie. */
-@keyframes balayage {
-  0% {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
-  40% {
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-}
-
-.balayage-validation {
-  position: absolute;
-  inset: 0;
-  border-radius: 11px;
-  overflow: hidden;
-  pointer-events: none;
-}
-.balayage-validation::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent,
-    rgba(255, 255, 255, 0.35),
-    transparent
-  );
-  animation: balayage 0.7s ease-out forwards;
-}
-
-/* ------------------------------------------------------------------ */
-/* Montée de rang (onglet Skill, esprit Solo Leveling)                 */
-/* ------------------------------------------------------------------ */
-
-/*
- * Franchir un rang (E→D…→S) est rare — quelques fois par mois au mieux.
- * L'animation peut donc se permettre d'être spectaculaire : c'est la
- * récompense d'un travail long, pas un geste répété vingt fois par jour.
- * Comme partout : transform et opacity seulement, rien qui fasse sauter
- * la mise en page.
- */
-
-/* L'annonce « RANG A » qui surgit au centre de la carte. */
-@keyframes rangUp {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.4) rotate(-6deg);
-  }
-  22% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.18) rotate(2deg);
-  }
-  34% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  78% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.06);
-  }
-}
-
-.rang-up {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 5;
-  pointer-events: none;
-  animation: rangUp 1.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/* La bordure de la carte s'embrase le temps de l'annonce. */
-@keyframes lueurRang {
-  0% {
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-.lueur-rang {
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  pointer-events: none;
-  animation: lueurRang 1.5s ease-out forwards;
-}
-
-/* Le petit « +2 XP » qui s'envole du bouton. */
-@keyframes xpFlottant {
-  0% {
-    opacity: 0;
-    transform: translateY(4px) scale(0.8);
-  }
-  20% {
-    opacity: 1;
-    transform: translateY(-2px) scale(1.1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-26px) scale(0.9);
-  }
-}
-
-.xp-flottant {
-  position: absolute;
-  right: 0;
-  top: -6px;
-  pointer-events: none;
-  white-space: nowrap;
-  animation: xpFlottant 0.9s ease-out forwards;
-}
-
-/* Journée bouclée : le message qui traverse l'écran. */
-@keyframes journeePliee {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.7);
-  }
-  18% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.06);
-  }
-  30% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.1);
-  }
-}
-
-.journee-pliee {
-  position: fixed;
-  left: 50%;
-  top: 42%;
-  z-index: 100;
-  pointer-events: none;
-  animation: journeePliee 2.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/*
- * La fenêtre de récompense. Elle surgit, dépasse, puis se pose — le rebond est
- * ce qui fait la différence entre « un message est apparu » et « tu as gagné
- * quelque chose ». Elle reste ensuite immobile : c'est une fenêtre qu'on lit,
- * pas une animation en boucle.
- */
-@keyframes recompenseIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.82) translateY(14px);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(1.03) translateY(-2px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.recompense-carte {
-  animation: recompenseIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-/* L'emoji arrive une fraction après la carte, et retombe. */
-@keyframes recompenseEmoji {
-  0% {
-    opacity: 0;
-    transform: scale(0.2) rotate(-18deg);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.22) rotate(6deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-}
-
-.recompense-emoji {
-  animation: recompenseEmoji 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
-}
-
-/* La barre d'XP qui se remplit : le mouvement seul suffit à faire sentir le gain. */
-@keyframes barreXpLueur {
-  0%,
-  100% {
-    filter: brightness(1);
-  }
-  50% {
-    filter: brightness(1.45);
-  }
-}
-
-.barre-xp-vive {
-  animation: barreXpLueur 1.4s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse-dot,
-  .logo-mark,
-  .logo-word,
-  .logo-sweep,
-  .view-in,
-  .case-cochee,
-  .case-marque,
-  .ligne-validee,
-  .onde-validation,
-  .eclat,
-  .balayage-validation,
-  .balayage-validation::after,
-  .journee-pliee,
-  .rang-up,
-  .lueur-rang,
-  .xp-flottant,
-  .recompense-carte,
-  .recompense-emoji,
-  .barre-xp-vive {
-    animation: none;
-  }
-  /* Sans animation, ces éléments purement décoratifs n'ont plus d'objet. */
-  .onde-validation,
-  .eclat,
-  .balayage-validation,
-  .journee-pliee,
-  .rang-up,
-  .lueur-rang,
-  .xp-flottant {
-    display: none;
-  }
-}
-
-/* Tronque proprement à deux lignes, sans couper un mot en deux. */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* ================================================================== */
-/* Le sas — la mascotte et ses écrans                                  */
-/* ================================================================== */
-
-/*
- * Le compagnon respire.
- *
- * Trois animations superposées plutôt qu'une seule image animée : le corps
- * flotte, la bille de l'antenne pulse, les yeux clignent. Chacune a sa propre
- * durée, volontairement non multiples — c'est ce qui empêche l'ensemble de
- * paraître mécanique, et ce qui coûte le moins cher (des transformations
- * composées par le GPU, jamais de recalcul de mise en page).
- */
-.mascotte {
-  flex: none;
-}
-
-.masc-corps {
-  animation: mascFlotte 3.4s ease-in-out infinite;
-  transform-origin: 50px 60px;
-}
-
-@keyframes mascFlotte {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-/* L'ombre rétrécit quand il monte : sans elle, il glisse au lieu de flotter. */
-.masc-ombre {
-  animation: mascOmbre 3.4s ease-in-out infinite;
-  transform-origin: 50px 93px;
-}
-
-@keyframes mascOmbre {
-  0%,
-  100% {
-    transform: scaleX(1);
-    opacity: 0.35;
-  }
-  50% {
-    transform: scaleX(0.86);
-    opacity: 0.22;
-  }
-}
-
-.masc-bille {
-  animation: mascBille 2.1s ease-in-out infinite;
-  transform-origin: 50px 8px;
-}
-
-@keyframes mascBille {
-  0%,
-  100% {
-    opacity: 0.65;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.18);
-  }
-}
-
-/*
- * Le clignement : long temps ouvert, éclair fermé. Les proportions comptent —
- * réparti également, ça donne un tic nerveux plutôt qu'un regard.
- */
-.masc-yeux {
-  animation: mascCligne 5.2s infinite;
-  transform-origin: 50px 44px;
-}
-
-@keyframes mascCligne {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
-  }
-  95% {
-    transform: scaleY(0.12);
-  }
-}
-
-.masc-bras {
-  animation: mascSalue 1.6s ease-in-out infinite;
-  transform-origin: 86px 50px;
-}
-
-@keyframes mascSalue {
-  0%,
-  100% {
-    transform: rotate(-8deg);
-  }
-  50% {
-    transform: rotate(18deg);
-  }
-}
-
-.masc-point {
-  animation: mascPoint 1.3s ease-in-out infinite;
-}
-.masc-point-2 {
-  animation-delay: 0.18s;
-}
-.masc-point-3 {
-  animation-delay: 0.36s;
-}
-
-@keyframes mascPoint {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-}
-
-/* ---- La bulle de dialogue ---- */
-
-.bulle-mascotte {
-  position: relative;
-  border-radius: 18px;
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
-  padding: 13px 16px;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.35;
-  color: var(--color-fg);
-  animation: bulleIn 0.34s cubic-bezier(0.2, 1.3, 0.4, 1) both;
-}
-
-@keyframes bulleIn {
-  from {
-    opacity: 0;
-    transform: translateX(-8px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* La pointe, dessinée en bordures : deux triangles superposés, aucun SVG. */
-.bulle-pointe {
-  position: absolute;
-  left: -9px;
-  top: 22px;
-  width: 0;
-  height: 0;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-right: 9px solid rgba(255, 255, 255, 0.16);
-}
-
-.bulle-pointe::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: -7px;
-  width: 0;
-  height: 0;
-  border-top: 7px solid transparent;
-  border-bottom: 7px solid transparent;
-  border-right: 8px solid #0d1a27;
-}
-
-/* ---- Les écrans du sas ---- */
-
-/*
- * Un écran occupe TOUTE la hauteur, avec le bouton collé en bas.
- *
- * C'est la disposition qui distingue une application d'une page web : la
- * question en haut, le vide au milieu, l'action toujours sous le pouce. Sur
- * une page qui défile, le bouton part hors de l'écran dès que le clavier
- * s'ouvre — et on ne sait plus comment avancer.
- */
-.sas-ecran {
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-}
-
-.sas-titre {
-  font-size: 27px;
-  font-weight: 900;
-  line-height: 1.14;
-  letter-spacing: -0.03em;
-}
-
-@media (min-width: 640px) {
-  .sas-titre {
-    font-size: 34px;
-  }
-}
-
-/*
- * Le bouton principal : pleine largeur, 56 px de haut, jamais ailleurs qu'en
- * bas. Sa profondeur vient d'une ombre portée dure, pas d'un dégradé — c'est
- * ce qui donne l'impression d'un vrai bouton qu'on enfonce.
- */
-.sas-bouton {
-  display: flex;
-  min-height: 56px;
-  width: 100%;
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16px;
-  font-size: 15.5px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
+@utility surtitre {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #07121d;
-  transition:
-    transform 0.08s ease,
-    filter 0.15s ease,
-    opacity 0.15s ease;
+  color: var(--p90-texte-2);
 }
 
-.sas-bouton:active:not(:disabled) {
-  transform: translateY(2px);
-}
-
-.sas-bouton:disabled {
-  cursor: not-allowed;
-  opacity: 0.28;
-}
-
-/* La variante secondaire : même gabarit, contour seul. */
-.sas-bouton-2 {
-  color: var(--color-fg);
-  background: transparent;
-  border: 2px solid rgba(255, 255, 255, 0.16);
-}
-
-/* ---- Les choix ---- */
+/* ------------------------------------------------------------------ */
+/* Le glisser-déposer                                                  */
+/* ------------------------------------------------------------------ */
 
 /*
- * Une carte de choix fait 60 px de haut au minimum et se sélectionne d'un
- * doigt n'importe où sur sa surface. La bordure épaissit à la sélection au
- * lieu de changer de fond : le texte garde exactement le même contraste,
- * sélectionné ou non.
- */
-.sas-choix {
-  display: flex;
-  width: 100%;
-  min-height: 62px;
-  cursor: pointer;
-  align-items: center;
-  gap: 13px;
-  border-radius: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 12px 15px;
-  text-align: left;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--color-fg);
-  transition:
-    border-color 0.14s ease,
-    background 0.14s ease,
-    transform 0.08s ease;
-}
-
-.sas-choix:active {
-  transform: scale(0.985);
-}
-
-.sas-choix[aria-pressed="true"] {
-  border-color: var(--teinte);
-  background: color-mix(in srgb, var(--teinte) 13%, transparent);
-}
-
-/* ---- La barre de progression segmentée ---- */
-
-.sas-jauge {
-  display: flex;
-  gap: 5px;
-  flex: 1;
-}
-
-.sas-jauge span {
-  flex: 1;
-  height: 9px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.09);
-  overflow: hidden;
-}
-
-.sas-jauge span::after {
-  content: "";
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: 99px;
-  background: var(--teinte);
-  transition: width 0.42s cubic-bezier(0.3, 1, 0.5, 1);
-}
-
-.sas-jauge span.faite::after {
-  width: 100%;
-}
-
-/* ---- L'entrée d'un écran ---- */
-
-.sas-in {
-  animation: sasIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes sasIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Les éléments d'une liste arrivent l'un après l'autre, très vite. */
-.sas-cascade > * {
-  animation: sasIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.sas-cascade > *:nth-child(1) { animation-delay: 0.03s; }
-.sas-cascade > *:nth-child(2) { animation-delay: 0.07s; }
-.sas-cascade > *:nth-child(3) { animation-delay: 0.11s; }
-.sas-cascade > *:nth-child(4) { animation-delay: 0.15s; }
-.sas-cascade > *:nth-child(5) { animation-delay: 0.19s; }
-.sas-cascade > *:nth-child(6) { animation-delay: 0.23s; }
-
-@media (prefers-reduced-motion: reduce) {
-  .masc-corps,
-  .masc-ombre,
-  .masc-bille,
-  .masc-yeux,
-  .masc-bras,
-  .masc-point,
-  .bulle-mascotte,
-  .sas-in,
-  .sas-cascade > * {
-    animation: none;
-  }
-}
-
-/*
- * Le corps d'un écran de sas : ce qui reste entre la jauge et le bouton.
+ * La poignée prend 44 px de haut au doigt.
  *
- * `overflow-y: auto` plutôt que sur la page entière : le bouton du bas doit
- * rester visible même quand le contenu déborde (l'aperçu, ou un clavier
- * ouvert). Une page qui défile en entier emporte le bouton avec elle, et on
- * ne sait plus comment avancer.
+ * Elle en faisait 14 : la cible réelle du glissement était un carré de la
+ * taille d'un grain de riz, et le geste échouait une fois sur deux sur le
+ * téléphone — ce qui se ressentait comme « le déplacement ne marche pas ».
  */
-.sas-corps {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 6px 18px 12px;
-  -webkit-overflow-scrolling: touch;
-}
-
-@media (min-width: 640px) {
-  .sas-ecran > header,
-  .sas-ecran > footer,
-  .sas-corps {
-    margin: 0 auto;
-    width: 100%;
-    max-width: 460px;
-  }
-}
-
-/* Les écrans sans barre du haut portent eux-mêmes la marge d'encoche. */
-.sas-sans-barre {
-  padding-top: calc(22px + env(safe-area-inset-top, 0px));
-}
-
-/* Le chevron d'une section : couché quand elle est fermée, dressé quand ouverte. */
-.chevron-section {
-  display: inline-block;
-  transform: rotate(90deg);
-  transition: transform 0.2s ease;
-}
-
-details[open] .chevron-section {
-  transform: rotate(-90deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chevron-section {
-    transition: none;
-  }
-}
-
-/*
- * Le bouton d'actions d'une ligne de tâche.
- *
- * 30 px à la souris, 40 px au doigt. Il remplace trois boutons de dix-huit
- * pixels collés les uns aux autres : viser « déplacer » sans toucher
- * « supprimer » relevait de la chance, et sur téléphone — où le survol
- * n'existe pas — il fallait déjà deviner qu'ils étaient là.
- */
-.bouton-ligne {
-  width: 30px;
-  height: 30px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.group:hover .bouton-ligne,
-.bouton-ligne:focus-visible,
-.bouton-ligne[aria-expanded="true"] {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  /* Sans survol, il n'y a pas d'autre moment pour le montrer. */
-  .bouton-ligne {
-    width: 40px;
-    height: 40px;
-    opacity: 1;
-  }
-}
-
-/*
- * La place du bouton d'actions, réservée dans la ligne.
- *
- * Il est posé en absolu par-dessus la ligne : sans cette réserve, la
- * catégorie affichée à droite (« BUSINESS », « CONTENU ») passait dessous et
- * se lisait « BUS… ». Mesuré à l'écran, pas supposé.
- */
-.ligne-tache .check-row {
-  padding-right: 38px;
-}
-
-@media (hover: none) {
-  .ligne-tache .check-row {
-    padding-right: 48px;
-  }
-}
-
-/*
- * LA POIGNÉE DE RANGEMENT — d'où venait « j'arrive pas à déplacer mes tâches ».
- *
- * Elle mesurait 14 px de large. Mesuré dans un navigateur avec de VRAIS
- * évènements tactiles, pas supposé : un pouce en couvre quarante. Et c'est
- * précisément elle qu'il fallait viser, parce qu'elle seule porte
- * `touch-action: none` — la propriété qui empêche le navigateur de confisquer
- * le geste pour faire défiler la page. Une prise indispensable et invisable :
- * le glissement « ne marchait pas » alors qu'il marchait, à condition de
- * toucher une bande de quatorze pixels.
- *
- * 40 px au doigt, 22 px à la souris, où l'on vise au pixel près.
- */
-.poignee-tache {
-  width: 22px;
+.poignee {
   touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-@media (hover: none) {
-  .poignee-tache {
-    width: 40px;
-    font-size: 16px;
-    /* Sans survol, il n'y a pas d'autre moment pour se signaler. */
-    color: rgba(255, 255, 255, 0.45);
-  }
-
-  /*
-   * Sur téléphone, la catégorie d'une tâche disparaît — et la place revient au
-   * texte.
-   *
-   * Une ligne de todo doit porter trois choses de front sur 390 px : une prise
-   * de 40 px, le bouton d'actions de 40 px, et l'intitulé. Avec « BUSINESS » ou
-   * « CONTENU » en plus, il ne restait que 263 px : « Répondre au sponsor
-   * NordVPN (18h) » tenait sur trois lignes, et la liste redevenait le pavé
-   * qu'on venait d'éviter. La catégorie n'apprend d'ailleurs presque rien ici :
-   * l'emoji en tête de ligne et l'intertitre de famille (« ✍️ ÉCRITURE ») disent
-   * déjà de quoi il s'agit, en moins de place. Elle reste sur grand écran, où
-   * la largeur ne manque pas.
-   */
-  .ligne-tache .etiquette-meta {
-    display: none;
-  }
-
-  /*
-   * Tenir une ligne appuyée sert maintenant à la déplacer : sans cela, iOS
-   * ouvre sa loupe de sélection de texte par-dessus le geste, et le rangement
-   * se transforme en copier-coller.
-   */
-  .ligne-tache {
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-  }
-}
-
-/*
- * LA COLONNE VISÉE pendant un déplacement.
- *
- * Sans elle, amener une tâche « quelque part à droite » se faisait à l'aveugle :
- * on découvrait où elle atterrissait en la lâchant. Le cadre s'allume dès que
- * la colonne est visée — on sait AVANT de lâcher, et on peut corriger.
- *
- * Dessiné en `::after` posé en dehors du flux : une bordure sur la colonne
- * elle-même la ferait grandir de deux pixels au moment où on la vise, et toute
- * la liste sauterait sous le doigt.
- */
-.zone-niveau {
-  position: relative;
-}
-
-.zone-niveau.zone-visee::after {
-  content: "";
-  position: absolute;
-  inset: -7px;
-  border-radius: 14px;
-  border: 2px dashed var(--color-mag);
-  background: rgba(255, 61, 139, 0.05);
-  pointer-events: none;
-  animation: zoneVisee 0.16s ease-out both;
-}
-
-@keyframes zoneVisee {
-  from {
-    opacity: 0;
-    transform: scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zone-niveau.zone-visee::after {
-    animation: none;
-  }
-}
-
-/* ================================================================== */
-/* La todo — la carte autour de laquelle l'OS est bâti                 */
-/* ================================================================== */
-
-/*
- * UNE TÂCHE GELÉE — celle qui revient tous les jours.
- *
- * Elle ne se distingue pas par une couleur de plus (la liste en a déjà trois,
- * une par niveau) mais par une TEXTURE : un liseré froid sur le bord gauche,
- * là où l'œil descend la colonne. On voit d'un coup ce qui est permanent et ce
- * qui ne l'est pas, sans avoir à lire.
- *
- * Le liseré est posé sur la ligne, pas sur la poignée : celle-ci reste la
- * prise du glisser, et lui coller une bordure brouillerait la seule chose
- * qu'elle doit dire.
- */
-.tache-gelee .ligne-tache .check-row {
-  border-left: 3px solid var(--color-cya) !important;
-  background: linear-gradient(
-    90deg,
-    rgba(34, 211, 238, 0.09),
-    rgba(255, 255, 255, 0.045) 42%
-  ) !important;
-}
-
-/*
- * L'instant où elle gèle : un souffle froid qui traverse la ligne.
- *
- * Le double-tap coche puis décoche en une fraction de seconde — sans ce
- * signal, on ne saurait pas si le geste a été compris ou si l'on vient de
- * cocher deux fois pour rien.
- */
-.tache-gelee .ligne-tache .check-row {
-  animation: gelSouffle 0.5s ease-out;
-}
-
-@keyframes gelSouffle {
-  from {
-    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.55);
-  }
-  to {
-    box-shadow: 0 0 0 9px rgba(34, 211, 238, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tache-gelee .ligne-tache .check-row {
-    animation: none;
-  }
-}
-
-/*
- * L'EMOJI QUI APPARAÎT DANS LE CHAMP DE SAISIE.
- *
- * Il surgit et se pose, à chaque fois qu'il change. Le mouvement fait toute la
- * différence : sans lui, la pastille se remplacerait en silence et on ne
- * verrait pas que l'OS vient de comprendre autre chose. Avec, écrire
- * « appeler » puis « appeler le monteur » devient un dialogue.
- */
-.apercu-emoji {
-  animation: apercuEmoji 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-@keyframes apercuEmoji {
-  from {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.4);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .apercu-emoji {
-    animation: none;
-    transform: translateY(-50%);
-  }
-}
-
-/*
- * LE SABLIER DE LA SUPPRESSION.
- *
- * Une ligne qui se vide en six secondes, posée en bas de la barre « Annuler ».
- * Sans elle, le bouton apparaît et disparaît sans prévenir : on ne sait pas
- * s'il reste une seconde ou dix, donc on n'ose pas quitter la barre des yeux.
- * Six secondes visibles, c'est six secondes qu'on peut ignorer tranquillement.
- */
-.sablier-suppr {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  background: var(--color-mag);
-  animation: sablierSuppr 6s linear both;
-}
-
-@keyframes sablierSuppr {
-  from {
-    width: 100%;
-  }
-  to {
-    width: 0%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sablier-suppr {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
-  }
-}
-
-/*
- * Le bouton « Regrouper » : une vraie cible, pas une étiquette.
- *
- * Il vit dans l'en-tête de la carte, à côté du compteur, là où tout est
- * minuscule. Sans hauteur minimale il faisait 14 px — visible, mais pas
- * touchable.
- */
-.bouton-regrouper {
+  min-width: 26px;
   min-height: 30px;
+  cursor: grab;
 }
-
 @media (hover: none) {
-  .bouton-regrouper {
-    min-height: 40px;
+  .poignee {
+    min-width: 34px;
+    min-height: 44px;
   }
+}
+.poignee:active {
+  cursor: grabbing;
 }
 
 /*
- * LES JAUGES DE LA TODO — celle de la journée, et une par colonne.
+ * La colonne visée s'allume AVANT le lâcher.
  *
- * Un rapport « 3/8 » dit tout et ne montre rien : deux nombres à lire et à
- * diviser de tête. Une barre se voit sans être lue, et surtout elle BOUGE au
- * moment où l'on coche. C'est la récompense qui manquait entre le clic et la
- * fin de journée.
- *
- * La transition porte sur la largeur et non sur un `transform` : la barre part
- * du bord gauche et pousse, ce qui est le mouvement qu'on attend d'une jauge.
- * À cette taille, aucun coût.
+ * Sans ce repère, on découvrait où la tâche avait atterri après coup, et un
+ * dépôt dans la mauvaise colonne passait pour un bug du glissement.
  */
-.jauge-todo {
-  position: relative;
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
+.zone-depot {
+  border: 1px dashed transparent;
+  border-radius: var(--p90-rayon);
+  transition: border-color var(--p90-vitesse) ease, background var(--p90-vitesse) ease;
+}
+.zone-visee {
+  border-color: var(--p90-accent);
+  background: rgba(163, 230, 53, 0.05);
 }
 
-.jauge-todo-fine {
-  height: 3px;
-}
+/* ------------------------------------------------------------------ */
+/* Les animations — courtes, et jamais répétées                        */
+/* ------------------------------------------------------------------ */
 
-.jauge-todo-plein {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .jauge-todo-plein {
-    transition: none;
-  }
-}
-
-/*
- * L'intertitre d'une famille.
- *
- * Il apparaît et disparaît au fil des tâches ajoutées : sans transition, la
- * liste sautait d'un cran à chaque fois qu'une deuxième tâche de même nature
- * arrivait. Ici il se déploie, et le reste suit.
- */
-.famille-titre {
-  animation: familleIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes familleIn {
+@keyframes entreeVue {
   from {
     opacity: 0;
-    transform: translateX(-6px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-
-/*
- * L'ARRIVÉE DE LA LISTE, ligne à ligne.
- *
- * La todo apparaissait d'un bloc, comme un tableau qu'on affiche. Elle se pose
- * maintenant de haut en bas, 35 ms d'écart entre deux lignes : le regard suit
- * la colonne au lieu de tomber sur un mur de texte, et on a lu ce qu'il y a à
- * faire avant même de l'avoir cherché.
- *
- * `both` avec un retard : la ligne reste invisible jusqu'à son tour, sinon
- * elles seraient toutes là dès la première image et la cascade ne servirait à
- * rien. Le retard est plafonné côté composant — au-delà de dix crans, on
- * attendrait une liste au lieu de la lire.
- */
-.tache-entree {
-  animation: tacheEntree 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: var(--retard, 0ms);
+.entree-vue {
+  animation: entreeVue 180ms ease-out both;
 }
 
-@keyframes tacheEntree {
+@keyframes entreeLigne {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-
-/*
- * L'entrée d'une tâche : elle glisse depuis la gauche, sans pousser le reste.
- *
- * `animation-fill-mode: both` et une durée courte : une tâche qu'on vient de
- * taper doit être là AVANT qu'on ait fini de lever le doigt. Au-delà de
- * 300 ms, l'animation cesse d'être une confirmation et devient une attente.
- */
-.tache-neuve {
-  animation: tacheIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+.entree-ligne {
+  animation: entreeLigne 220ms ease-out both;
 }
 
-@keyframes tacheIn {
+/* La ligne qu'on vient de cocher : un éclair vert, une fois. */
+@keyframes ligneFaite {
+  0% {
+    background: rgba(132, 204, 22, 0.16);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.ligne-faite {
+  animation: ligneFaite 520ms ease-out both;
+}
+
+/*
+ * Le sablier de la suppression en sursis.
+ *
+ * « Annuler » sans savoir combien de temps il reste est un bouton qu'on n'ose
+ * pas quitter des yeux : la barre qui se vide dit exactement le temps restant.
+ */
+@keyframes sablier {
   from {
-    opacity: 0;
-    transform: translateX(-10px);
+    transform: scaleX(1);
   }
   to {
-    opacity: 1;
-    transform: none;
+    transform: scaleX(0);
   }
 }
-
-/*
- * La case de « aujourd'hui je vais » : un battement lent tant qu'elle est
- * vide, rien une fois cochée. C'est la seule chose de l'écran qui réclame
- * quelque chose, elle a le droit de se signaler.
- */
-.chose-case:not([aria-pressed="true"]) {
-  animation: choseBat 2.6s ease-in-out infinite;
+.sablier {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: var(--p90-danger);
+  transform-origin: left;
+  animation: sablier 6s linear both;
 }
 
-@keyframes choseBat {
+@keyframes pulseFine {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 61, 139, 0);
+    opacity: 0.4;
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(255, 61, 139, 0.13);
+    opacity: 1;
+  }
+}
+.pulse-fine {
+  animation: pulseFine 2s ease-in-out infinite;
+}
+
+/*
+ * Rien ne bouge pour qui a demandé que rien ne bouge.
+ *
+ * Réglage système, pas une option de l'app : on le respecte sans le discuter.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .entree-vue,
+  .entree-ligne,
+  .ligne-faite,
+  .pulse-fine {
+    animation: none !important;
+  }
+  .sablier {
+    /* Celle-là reste : elle n'est pas décorative, elle compte le temps. */
+    animation-duration: 6s;
+  }
+  * {
+    transition-duration: 1ms !important;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .famille-titre,
-  .tache-neuve,
-  .tache-entree,
-  .chose-case:not([aria-pressed="true"]) {
-    animation: none;
-  }
+/* Deux lignes au maximum, et des points de suspension. */
+.deux-lignes {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }

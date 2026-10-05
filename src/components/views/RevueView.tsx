@@ -1,418 +1,204 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { readJSON, writeJSON } from "@/lib/storage";
-import { localDateKey } from "@/lib/local-date";
-import { REVUE_VIDE, type Revue } from "@/lib/types";
-import { useOs } from "@/lib/os-context";
-import { MicButton } from "@/components/ui";
-import { Panel } from "@/components/Panel";
-import { ViewHeader } from "@/components/views/ViewHeader";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCockpit } from "@/lib/p90-context";
+import { Bouton, Carte, Surtitre, Vide } from "@/components/p90/ui";
 
 /**
- * REVUE — la page WEEKLY REVIEW de Miles, adaptée au métier de Twaylo.
+ * LA REVUE DE SEMAINE.
  *
- * C'est la carte qui fait la différence entre un tableau de bord et un
- * système : une fois par semaine, on arrête d'exécuter et on regarde ce qui
- * s'est passé. « Sceller » la semaine la fige en lecture seule — la revue
- * devient un document d'archive, pas un brouillon qu'on réécrit.
+ * Une fois par semaine, on arrête d'exécuter et on regarde ce qui s'est passé.
+ * « Sceller » fige la semaine en lecture seule : la revue devient une archive,
+ * pas un brouillon qu'on réécrit trois mois plus tard.
+ *
+ * Elle est rangée sur la ligne du LUNDI de sa semaine, dans `daily_logs` —
+ * aucune table ne peut être ajoutée (le jeton Supabase a été révoqué), et une
+ * revue appartient à une semaine, qui commence un lundi.
+ *
+ * Volontairement sobre : Twaylo ne s'en sert pas, il a demandé qu'on la garde.
+ * Elle marche, elle ne coûte rien à l'écran, elle n'occupe plus 418 lignes.
  */
 
-/**
- * Numéro de semaine ISO, à partir du jour local de Twaylo (`YYYY-MM-DD`).
- *
- * On part du jour déjà calculé dans son fuseau et on raisonne en UTC : mélanger
- * le fuseau du navigateur (getDay/getDate) et celui de Twaylo décalait la
- * semaine — donc la clé de rangement — d'un jour au passage de minuit.
- */
-function semaineISO(jourLocal: string): { annee: number; semaine: number } {
-  const t = new Date(`${jourLocal}T00:00:00Z`);
-  // Jeudi de la même semaine : c'est lui qui détermine l'année ISO.
-  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
-  const debutAnnee = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  const semaine = Math.ceil(((t.getTime() - debutAnnee.getTime()) / 86400000 + 1) / 7);
-  return { annee: t.getUTCFullYear(), semaine };
-}
-
-function bornesSemaine(jourLocal: string): { du: string; au: string; lundiISO: string } {
-  const d = new Date(`${jourLocal}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // lundi
-  const dimanche = new Date(d);
-  dimanche.setUTCDate(d.getUTCDate() + 6);
-  const fmt = (x: Date) =>
-    x.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
-  return { du: fmt(d), au: fmt(dimanche), lundiISO: d.toISOString().slice(0, 10) };
-}
-
-type Section = { titre: string; couleur: string; champs: Champ[] };
-
-type Champ = {
-  cle: keyof Omit<Revue, "scelle">;
-  titre: string;
-  aide: string;
-  couleur: string;
-  hauteur: number;
+type Revue = {
+  gains: string;
+  contenuPublie: string;
+  ceQuiADerape: string;
+  bouclesOuvertes: string;
+  personnesARelancer: string;
+  patternSante: string;
+  top3: string;
+  scelle: boolean;
 };
 
-const CHAMPS: Champ[] = [
-  {
-    cle: "gains",
-    titre: "CE QUE J'AI GAGNÉ",
-    aide: "Ce qui a avancé, même petit.",
-    couleur: "var(--color-ver-soft)",
-    hauteur: 96,
-  },
-  {
-    cle: "contenuPublie",
-    titre: "CONTENU PUBLIÉ",
-    aide: "Vidéos sorties, formats testés.",
-    couleur: "var(--color-cya-soft)",
-    hauteur: 96,
-  },
-  {
-    cle: "ceQuiADerape",
-    titre: "CE QUI A DÉRAPÉ",
-    aide: "Sans se juger — juste le constat.",
-    couleur: "var(--color-mag-soft)",
-    hauteur: 96,
-  },
-  {
-    cle: "bouclesOuvertes",
-    titre: "BOUCLES OUVERTES",
-    aide: "Ce qui traîne et qu'il faut fermer.",
-    couleur: "var(--color-amb-soft)",
-    hauteur: 96,
-  },
-  {
-    cle: "personnesARelancer",
-    titre: "PERSONNES À RELANCER",
-    aide: "Qui attend une réponse de toi.",
-    couleur: "var(--color-vio-soft)",
-    hauteur: 72,
-  },
-  {
-    cle: "patternSante",
-    titre: "CORPS ET ÉNERGIE",
-    aide: "Sommeil, sport, ce que tu as senti.",
-    couleur: "var(--color-cor-soft)",
-    hauteur: 72,
-  },
+const VIDE: Revue = {
+  gains: "",
+  contenuPublie: "",
+  ceQuiADerape: "",
+  bouclesOuvertes: "",
+  personnesARelancer: "",
+  patternSante: "",
+  top3: "",
+  scelle: false,
+};
+
+const CHAMPS: { cle: keyof Omit<Revue, "scelle">; titre: string; aide: string }[] = [
+  { cle: "gains", titre: "Ce que j'ai gagné", aide: "Ce qui a avancé, même petit." },
+  { cle: "contenuPublie", titre: "Contenu publié", aide: "Vidéos sorties, formats testés." },
+  { cle: "ceQuiADerape", titre: "Ce qui a dérapé", aide: "Sans se juger — juste le constat." },
+  { cle: "bouclesOuvertes", titre: "Boucles ouvertes", aide: "Ce qui traîne et qu'il faut fermer." },
+  { cle: "personnesARelancer", titre: "Personnes à relancer", aide: "Qui attend une réponse." },
+  { cle: "patternSante", titre: "Corps et énergie", aide: "Sommeil, sport, ce que tu as senti." },
+  { cle: "top3", titre: "Les 3 de la semaine prochaine", aide: "Ce qui comptera vraiment." },
 ];
 
 /**
- * Les champs regroupés par nature. Une revue de sept zones de texte à la
- * suite décourage ; trois sections repliables se remplissent l'une après
- * l'autre. La première est ouverte, les autres attendent leur tour.
+ * Le lundi de la semaine d'un jour local, et ses bornes affichées.
+ *
+ * Tout se calcule en UTC à partir du jour DÉJÀ exprimé dans le fuseau de
+ * Twaylo : mélanger le fuseau du navigateur et le sien décalait la semaine —
+ * donc la clé de rangement — d'un jour au passage de minuit.
  */
-const SECTIONS: Section[] = [
-  {
-    titre: "CETTE SEMAINE",
-    couleur: "var(--color-ver-soft)",
-    champs: CHAMPS.filter((c) =>
-      ["gains", "contenuPublie", "ceQuiADerape"].includes(c.cle),
-    ),
-  },
-  {
-    titre: "CE QUI RESTE OUVERT",
-    couleur: "var(--color-amb-soft)",
-    champs: CHAMPS.filter((c) =>
-      ["bouclesOuvertes", "personnesARelancer"].includes(c.cle),
-    ),
-  },
-  {
-    titre: "CORPS ET ÉNERGIE",
-    couleur: "var(--color-cor-soft)",
-    champs: CHAMPS.filter((c) => c.cle === "patternSante"),
-  },
-];
+function semaineDe(jourLocal: string): { lundi: string; du: string; au: string; numero: number } {
+  const d = new Date(`${jourLocal}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  const dimanche = new Date(d);
+  dimanche.setUTCDate(d.getUTCDate() + 6);
+
+  // Jeudi de la même semaine : c'est lui qui détermine l'année ISO.
+  const jeudi = new Date(d);
+  jeudi.setUTCDate(d.getUTCDate() + 3);
+  const debutAnnee = new Date(Date.UTC(jeudi.getUTCFullYear(), 0, 1));
+  const numero = Math.ceil(((jeudi.getTime() - debutAnnee.getTime()) / 86_400_000 + 1) / 7);
+
+  const fmt = (x: Date) =>
+    x.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+  return { lundi: d.toISOString().slice(0, 10), du: fmt(d), au: fmt(dimanche), numero };
+}
 
 export function RevueView() {
-  const { demoMode } = useOs();
-  const [revue, setRevue] = useState<Revue>(REVUE_VIDE);
-  const [hydrate, setHydrate] = useState(false);
-  /** Vrai dès la première modification de Twaylo — pas au simple chargement. */
+  const { aujourdhui } = useCockpit();
+  const { lundi, du, au, numero } = semaineDe(aujourdhui);
+
+  const [revue, setRevue] = useState<Revue>(VIDE);
+  /**
+   * La semaine que l'état décrit, plutôt qu'un simple « chargé ».
+   *
+   * Avec un booléen, changer de semaine demandait un `setCharge(false)`
+   * synchrone au début de l'effet — une cascade de rendus que le compilateur
+   * React refuse. En rangeant le lundi lu, « chargé » se DÉDUIT : il suffit de
+   * comparer. Aucun état à remettre à zéro, donc rien à écrire en entrant.
+   */
+  const [lundiCharge, setLundiCharge] = useState<string | null>(null);
+  const charge = lundiCharge === lundi;
+  /** Vrai dès la première frappe de Twaylo — pas au simple chargement. */
   const touche = useRef(false);
-  const [ouvertes, setOuvertes] = useState<Set<string>>(new Set([SECTIONS[0].titre]));
-  const [meta, setMeta] = useState<{
-    annee: number;
-    semaine: number;
-    du: string;
-    au: string;
-    lundiISO: string;
-  } | null>(null);
-
-  // La date locale n'est connue qu'après montage (hydratation).
-  /*
-   * L'année fait partie de la clé.
-   *
-   * Sans elle, la semaine 29 de 2026 et celle de 2027 partageaient le même
-   * emplacement : la revue de l'an dernier serait réapparue comme brouillon
-   * de cette semaine, puis réécrite par-dessus. Pour un outil censé tenir des
-   * années, c'était une bombe à retardement à douze mois.
-   */
-  const cle = useMemo(
-    () => (meta ? `twaylo-revue-${meta.annee}-${String(meta.semaine).padStart(2, "0")}` : null),
-    [meta],
-  );
 
   useEffect(() => {
-    const auj = localDateKey();
-    const { annee, semaine } = semaineISO(auj);
-    const { du, au, lundiISO } = bornesSemaine(auj);
-    setMeta({ annee, semaine, du, au, lundiISO });
-
-    // #3 : en démo, on ne charge pas la vraie revue — filmer son écran ne doit
-    // pas exposer ce que Twaylo a écrit. Un formulaire vierge suffit.
-    if (demoMode) {
-      setRevue(REVUE_VIDE);
-      setHydrate(true);
-      return;
-    }
-
-    const local = readJSON<Revue>(
-      `twaylo-revue-${annee}-${String(semaine).padStart(2, "0")}`,
-      REVUE_VIDE,
-    );
-    setRevue(local);
-    setHydrate(true);
-
-    /*
-     * Bug 4b : le distant n'écrase plus le local sans condition.
-     *
-     * `GET /api/revue` renvoie TOUJOURS un objet complet, même quand rien
-     * n'est stocké — la garde `d.revue` n'en était donc pas une. Si la base
-     * était indisponible au moment où la revue a été écrite, la réponse vide
-     * revenait par-dessus, écrasait l'état, et l'effet d'enregistrement
-     * renvoyait ce vide en base. Sept champs perdus des deux côtés.
-     *
-     * On ne prend maintenant du distant que les champs que le local n'a pas.
-     */
-
-    // La base corrige ensuite le cache local — même ordre que le dashboard :
-    // afficher tout de suite, rectifier après.
-    void fetch(`/api/revue?lundi=${lundiISO}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d?.connecte || !d.revue) return;
-        setRevue((actuel) => {
-          const fusion = { ...actuel } as Revue;
-          for (const [champ, valeur] of Object.entries(d.revue as Revue)) {
-            const mien = (actuel as Record<string, unknown>)[champ];
-            const vide = typeof mien === "string" ? mien.trim() === "" : mien === undefined;
-            if (vide) (fusion as Record<string, unknown>)[champ] = valeur;
-          }
-          // Un scellé distant fait foi : il est définitif par nature.
-          if ((d.revue as Revue).scelle) fusion.scelle = true;
-          return fusion;
-        });
+    let annule = false;
+    touche.current = false;
+    void fetch(`/api/revue?lundi=${lundi}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { revue?: Partial<Revue> }) => {
+        if (annule) return;
+        setRevue({ ...VIDE, ...(d.revue ?? {}) });
+        setLundiCharge(lundi);
       })
-      .catch((err) => console.error("[revue] chargement impossible :", err));
-  }, [demoMode]);
+      .catch((err) => {
+        console.error("[revue] lecture impossible :", err);
+        // Lu ou non, on ouvre les champs : une revue qu'on ne peut pas
+        // afficher est au moins une revue qu'on peut écrire.
+        if (!annule) setLundiCharge(lundi);
+      });
+    return () => {
+      annule = true;
+    };
+  }, [lundi]);
 
   /*
-   * On n'écrit que ce que Twaylo a réellement touché.
+   * L'enregistrement est différé d'une seconde après la dernière frappe.
    *
-   * L'effet partait dès l'hydratation : une seconde après l'ouverture de la
-   * page, la revue LOCALE — vide sur un appareil qui découvre la semaine —
-   * était postée en base. Elle pouvait ainsi effacer une semaine écrite
-   * ailleurs, avant même que la lecture distante n'ait répondu. Même garde
-   * que le journal face aux ajouts du bot Telegram.
+   * Sans ce délai, taper une phrase envoyait une requête par caractère ; et
+   * sans le drapeau « touché », le simple affichage réécrivait en base ce
+   * qu'on venait d'en lire.
    */
-  useEffect(() => {
-    if (!hydrate || !cle || demoMode || !meta || !touche.current) return;
-    writeJSON(cle, revue);
-
-    // Une seconde après la dernière frappe : écrire à chaque lettre
-    // enverrait une requête par caractère.
-    const minuteur = setTimeout(() => {
+  const enregistrer = useCallback(
+    (suivante: Revue) => {
       void fetch("/api/revue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ lundi: meta.lundiISO, revue }),
+        body: JSON.stringify({ lundi, revue: suivante }),
       }).catch((err) => console.error("[revue] écriture impossible :", err));
-    }, 1000);
-    return () => clearTimeout(minuteur);
-  }, [revue, hydrate, cle, demoMode, meta]);
+    },
+    [lundi],
+  );
 
-  const rempli = CHAMPS.filter((c) => revue[c.cle].trim().length > 0).length;
+  useEffect(() => {
+    if (!charge || !touche.current) return;
+    const t = setTimeout(() => enregistrer(revue), 1000);
+    return () => clearTimeout(t);
+  }, [revue, charge, enregistrer]);
 
-  function set(cle: Champ["cle"], valeur: string) {
-    if (revue.scelle) return;
+  const modifier = (cle: keyof Omit<Revue, "scelle">, v: string) => {
     touche.current = true;
-    setRevue((r) => ({ ...r, [cle]: valeur }));
-  }
+    setRevue((p) => ({ ...p, [cle]: v }));
+  };
+
+  const remplis = CHAMPS.filter((c) => revue[c.cle].trim()).length;
 
   return (
-    <>
-      <ViewHeader
-        title={meta ? `Revue · semaine ${meta.semaine}` : "Revue"}
-        subtitle={meta ? `du ${meta.du} au ${meta.au}` : undefined}
-        action={
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[11.5px] text-white/40">
-              {rempli}/{CHAMPS.length} rempli{rempli > 1 ? "s" : ""}
+    <div className="entree-vue space-y-[13px]">
+      <Carte>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <Surtitre>Revue de la semaine {numero}</Surtitre>
+            <div className="text-[11px] text-[var(--p90-texte-2)]">
+              du {du} au {au}
+            </div>
+          </div>
+          <div className="flex items-center gap-[9px]">
+            <span className="nombres text-[11px] text-[var(--p90-texte-2)]">
+              {remplis}/{CHAMPS.length}
             </span>
-            <button
-              type="button"
+            <Bouton
+              ton={revue.scelle ? "fin" : "plein"}
               onClick={() => {
                 touche.current = true;
-                setRevue((r) => ({ ...r, scelle: !r.scelle }));
+                setRevue((p) => ({ ...p, scelle: !p.scelle }));
               }}
-              className="cursor-pointer rounded-[10px] px-[14px] py-[8px] text-[13px] font-extrabold transition-all hover:brightness-110"
-              style={
-                revue.scelle
-                  ? {
-                      color: "var(--color-amb-soft)",
-                      background: "rgba(255,198,61,0.1)",
-                      border: "1px solid rgba(255,198,61,0.3)",
-                    }
-                  : {
-                      color: "#07121d",
-                      background: "var(--grad)",
-                      border: "none",
-                    }
-              }
             >
-              {revue.scelle ? "🔒 Scellée — rouvrir" : "Sceller la semaine"}
-            </button>
+              {revue.scelle ? "Rouvrir" : "Sceller la semaine"}
+            </Bouton>
           </div>
-        }
-      />
-
-      {revue.scelle && (
-        <div
-          className="mb-[14px] rounded-[12px] px-4 py-[10px] text-[12.5px] font-bold"
-          style={{
-            color: "var(--color-amb-soft)",
-            background: "rgba(255,198,61,0.07)",
-            border: "1px solid rgba(255,198,61,0.2)",
-          }}
-        >
-          Semaine scellée. Elle est archivée telle quelle — rouvre-la pour corriger.
         </div>
-      )}
 
-      <div className="flex flex-col gap-[10px]">
-        {SECTIONS.map((section) => {
-          const ouverte = ouvertes.has(section.titre);
-          const remplis = section.champs.filter(
-            (c) => revue[c.cle].trim().length > 0,
-          ).length;
+        {!charge && <Vide>Lecture de la revue…</Vide>}
 
-          return (
-            <div key={section.titre}>
-              <button
-                type="button"
-                onClick={() =>
-                  setOuvertes((prev) => {
-                    const suivant = new Set(prev);
-                    if (suivant.has(section.titre)) suivant.delete(section.titre);
-                    else suivant.add(section.titre);
-                    return suivant;
-                  })
-                }
-                aria-expanded={ouverte}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-[12px] px-4 py-[11px] text-left transition-all hover:brightness-125"
-                style={{
-                  background: "rgba(255,255,255,0.035)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  borderLeft: `2px solid ${section.couleur}`,
-                }}
-              >
-                <span
-                  className="flex-none text-[11px] transition-transform"
-                  style={{
-                    color: section.couleur,
-                    transform: ouverte ? "rotate(90deg)" : "none",
-                  }}
-                >
-                  ▶
-                </span>
-                <span
-                  className="flex-1 text-[11px] font-extrabold tracking-[0.12em]"
-                  style={{ color: section.couleur }}
-                >
-                  {section.titre}
-                </span>
-                <span className="flex-none font-mono text-[10.5px] text-white/35">
-                  {remplis}/{section.champs.length}
-                </span>
-              </button>
-
-              {ouverte && (
-                <div className="mt-[10px] grid grid-cols-1 gap-[10px] lg:grid-cols-2">
-                  {section.champs.map((champ) => (
-                    <Panel key={champ.cle} accent={champ.couleur} size="sm">
-                      <div className="mb-[8px] flex items-baseline justify-between gap-2">
-                        <span
-                          className="text-[10.5px] font-extrabold tracking-[0.12em]"
-                          style={{ color: champ.couleur }}
-                        >
-                          {champ.titre}
-                        </span>
-                        <span className="flex-none text-[10px] text-white/25">
-                          {champ.aide}
-                        </span>
-                      </div>
-
-                      <textarea
-                        value={revue[champ.cle]}
-                        onChange={(e) => set(champ.cle, e.target.value)}
-                        readOnly={revue.scelle}
-                        aria-label={champ.titre}
-                        className="w-full resize-y rounded-[12px] px-[13px] py-[11px] text-[13px] font-semibold leading-[1.5] text-white outline-none transition-colors focus:border-white/25 read-only:opacity-60"
-                        style={{
-                          minHeight: champ.hauteur,
-                          background: "rgba(255,255,255,0.04)",
-                          border: "1px solid rgba(255,255,255,0.09)",
-                        }}
-                      />
-
-                      {!revue.scelle && (
-                        <div className="mt-[8px]">
-                          <MicButton
-                            onTranscript={(t) => {
-                              touche.current = true;
-                              setRevue((r) => ({
-                                ...r,
-                                [champ.cle]: r[champ.cle] ? `${r[champ.cle]} ${t}` : t,
-                              }));
-                            }}
-                          />
-                        </div>
-                      )}
-                    </Panel>
-                  ))}
+        {charge && (
+          <div className="mt-[11px] grid grid-cols-1 gap-[9px] lg:grid-cols-2">
+            {CHAMPS.map((c) => (
+              <div key={c.cle} className="carte-haute p-[11px]">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] font-semibold">{c.titre}</span>
+                  <span className="text-[10px] text-[var(--p90-texte-2)] opacity-70">{c.aide}</span>
                 </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Le top 3 occupe toute la largeur : c'est la sortie de la revue. */}
-        <Panel accent="var(--grad)" size="sm" className="lg:col-span-2">
-          <div className="mb-[8px] flex items-baseline justify-between gap-2">
-            <span className="text-[10.5px] font-extrabold tracking-[0.12em] text-white/70">
-              LA SEMAINE PROCHAINE — TOP 3
-            </span>
-            <span className="flex-none text-[10px] text-white/25">
-              Trois choses. Pas quatre.
-            </span>
+                <textarea
+                  value={revue[c.cle]}
+                  readOnly={revue.scelle}
+                  onChange={(e) => modifier(c.cle, e.target.value)}
+                  className="mt-[7px] w-full resize-y rounded-[8px] px-[9px] py-[7px] text-[13px] leading-[1.5] outline-none transition-colors read-only:opacity-60 focus:border-[var(--p90-accent)]"
+                  style={{
+                    minHeight: 76,
+                    background: "var(--p90-fond)",
+                    border: "1px solid var(--p90-bord)",
+                    color: "var(--p90-texte)",
+                    transitionDuration: "var(--p90-vitesse)",
+                  }}
+                />
+              </div>
+            ))}
           </div>
-          <textarea
-            value={revue.top3}
-            onChange={(e) => set("top3", e.target.value)}
-            readOnly={revue.scelle}
-            placeholder={"1) …\n2) …\n3) …"}
-            aria-label="Top 3 de la semaine prochaine"
-            className="min-h-[104px] w-full resize-y rounded-[12px] px-[13px] py-[11px] text-[13px] font-semibold leading-[1.6] text-white outline-none transition-colors focus:border-white/25 read-only:opacity-60"
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.09)",
-            }}
-          />
-        </Panel>
-      </div>
-    </>
+        )}
+      </Carte>
+    </div>
   );
 }

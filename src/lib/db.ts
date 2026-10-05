@@ -1,15 +1,28 @@
 import { createHash } from "node:crypto";
 import { USER_ID, uid, supabaseAdmin } from "./supabase";
-import { archiverTachesOubliees, estOubliee, seuilOubli } from "./oublies-db";
-import { REAL_DATA } from "./data-real";
-import { NIVEAUX, niveauDepuisUrgence } from "./types";
 import { localDateKey } from "./local-date";
-import { chiffrerJourStocke, jourALaisseUneTrace } from "./xp";
 import { JOUR_SENTINELLE, lireSentinelle, majSentinelle } from "./sentinelle";
-import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./types";
+import {
+  BLOC_PAR_DEFAUT,
+  OBJECTIFS_P90,
+  blocDe,
+  encoderMeta,
+  encoderOp,
+  etapeVersDB,
+  urgenceDepuisBloc,
+  type IdBloc,
+  type EtapeOp,
+} from "./p90";
+import { SEMIS_OPS, SEMIS_TACHES, blocSemis } from "./p90-semis";
 
 /**
- * L'accès aux données, côté serveur uniquement.
+ * L'accès aux données du cockpit PROJECT 90, côté serveur uniquement.
+ *
+ * Trois tables, et c'est tout : `tasks` (la todo et le Kanban, la MÊME donnée),
+ * `deals` (les OP sponsors) et `goals` (les cinq objectifs). Ce fichier en
+ * portait onze — habitudes, vidéos, contacts, captures, revenus, skills,
+ * blocages, journées types, nutrition, séries, jeton YouTube. Tout ça est
+ * parti avec les onglets qui s'en servaient.
  *
  * Tout passe par la clé service role, qui contourne RLS. C'est voulu : le
  * navigateur ne parle jamais directement à Postgres, il parle aux routes API
@@ -17,90 +30,24 @@ import type { BlocageStocke, Contact, Niveau, Skill, Task, UneChose } from "./ty
  * anon reste bloquée par RLS et ne peut rien lire même si elle fuite.
  */
 
-/**
- * L'état d'une journée.
- *
- * Rangé dans `daily_logs.habitudes`, qui est en JSON libre. Le nom de la
- * colonne est plus étroit que son contenu — la migration 0002 corrigerait ça
- * en déplaçant vers une colonne `notes`, mais elle n'a pas été appliquée
- * (voir son en-tête). Fonctionnellement c'est identique ; c'est une dette de
- * nommage, assumée et documentée plutôt que subie.
- */
-export type EtatJour = {
-  /** id d habitude -> options cochees aujourd hui. */
-  faites: Record<string, string[]>;
-  une_chose: UneChose;
-  nutrition: { repas: unknown[] };
-  /**
-   * L'instantané des tâches du jour.
-   *
-   * Les tâches vivent dans leur propre table, remise à neuf chaque matin.
-   * Sans cet instantané, l'historique de complétion serait perdu à chaque
-   * réinitialisation : on fige donc ici, jour par jour, ce qui était là et ce
-   * qui avait été coché.
-   */
-  taches?: SnapshotTaches;
-  /**
-   * Les blocs de la journée type cochés ce jour-là. Rangés ici, avec le reste
-   * de la journée, pour qu'une coche de bloc et la coche d'habitude qu'elle
-   * entraîne partent dans la MÊME écriture.
-   */
-  journeeFaits?: string[];
-  /**
-   * La revue de la semaine, rangée sur la ligne du LUNDI.
-   *
-   * Elle passe par le même écrivain vérifié que le reste de la journée : sa
-   * route écrivait la ligne de son côté, et le lundi les deux se marchaient
-   * dessus — une revue en cours de frappe pouvait effacer les habitudes
-   * cochées le matin, ou l'inverse.
-   */
-  revue?: unknown;
-  /**
-   * Les bonus de jeu gagnés ce jour-là (« journée type pliée », « journée
-   * parfaite »…).
-   *
-   * Écrits le jour où ils tombent, et plus jamais retirés. C'est ce qui rend
-   * l'XP incapable de redescendre : sans cette trace, ajouter une habitude
-   * ferait perdre rétroactivement le bonus « toutes les habitudes » de chaque
-   * journée passée, et le niveau baisserait tout seul.
-   */
-  bonus?: string[];
-};
-
-/** Ce qu'on garde d'une journée de tâches, pour le bilan dans le temps. */
-export type SnapshotTaches = {
-  total: number;
-  faites: number;
-  /** Le focus principal seul — « ai-je bouclé l'essentiel ». */
-  principalTotal: number;
-  principalFaites: number;
-  liste: { titre: string; niveau: string; fait: boolean }[];
-};
-
-const ETAT_VIDE: EtatJour = {
-  faites: {},
-  une_chose: { texte: "", fait: false },
-  nutrition: { repas: [] },
-};
-
 /* ------------------------------------------------------------------ */
-/* Tâches                                                              */
+/* Tâches — la todo ET le Kanban                                       */
 /* ------------------------------------------------------------------ */
 
 export type TacheDB = {
   id: string;
   titre: string;
   statut: string;
+  /** Porte le BLOC HORAIRE : quatre valeurs contraintes, quatre blocs. */
   urgence: string;
   cle: boolean;
+  /** Porte le JSON de la meta P90 (objectif, responsables, échéance, impact). */
   categorie: string | null;
   completed_at: string | null;
-  /**
-   * Sert au jugement « oubliée » et au tri. Reste côté serveur : `versTaches`
-   * ne la recopie pas dans ce qui part au navigateur.
-   */
   created_at?: string | null;
 };
+
+const COLONNES_TACHE = "id, titre, statut, urgence, cle, categorie, completed_at, created_at";
 
 /**
  * Identifiant stable dérivé du texte.
@@ -115,12 +62,9 @@ export type TacheDB = {
  * effet, au lieu d'être seulement improbable.
  *
  * LE COMPTE ENTRE DANS L'EMPREINTE, et ce n'est pas un détail de propreté.
- * Sans lui, deux OS différents déduisaient le MÊME identifiant du même titre.
- * Comme l'amorçage écrit en `onConflict: "id", ignoreDuplicates: true`, les
- * lignes du second compte tombaient sur celles du premier et étaient
- * silencieusement ignorées ; la sentinelle marquait pourtant « semé », et le
- * nouvel OS s'ouvrait définitivement vide — sans tâches, sans vidéos, sans
- * contacts, et sans moyen de rejouer le semis.
+ * Sans lui, deux OS différents déduisaient le MÊME identifiant du même titre,
+ * les lignes du second tombaient sur celles du premier et étaient
+ * silencieusement ignorées — et le nouvel OS s'ouvrait définitivement vide.
  */
 function uuidStable(compte: string, texte: string): string {
   const h = createHash("sha1").update(`twaylo:${compte}:${texte}`).digest("hex");
@@ -135,41 +79,26 @@ function uuidStable(compte: string, texte: string): string {
 }
 
 /**
- * Ce semis initial a-t-il déjà eu lieu, une fois pour toutes ?
+ * Ce semis a-t-il déjà eu lieu, une fois pour toutes ?
  *
  * Le drapeau vit sur la ligne sentinelle. Sans lui, « table vide » serait
  * confondu avec « jamais semé », et vider délibérément une liste la ferait
- * repousser au chargement suivant.
+ * repousser au chargement suivant — on ne pourrait jamais atteindre une liste
+ * vide, qui est le cas normal d'une journée bouclée.
  */
 async function dejaSeme(cle: string): Promise<boolean> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-  return (data?.habitudes as Record<string, unknown> | null)?.[cle] === true;
-}
-
-async function tachesDejaSemees(): Promise<boolean> {
-  return dejaSeme("tachesSemees");
+  return (await lireSentinelle())[cle] === true;
 }
 
 /**
- * Ce semis initial ne concerne QUE l'OS historique.
+ * Le plan des 90 jours ne concerne QUE l'OS de Twaylo.
  *
- * `REAL_DATA` n'est pas un jeu de démarrage neutre : ce sont les tâches, les
- * idées de vidéo et les coéquipiers de Twaylo. Ils étaient semés à l'identique
- * dans chaque OS créé — quelqu'un qui s'inscrivait trouvait « Créer le compte
- * Snap Twaylo » dans sa liste et cinq inconnus dans ses contacts. Un OS neuf
- * démarre donc vide, et c'est le sas qui le remplit à partir des réponses de
- * son propriétaire.
+ * Ce ne sont pas des données de démonstration : ce sont ses objectifs, ses
+ * échéances et ses coéquipiers. Les semer dans l'OS de quelqu'un d'autre lui
+ * ferait trouver « Dépôt INPI » dans sa liste. Un OS neuf démarre donc vide.
  *
  * Le drapeau est posé quand même : sans lui, la question « faut-il semer ? »
- * se reposerait à chaque lecture d'une liste vide, ce qui est le cas normal
- * d'un OS qu'on vient d'ouvrir.
+ * se reposerait à chaque lecture d'une liste vide.
  */
 async function semisInterdit(cle: string): Promise<boolean> {
   if ((await uid()) === USER_ID) return false;
@@ -178,92 +107,118 @@ async function semisInterdit(cle: string): Promise<boolean> {
 }
 
 /**
- * Au tout premier démarrage, la table est vide. Plutôt qu'un dashboard désert,
- * on y sème les tâches réelles de Twaylo (spec Partie 11).
+ * La todo : tout ce qui n'est pas archivé.
  *
- * Un drapeau sur la ligne sentinelle marque le semis comme fait, une fois pour
- * toutes. Sans lui, « table vide » était confondu avec « jamais semé » : vider
- * délibérément sa liste ramenait les tâches par défaut à chaque rechargement,
- * et on ne pouvait jamais atteindre une liste vide — le cas normal « j'ai tout
- * fini, je nettoie ». Même correction que pour les habitudes.
+ * Plus d'archivage automatique, et c'est un changement de fond. L'ancienne
+ * version faisait glisser aux Oubliés toute tâche non prioritaire passée
+ * quatre jours sans être cochée. Dans un cockpit dont la todo est pilotée par
+ * les ÉCHÉANCES, cette règle effaçait de l'écran des tâches du plan encore à
+ * venir — « Clôture des précommandes », datée du 30 novembre, aurait disparu
+ * le 9 octobre. Les Oubliés restent, mais comme filet : on y tombe quand on
+ * supprime une tâche, jamais tout seul.
  */
 export async function lireTaches(): Promise<TacheDB[]> {
   const db = supabaseAdmin();
-  const COLONNES = "id, titre, statut, urgence, cle, categorie, completed_at, created_at";
 
-  /*
-   * Le ménage des Oubliés part EN MÊME TEMPS que la lecture, plus avant.
-   *
-   * Il était attendu : deux allers-retours en file indienne dans une fonction
-   * de lecture, sur le chemin critique de l'accueil, du Brain et de l'onglet
-   * Oubliés. Pire, son échec faisait échouer la lecture — un hoquet d'écriture
-   * chez Supabase, et tout l'écran restait sur les données de la veille.
-   *
-   * Lancés ensemble, la lecture peut renvoyer une tâche que l'écriture est en
-   * train d'archiver. On applique donc le MÊME jugement en mémoire, avec le
-   * même seuil, calculé une seule fois : le prédicat est partagé
-   * (`estOubliee`) pour que les deux ne puissent pas diverger.
-   */
-  const seuil = seuilOubli();
-  const [, lecture] = await Promise.all([
-    archiverTachesOubliees(),
-    db
-      .from("tasks")
-      .select(COLONNES)
-      .eq("user_id", (await uid()))
-      .neq("statut", "abandonnee")
-      .order("created_at", { ascending: true }),
-  ]);
+  const { data, error } = await db
+    .from("tasks")
+    .select(COLONNES_TACHE)
+    .eq("user_id", (await uid()))
+    .neq("statut", "abandonnee")
+    .order("created_at", { ascending: true });
 
-  const { data, error } = lecture;
   if (error) throw error;
-  const vivantes = (data as TacheDB[]).filter((t) => !estOubliee(t, seuil));
+  const vivantes = (data ?? []) as TacheDB[];
   if (vivantes.length > 0) return vivantes;
 
   // Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
-  if (await tachesDejaSemees()) return [];
-  // Et chez quelqu'un d'autre, il n'y a jamais eu de semis à faire.
-  if (await semisInterdit("tachesSemees")) return [];
+  if (await dejaSeme("p90TachesSemees")) return [];
+  if (await semisInterdit("p90TachesSemees")) return [];
 
-  // Sorti de la boucle : un seul calcul, et un `.map()` reste synchrone.
   const moi = await uid();
   const { error: erreurSemis } = await db.from("tasks").upsert(
-    REAL_DATA.tasks.map((t) => ({
-      id: uuidStable(moi, t.text),
+    SEMIS_TACHES.map((t) => ({
+      id: uuidStable(moi, t.titre),
       user_id: moi,
-      titre: t.text,
-      categorie: t.categorie ?? null,
-      urgence: "semaine",
+      titre: t.titre,
+      statut: t.enCours ? "en_cours" : "ouverte",
+      urgence: urgenceDepuisBloc(blocSemis(t)),
       cle: true,
+      categorie: encoderMeta({
+        objectif: t.objectif,
+        responsables: t.responsables,
+        echeance: t.echeance,
+        impact: t.impact ?? 2,
+        bloque: false,
+      }),
     })),
     { onConflict: "id", ignoreDuplicates: true },
   );
-
   if (erreurSemis) throw erreurSemis;
 
-  // Le semis n'aura pas lieu deux fois : on le marque avant même la relecture.
-  await majSentinelle({ tachesSemees: true });
+  // Le semis n'aura pas lieu deux fois : marqué avant même la relecture.
+  await majSentinelle({ p90TachesSemees: true });
 
-  // Relecture plutôt que d'utiliser le retour de l'upsert : avec
-  // `ignoreDuplicates`, il ne renvoie que les lignes réellement insérées.
+  /*
+   * L'ordre d'affichage suit le plan, pas l'heure d'insertion.
+   *
+   * Les 26 lignes partent dans un seul `upsert` : leurs `created_at` sont à la
+   * milliseconde près identiques et leur ordre de retour n'est pas garanti. Le
+   * plan est rangé par échéance — l'écrire dans la liste d'ordre fait que la
+   * première todo de Twaylo s'ouvre dans l'ordre du calendrier.
+   */
+  try {
+    await ecrireOrdreTaches(SEMIS_TACHES.map((t) => uuidStable(moi, t.titre)));
+  } catch (err) {
+    console.error("[taches] ordre du semis impossible :", err);
+  }
+
+  // Relecture plutôt que le retour de l'upsert : avec `ignoreDuplicates`, il
+  // ne renvoie que les lignes réellement insérées.
   const { data: apres, error: erreurRelecture } = await db
     .from("tasks")
-    .select(COLONNES)
+    .select(COLONNES_TACHE)
     .eq("user_id", (await uid()))
     .neq("statut", "abandonnee")
     .order("created_at", { ascending: true });
 
   if (erreurRelecture) throw erreurRelecture;
-  return apres as TacheDB[];
+  return (apres ?? []) as TacheDB[];
 }
 
-export async function basculerTache(id: string, faite: boolean): Promise<void> {
+/** Les quatre statuts que la contrainte de la table accepte. */
+const STATUTS = ["ouverte", "en_cours", "faite", "abandonnee"];
+
+/**
+ * UN SEUL correctif pour une tâche : statut, titre, meta, bloc.
+ *
+ * Il y avait quatre fonctions — cocher, renommer, changer de niveau, geler —
+ * et déplacer une carte du Kanban devait en appeler deux, dans le bon ordre,
+ * sans garantie que la seconde aboutisse. Un geste = une écriture.
+ *
+ * `completed_at` suit le statut sans qu'on ait à y penser : il portait la date
+ * de coche et pouvait rester accroché à une tâche décochée, qui comptait alors
+ * comme faite dans tout ce qui lit cette colonne.
+ */
+export async function majTache(
+  id: string,
+  patch: { statut?: string; titre?: string; categorie?: string | null; bloc?: IdBloc },
+): Promise<void> {
+  const champs: Record<string, unknown> = {};
+
+  if (patch.statut !== undefined) {
+    if (!STATUTS.includes(patch.statut)) throw new Error(`Statut inconnu : ${patch.statut}`);
+    champs.statut = patch.statut;
+    champs.completed_at = patch.statut === "faite" ? new Date().toISOString() : null;
+  }
+  if (patch.titre !== undefined) champs.titre = patch.titre;
+  if (patch.categorie !== undefined) champs.categorie = patch.categorie;
+  if (patch.bloc !== undefined) champs.urgence = urgenceDepuisBloc(patch.bloc);
+  if (Object.keys(champs).length === 0) return;
+
   const { error } = await supabaseAdmin()
     .from("tasks")
-    .update({
-      statut: faite ? "faite" : "ouverte",
-      completed_at: faite ? new Date().toISOString() : null,
-    })
+    .update(champs)
     .eq("id", id)
     .eq("user_id", (await uid()));
 
@@ -272,34 +227,21 @@ export async function basculerTache(id: string, faite: boolean): Promise<void> {
 
 export async function creerTache(
   titre: string,
-  categorie?: string,
-  niveau: Niveau = "secondaire",
+  categorie?: string | null,
+  bloc: IdBloc = BLOC_PAR_DEFAUT,
 ): Promise<TacheDB> {
-  /*
-   * Le niveau est vérifié ici, pas seulement chez l'appelant.
-   *
-   * Le Brain passe ce qu'un modèle de langage a produit : « urgent »,
-   * « haute », « priorité 1 » — tout est plausible, rien n'est dans
-   * l'énumération. `NIVEAUX[niveau].urgence` levait alors une exception, le
-   * bot répondait « le brain a eu un souci », et la tâche que Twaylo venait
-   * de dicter était simplement perdue. Un niveau inconnu vaut « secondaire »,
-   * ce qui est toujours mieux que de perdre ce qui a été dit.
-   */
-  // `Object.hasOwn` et non `in` : ce dernier accepterait « toString », hérité
-  // du prototype, et `NIVEAUX[niveau]` serait alors indéfini — le plantage
-  // même qu'on cherche à éviter.
-  const retenu: Niveau = Object.hasOwn(NIVEAUX, niveau) ? niveau : "secondaire";
-
   const { data, error } = await supabaseAdmin()
     .from("tasks")
     .insert({
       user_id: (await uid()),
       titre,
       categorie: categorie ?? null,
-      urgence: NIVEAUX[retenu].urgence,
+      // `blocDe` borne la valeur : un bloc inconnu vaut Opérations plutôt que
+      // de faire échouer l'insertion sur la contrainte de la colonne.
+      urgence: blocDe(bloc).urgence,
       cle: true,
     })
-    .select("id, titre, statut, urgence, cle, categorie, completed_at")
+    .select(COLONNES_TACHE)
     .single();
 
   if (error) throw error;
@@ -309,14 +251,12 @@ export async function creerTache(
    * La nouvelle tâche prend la TÊTE de la pile, pas la queue.
    *
    * L'ordre d'affichage vient de la liste rangée sur la sentinelle, et une
-   * tâche absente de cette liste est renvoyée en dernier (`trierSelon`). Sans
-   * ce placement, ce que Twaylo vient de taper atterrissait tout en bas d'une
-   * liste de vingt lignes — c'est-à-dire hors de vue. On la met donc devant,
-   * ici plutôt que côté navigateur : le Brain Telegram crée des tâches par le
-   * même chemin et doit se comporter pareil.
+   * tâche absente de cette liste est renvoyée en dernier. Sans ce placement,
+   * ce que Twaylo vient de taper atterrissait tout en bas d'une liste de vingt
+   * lignes — c'est-à-dire hors de vue.
    *
    * L'échec n'annule pas la création : au pire la tâche s'affiche en bas, ce
-   * qui reste très loin de mériter de perdre ce que Twaylo vient d'écrire.
+   * qui reste très loin de mériter de perdre ce qui vient d'être écrit.
    */
   try {
     await placerEnTeteOrdre(tache.id);
@@ -385,26 +325,6 @@ export async function placerEnTeteOrdre(id: string): Promise<void> {
   }
 }
 
-/** Fait passer une tâche d'un niveau à l'autre. */
-export async function changerNiveauTache(id: string, niveau: Niveau): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("tasks")
-    .update({ urgence: NIVEAUX[niveau].urgence })
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-export async function renommerTache(id: string, titre: string): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("tasks")
-    .update({ titre })
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
 
 /**
  * Sort une tâche de la todo SANS l'effacer : elle rejoint les Oubliés.
@@ -436,26 +356,6 @@ export async function supprimerTache(id: string): Promise<void> {
 }
 
 /**
- * Vide toute la todo de Twaylo — le « passer au jour suivant ».
- *
- * L'instantané du jour est déjà figé dans daily_logs avant l'appel : ici on ne
- * fait qu'effacer la table de travail pour repartir sur une liste vierge. Le
- * drapeau « tâches semées » reste posé, donc les cinq tâches d'exemple ne
- * reviennent pas.
- */
-export async function supprimerToutesTaches(): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("tasks")
-    .delete()
-    .eq("user_id", (await uid()))
-    // L'archive des Oubliés survit à tout vidage : elle ne se perd jamais,
-    // c'est sa raison d'être. On n'y touche que depuis l'onglet Oubliés.
-    .neq("statut", "abandonnee");
-
-  if (error) throw error;
-}
-
-/**
  * Efface seulement les tâches cochées — le « passer au jour suivant » qui
  * reporte au lendemain tout ce qui n'a pas été fait.
  *
@@ -473,531 +373,133 @@ export async function supprimerTachesFaites(): Promise<void> {
   if (error) throw error;
 }
 
-/* ------------------------------------------------------------------ */
-/* Journée                                                             */
-/* ------------------------------------------------------------------ */
-
-export async function lireJour(
-  jour: string,
-): Promise<{ etat: EtatJour; journal: string }> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes, journal_texte")
-    .eq("user_id", (await uid()))
-    .eq("jour", jour)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) return { etat: ETAT_VIDE, journal: "" };
-
-  return {
-    etat: { ...ETAT_VIDE, ...((data.habitudes ?? {}) as Partial<EtatJour>) },
-    journal: data.journal_texte ?? "",
-  };
-}
-
-/**
- * Le nombre de jours d'affilée où Twaylo a fait vivre son OS.
- *
- * Un jour compte s'il porte une trace réelle : une coche, un repas, une tâche
- * bouclée ou du texte dans le journal. Ouvrir l'app sans rien y mettre ne
- * compte pas — une série qui s'incrémente toute seule ne veut plus rien dire.
- *
- * La trace ne se limite volontairement pas aux habitudes. En déplacement,
- * Twaylo ne coche parfois que ses blocs de journée type : la série se cassait
- * alors sur des journées pleinement tenues, ce qui est exactement l'inverse de
- * ce qu'un compteur de série doit faire.
- *
- * La journée en cours n'interrompt pas la série tant qu'elle est vide : à 9 h
- * du matin on n'a encore rien fait, et remettre le compteur à zéro chaque nuit
- * serait absurde. On repart donc d'hier si aujourd'hui est vierge.
- */
-export async function calculerSerie(aujourdhui: string): Promise<number> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("jour, habitudes, journal_texte")
-    .eq("user_id", (await uid()))
-    .neq("jour", JOUR_SENTINELLE)
-    .lte("jour", aujourdhui)
-    .order("jour", { ascending: false })
-    .limit(400);
-
-  if (error) throw error;
-  if (!data) return 0;
-
-  const remplis = new Set<string>();
-  for (const ligne of data) {
-    const chiffre = chiffrerJourStocke(ligne.habitudes, ligne.journal_texte as string | null);
-    if (jourALaisseUneTrace(chiffre)) remplis.add(ligne.jour as string);
-  }
-  if (remplis.size === 0) return 0;
-
-  // On avance jour par jour vers le passé en construisant les dates en UTC :
-  // soustraire 24 h à une date locale saute ou répète un jour aux changements
-  // d'heure.
-  const curseur = new Date(`${aujourdhui}T00:00:00Z`);
-  if (!remplis.has(aujourdhui)) curseur.setUTCDate(curseur.getUTCDate() - 1);
-
-  let serie = 0;
-  while (remplis.has(curseur.toISOString().slice(0, 10))) {
-    serie += 1;
-    curseur.setUTCDate(curseur.getUTCDate() - 1);
-  }
-  return serie;
-}
-
-/**
- * Écrit la journée. Fusionne au lieu d'écraser : la carte Nutrition et la
- * carte Habitudes écrivent chacune de leur côté, et l'une ne doit pas effacer
- * le travail de l'autre.
- */
-export async function ecrireJour(
-  jour: string,
-  patch: { etat?: Partial<EtatJour>; journal?: string },
-): Promise<void> {
-  const db = supabaseAdmin();
-
-  /*
-   * Même protection que la ligne sentinelle, et pour la même raison.
-   *
-   * Plusieurs choses vivent dans la ligne d'UN jour — habitudes cochées,
-   * repas, chose du jour, instantané des tâches, blocs de journée type, et la
-   * revue quand ce jour est un lundi — et plusieurs chemins l'écrivent. Deux
-   * écritures dont les lectures se croisent, et la seconde ressuscite ce que
-   * la première venait de changer : une coche perdue, une revue effacée.
-   *
-   * Sans verrou possible, on vérifie : après écriture, on relit et on s'assure
-   * que nos clés portent bien nos valeurs, sinon on refusionne sur la version
-   * fraîche.
-   */
-  const cles = Object.keys(patch.etat ?? {});
-
-  /*
-   * `bonus` est la seule clé qui s'ajoute au lieu de remplacer.
-   *
-   * Une récompense gagnée est gagnée. Écrasée comme les autres, elle
-   * disparaîtrait au premier onglet resté ouvert depuis la veille, ou dès que
-   * deux appareils écrivent la même journée — et l'XP redescendrait.
-   */
-  const bonusVoulus = Array.isArray(patch.etat?.bonus) ? patch.etat.bonus : null;
-
-  /*
-   * La relecture de vérification n'est payée que quand elle sert.
-   *
-   * Trois allers-retours par écriture (lire, écrire, relire) sur la route la
-   * plus appelée de l'OS — tout passe par `synchroniserJour`. Or la
-   * vérification n'existe que pour un cas précis : deux écrivains dont les
-   * lectures se croisent. Ces écrivains sont connus et rares — la revue du
-   * lundi, le journal du soir, les bonus fusionnés par union — et ce sont eux
-   * dont la perte se voit (une revue effacée, une XP qui redescend).
-   *
-   * Les coches, elles, arrivent par dizaines depuis un seul onglet, par une
-   * file qui n'envoie qu'UNE écriture à la fois : deux lectures qui se
-   * croisent y sont improbables, et le pire cas est une coche à refaire, pas
-   * une donnée perdue. On garde donc la boucle pour les clés à enjeu, et on
-   * s'arrête après l'écriture pour les autres. Un tiers de latence en moins
-   * sur le geste le plus fréquent.
-   */
-  const CLES_A_ENJEU = new Set(["bonus", "revue"]);
-  const verifier =
-    patch.journal !== undefined || cles.some((c) => CLES_A_ENJEU.has(c));
-
-  for (let essai = 0; essai < 3; essai++) {
-    const actuel = await lireJour(jour);
-
-    const fusion: Record<string, unknown> = { ...actuel.etat, ...(patch.etat ?? {}) };
-    if (bonusVoulus) {
-      fusion.bonus = [...new Set([...(actuel.etat.bonus ?? []), ...bonusVoulus])];
-    }
-
-    /*
-     * Une écriture qui ne change rien n'est pas écrite.
-     *
-     * L'instantané des tâches est reposté à CHAQUE chargement de page, avec
-     * exactement le même contenu : c'est la nature d'un instantané. Chaque
-     * ouverture de l'OS déclenchait donc une écriture inutile sur la ligne du
-     * jour — la plus sollicitée de la base, et celle que six chemins se
-     * partagent.
-     *
-     * La comparaison textuelle suffit ici : `fusion` est construite en
-     * étalant `actuel.etat` d'abord, donc l'ordre des clés existantes est
-     * conservé. Une clé nouvelle s'ajoute à la fin et fait diverger le texte,
-     * ce qui est le comportement voulu.
-     */
-    const identique =
-      JSON.stringify(fusion) === JSON.stringify(actuel.etat) &&
-      (patch.journal === undefined || patch.journal === actuel.journal);
-    if (identique) return;
-
-    const ligne: Record<string, unknown> = { user_id: (await uid()), jour, habitudes: fusion };
-    if (patch.journal !== undefined) ligne.journal_texte = patch.journal;
-
-    const { error } = await db
-      .from("daily_logs")
-      .upsert(ligne, { onConflict: "user_id,jour" });
-
-    if (error) throw error;
-    if (!verifier) return;
-
-    const relu = await lireJour(jour);
-    const etatRelu = relu.etat as unknown as Record<string, unknown>;
-    const attendu = (patch.etat ?? {}) as Record<string, unknown>;
-    const tenu =
-      cles.every((c) =>
-        c === "bonus" && bonusVoulus
-          ? bonusVoulus.every((b) => (relu.etat.bonus ?? []).includes(b))
-          : JSON.stringify(etatRelu[c]) === JSON.stringify(attendu[c]),
-      ) && (patch.journal === undefined || relu.journal === patch.journal);
-    if (tenu) return;
-  }
-
-  console.error(`[jour ${jour}] écriture emportée trois fois par une autre — abandon`);
-}
 
 /* ------------------------------------------------------------------ */
-/* Vidéos — le pipeline de contenu                                     */
+/* Ce qui part au navigateur                                           */
 /* ------------------------------------------------------------------ */
 
-export type VideoDB = {
+/** Une tâche telle que le navigateur la reçoit. */
+export type TacheReseau = {
   id: string;
   titre: string;
+  /** Brut : le Kanban a besoin des quatre états, pas d'un booléen. */
   statut: string;
-  format: string;
-  priorite: number;
+  /** Brut : le navigateur en déduit le bloc horaire. */
+  urgence: string;
+  /** Brut : le navigateur en décode la meta P90. */
+  categorie: string | null;
+  /** Jour LOCAL de la coche, pour distinguer « faite » de « faite aujourd'hui ». */
+  faiteLe?: string;
+  /** Jour LOCAL de la création, pour l'âge affiché dans la liste. */
+  creeLe?: string;
 };
-
-const COLONNES_VIDEO = "id, titre, statut, format, priorite";
-
-/** L'ordre des étapes. Sert à faire avancer une vidéo d'un cran. */
-export const ETAPES = [
-  "idee",
-  "scenario",
-  "tournage",
-  "montage",
-  "pret",
-  "publie",
-] as const;
-
-export async function lireVideos(): Promise<VideoDB[]> {
-  const db = supabaseAdmin();
-
-  const { data, error } = await db
-    .from("videos")
-    .select(COLONNES_VIDEO)
-    .eq("user_id", (await uid()))
-    .order("priorite", { ascending: false })
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  if (data.length > 0) return data as VideoDB[];
-
-  /*
-   * Table vide et semis déjà fait : Twaylo a tout supprimé, on respecte.
-   *
-   * Ce garde manquait, contrairement aux tâches : supprimer les trois vidéos
-   * d'amorçage — des titres bouche-trou — les faisait revenir au chargement
-   * suivant, encore et encore. Un pipeline vide était impossible à atteindre.
-   */
-  if (await dejaSeme("videosSemees")) return [];
-  if (await semisInterdit("videosSemees")) return [];
-
-  // Même amorçage idempotent que les tâches : identifiant déduit du titre,
-  // donc deux semis concurrents écrivent la même ligne.
-  const moi = await uid();
-  const semences = REAL_DATA.pipeline.flatMap((col) =>
-    col.videos.map((v) => ({
-      id: uuidStable(moi, v.title),
-      user_id: moi,
-      titre: v.title,
-      statut: col.status,
-      format: v.format.toLowerCase() === "short" ? "short" : "long",
-    })),
-  );
-
-  if (semences.length > 0) {
-    const { error: erreurSemis } = await db
-      .from("videos")
-      .upsert(semences, { onConflict: "id", ignoreDuplicates: true });
-    if (erreurSemis) throw erreurSemis;
-  }
-  // Marqué avant la relecture : le semis n'aura pas lieu deux fois.
-  await majSentinelle({ videosSemees: true });
-
-  const { data: apres, error: erreurRelecture } = await db
-    .from("videos")
-    .select(COLONNES_VIDEO)
-    .eq("user_id", (await uid()))
-    .order("created_at", { ascending: true });
-
-  if (erreurRelecture) throw erreurRelecture;
-  return apres as VideoDB[];
-}
-
-export async function deplacerVideo(id: string, statut: string): Promise<void> {
-  if (!ETAPES.includes(statut as (typeof ETAPES)[number])) {
-    throw new Error(`Étape inconnue : ${statut}`);
-  }
-  const { error } = await supabaseAdmin()
-    .from("videos")
-    .update({
-      statut,
-      publie_le: statut === "publie" ? new Date().toISOString().slice(0, 10) : null,
-    })
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-export async function creerVideo(
-  titre: string,
-  format = "long",
-  // L'étape de destination. Saisir une vidéo dans la colonne « Montage »
-  // devait l'y créer ; elle atterrissait systématiquement dans « Idée », et
-  // Twaylo devait la reglisser à chaque fois.
-  statut = "idee",
-): Promise<VideoDB> {
-  const { data, error } = await supabaseAdmin()
-    .from("videos")
-    .insert({
-      user_id: (await uid()),
-      titre,
-      statut: ETAPES.includes(statut as (typeof ETAPES)[number]) ? statut : "idee",
-      format,
-    })
-    .select(COLONNES_VIDEO)
-    .single();
-
-  if (error) throw error;
-  return data as VideoDB;
-}
-
-export async function supprimerVideo(id: string): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("videos")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-/* ------------------------------------------------------------------ */
-/* Contacts                                                            */
-/* ------------------------------------------------------------------ */
-
-export type ContactDB = {
-  id: string;
-  nom: string;
-  type: string;
-  relation: string;
-  role: string | null;
-  prochaine_action: string | null;
-};
-
-const COLONNES_CONTACT = "id, nom, type, relation, role, prochaine_action";
-
-export async function lireContacts(): Promise<ContactDB[]> {
-  const db = supabaseAdmin();
-
-  const { data, error } = await db
-    .from("contacts")
-    .select(COLONNES_CONTACT)
-    .eq("user_id", (await uid()))
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  if (data.length > 0) return data as ContactDB[];
-
-  // Même garde que les tâches et les vidéos : une liste vidée à la main le
-  // reste. Sans lui, les contacts d'amorçage revenaient à chaque chargement.
-  if (await dejaSeme("contactsSemes")) return [];
-  if (await semisInterdit("contactsSemes")) return [];
-
-  // Sorti de la boucle : un seul calcul, et le `.map()` reste synchrone.
-  const moi = await uid();
-  const { error: erreurSemis } = await db.from("contacts").upsert(
-    REAL_DATA.contacts.map((c) => ({
-      id: uuidStable(moi, c.nom),
-      user_id: moi,
-      nom: c.nom,
-      type: c.type,
-      relation: c.relation,
-      role: c.role ?? null,
-      prochaine_action: c.prochaineAction ?? null,
-    })),
-    { onConflict: "id", ignoreDuplicates: true },
-  );
-  if (erreurSemis) throw erreurSemis;
-  await majSentinelle({ contactsSemes: true });
-
-  const { data: apres, error: erreurRelecture } = await db
-    .from("contacts")
-    .select(COLONNES_CONTACT)
-    .eq("user_id", (await uid()))
-    .order("created_at", { ascending: true });
-
-  if (erreurRelecture) throw erreurRelecture;
-  return apres as ContactDB[];
-}
-
-export async function majContact(
-  id: string,
-  patch: { relation?: string; prochaine_action?: string | null },
-): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("contacts")
-    .update(patch)
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-const RELATIONS = ["chaud", "actif", "tiede", "froid"] as const;
-
-export async function creerContact(
-  nom: string,
-  type = "collab",
-  // La chaleur de départ : la colonne dans laquelle Twaylo a tapé. Elle était
-  // figée à « froid », donc un contact ajouté dans « Chaud » atterrissait
-  // ailleurs et devait être reglissé à la main.
-  relation = "froid",
-): Promise<ContactDB> {
-  const { data, error } = await supabaseAdmin()
-    .from("contacts")
-    .insert({
-      user_id: (await uid()),
-      nom,
-      type,
-      relation: RELATIONS.includes(relation as (typeof RELATIONS)[number])
-        ? relation
-        : "froid",
-    })
-    .select(COLONNES_CONTACT)
-    .single();
-
-  if (error) throw error;
-  return data as ContactDB;
-}
-
-export async function supprimerContact(id: string): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("contacts")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-/* ------------------------------------------------------------------ */
-/* Captures                                                            */
-/* ------------------------------------------------------------------ */
-
-export type CaptureDB = { id: string; texte: string; type: string };
 
 /**
- * Les dernières captures NON TRAITÉES — la boîte de réception.
+ * De la base vers le navigateur, sans rien interpréter.
  *
- * Le filtre manquait, et tant que rien ne routait les captures c'était sans
- * conséquence : `traite` restait faux pour tout le monde. Maintenant que dire
- * « appeler le fixeur » crée vraiment la tâche, une capture routée n'a plus
- * rien à faire sous « en attente de tri » — elle y restait affichée comme si
- * personne ne s'en était occupé.
+ * L'ancienne version renvoyait `done: boolean` et perdait `en_cours` en route :
+ * le Kanban ne pouvait pas distinguer « à faire » de « en cours ». Les champs
+ * partent donc bruts, et c'est le domaine (`p90.ts`) qui les lit — un seul
+ * endroit où la règle est écrite, partagé par le serveur et le navigateur.
  */
-export async function lireCaptures(limite = 4): Promise<CaptureDB[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("captures")
-    .select("id, texte, type")
-    .eq("user_id", (await uid()))
-    .eq("traite", false)
-    .order("created_at", { ascending: false })
-    .limit(limite);
-
-  if (error) throw error;
-  return data as CaptureDB[];
-}
-
-/* ------------------------------------------------------------------ */
-/* Conversion vers les formes attendues par l'interface                */
-/* ------------------------------------------------------------------ */
-
-export function versTaches(lignes: TacheDB[]): (Task & { id: string })[] {
+export function versTaches(lignes: TacheDB[]): TacheReseau[] {
   return lignes.map((l) => ({
     id: l.id,
-    text: l.titre,
-    done: l.statut === "faite",
-    categorie: l.categorie ?? undefined,
-    niveau: niveauDepuisUrgence(l.urgence),
+    titre: l.titre,
+    statut: l.statut,
+    urgence: l.urgence,
+    categorie: l.categorie ?? null,
     // L'horodatage de la base ramené au jour LOCAL de Twaylo : une tâche
     // cochée à 00 h 30 appartient à sa nuit, pas à la veille UTC.
     faiteLe:
       l.statut === "faite" && l.completed_at
         ? localDateKey(new Date(l.completed_at))
         : undefined,
-    /*
-     * Le jour de naissance de la tâche part maintenant au navigateur.
-     *
-     * Il restait côté serveur, où seul l'onglet « Oubliés » s'en servait pour
-     * archiver ce qui traîne depuis quatre jours. Mais l'archivage arrive trop
-     * tard : ce qui compte, c'est de VOIR une tâche vieillir pendant qu'elle
-     * est encore sous les yeux. Une liste sans âge donne le même poids à ce
-     * qu'on vient de noter et à ce qu'on repousse depuis une semaine.
-     *
-     * Ramené au jour local, comme la date de coche : une tâche créée à minuit
-     * et demie appartient à sa nuit.
-     */
     creeLe: l.created_at ? localDateKey(new Date(l.created_at)) : undefined,
   }));
 }
 
+/**
+ * Applique l'ordre choisi par Twaylo. Ce que la liste ne mentionne pas — une
+ * tâche créée depuis — vient après, dans son ordre de création.
+ */
+export function trierSelon<T extends { id: string }>(taches: T[], ordre: string[]): T[] {
+  if (ordre.length === 0) return taches;
+  const rang = new Map(ordre.map((id, i) => [id, i]));
+  return [...taches].sort(
+    (a, b) =>
+      (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
 
 /**
- * Reconstruit les colonnes du pipeline à partir des lignes de la base.
+ * L'ordre des tâches clés, comme simple liste d'identifiants.
  *
- * Les étapes (noms, couleurs, ordre) restent définies dans le code : ce sont
- * des constantes de l'atelier, pas des données. Seules les vidéos viennent de
- * Postgres.
+ * La table `tasks` n'a pas de colonne d'ordre et on ne peut plus faire de DDL
+ * (le jeton d'accès a été révoqué). La liste vit donc sur la ligne sentinelle,
+ * à côté des habitudes et des blocages. Les tâches absentes de la liste
+ * viennent après, dans leur ordre de création.
  */
-export function versPipeline(lignes: VideoDB[]) {
-  return REAL_DATA.pipeline.map((col) => ({
-    ...col,
-    videos: lignes
-      .filter((v) => v.statut === col.status)
-      .map((v) => ({
-        id: v.id,
-        title: v.titre,
-        format: (v.format === "short" ? "Short" : "Long") as "Short" | "Long",
-      })),
-  }));
-}
-
-export function versContacts(lignes: ContactDB[]) {
-  return lignes.map((c) => ({
-    id: c.id,
-    nom: c.nom,
-    type: c.type as Contact["type"],
-    relation: c.relation as Contact["relation"],
-    role: c.role ?? undefined,
-    prochaineAction: c.prochaine_action ?? undefined,
-  }));
-}
-
-/** Renomme une vidéo sans changer son étape. */
-export async function renommerVideo(id: string, titre: string): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("videos")
-    .update({ titre })
-    .eq("id", id)
-    .eq("user_id", (await uid()));
+export async function lireOrdreTaches(): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", (await uid()))
+    .eq("jour", JOUR_SENTINELLE)
+    .maybeSingle();
 
   if (error) throw error;
+
+  const ordre = (data?.habitudes as { ordreTaches?: string[] } | null)?.ordreTaches;
+  return Array.isArray(ordre) ? ordre : [];
 }
 
-/* ------------------------------------------------------------------ */
-/* Sponsors — les deals chiffrés                                       */
-/* ------------------------------------------------------------------ */
+export async function ecrireOrdreTaches(ordreTaches: string[]): Promise<void> {
+  await majSentinelle({ ordreTaches });
+}
+
+
+/**
+ * LES TÂCHES GELÉES — celles qui reviennent tous les jours.
+ *
+ * « Poster sur Snap et Facebook » n'est pas une tâche qu'on finit : c'est une
+ * tâche qu'on refait. Cochée le soir, elle disparaissait au passage au jour
+ * suivant avec toutes les autres, et il fallait la retaper chaque matin.
+ * Gelée, elle est simplement décochée et reste à sa place.
+ *
+ * Une liste d'identifiants sur la sentinelle, comme l'ordre des tâches : la
+ * table `tasks` n'a pas de colonne pour ça et aucune migration n'est possible
+ * (le jeton d'accès a été révoqué).
+ *
+ * Bornée à 60 : une todo dont la moitié est quotidienne n'est plus une todo,
+ * c'est une journée type — et celle-là existe déjà, dans son onglet.
+ */
+const MAX_GELEES = 60;
+
+export async function lireTachesGelees(): Promise<string[]> {
+  const brut = (await lireSentinelle()).tachesGelees;
+  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * Gèle ou dégèle une tâche.
+ *
+ * Passe par l'écrivain vérifié de la sentinelle, comme tout le reste : geler
+ * une tâche pendant que l'OS enregistre l'ordre des tâches ne doit pas effacer
+ * l'un ou l'autre.
+ */
+export async function basculerTacheGelee(id: string, gelee: boolean): Promise<string[]> {
+  const actuelles = await lireTachesGelees();
+  const suivantes = gelee
+    ? actuelles.includes(id)
+      ? actuelles
+      : [id, ...actuelles].slice(0, MAX_GELEES)
+    : actuelles.filter((x) => x !== id);
+  if (suivantes.length !== actuelles.length) {
+    await majSentinelle({ tachesGelees: suivantes });
+  }
+  return suivantes;
+}
 
 export type DealDB = {
   id: string;
@@ -1088,291 +590,6 @@ export async function supprimerDeal(id: string): Promise<void> {
     .eq("user_id", (await uid()));
 
   if (error) throw error;
-}
-
-/**
- * Les statistiques du haut de page, calculées et non saisies.
- *
- * Un chiffre qu'on recopie à la main finit toujours par mentir : celui-ci
- * découle des deals, donc il ne peut pas diverger.
- */
-export function statsDeals(deals: DealDB[]) {
-  const somme = (etapes: string[]) =>
-    deals
-      .filter((d) => etapes.includes(d.etape))
-      .reduce((n, d) => n + (d.montant ?? 0), 0);
-
-  const euro = (n: number) =>
-    n === 0 ? "—" : `${n.toLocaleString("fr-FR")} €`;
-
-  const clos = deals.filter((d) => d.etape === "signe" || d.etape === "livre").length;
-  const taux = deals.length > 0 ? Math.round((clos / deals.length) * 100) : null;
-
-  return [
-    { label: "Pipeline total", value: euro(somme([...ETAPES_DEAL])), color: "#5fd39a" },
-    { label: "Signés", value: euro(somme(["signe", "livre"])), color: "#61c9db" },
-    { label: "En négociation", value: euro(somme(["negociation"])), color: "#e6c060" },
-    {
-      label: "Taux de closing",
-      value: taux === null ? "—" : `${taux} %`,
-      color: "#ff6ba3",
-    },
-  ];
-}
-
-/* ------------------------------------------------------------------ */
-/* Habitudes — définitions et relevé du jour                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Les définitions d'habitudes ne sont pas quotidiennes : elles vivent sur une
- * date sentinelle, comme le recommande la spec de Miles pour les objectifs
- * (« store on a SENTINEL date so they never auto-clear »).
- *
- * Le 1er janvier 2000 n'est le jour de personne : impossible de le confondre
- * avec une vraie journée de Twaylo.
- *
- * La date et l'écrivain vérifié vivent maintenant dans `sentinelle.ts` : six
- * chemins écrivent cette ligne, et trois d'entre eux le faisaient sans
- * vérifier — d'où des réglages qui disparaissaient quand deux écritures se
- * croisaient.
- */
-
-/** Ce que Twaylo pratique réellement, à défaut d'avoir encore choisi. */
-const HABITUDES_DEFAUT: HabitudeDef[] = [
-  { id: "sport", nom: "Sport", categorie: "Corps", options: ["Gym", "Étirements", "Vélo"] },
-  { id: "sommeil", nom: "Sommeil", categorie: "Corps", options: [] },
-  { id: "creatif", nom: "Session créative", categorie: "Création", options: ["Écriture", "Montage", "Tournage"] },
-  { id: "veille", nom: "Veille / recherche", categorie: "Création", options: [] },
-  { id: "communaute", nom: "Communauté", categorie: "Audience", options: ["Commentaires", "DM", "Stories"] },
-  { id: "finance", nom: "Point finance", categorie: "Business", options: [] },
-];
-
-export type HabitudeDef = {
-  id: string;
-  nom: string;
-  categorie: string;
-  options: string[];
-  /**
-   * Habitude floutée à l'écran tant que « Révélé » n'est pas actif.
-   *
-   * Ce champ manquait ici, et la route qui écrit la liste ne le recopiait donc
-   * pas : le floutage tenait jusqu'au rechargement, puis l'habitude sensible
-   * revenait en clair — précisément quand Twaylo filme.
-   */
-  prive?: boolean;
-};
-
-export async function lireHabitudesDef(): Promise<HabitudeDef[]> {
-  const db = supabaseAdmin();
-
-  const { data, error } = await db
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  const definitions = (data?.habitudes as { definitions?: HabitudeDef[] } | null)
-    ?.definitions;
-
-  /*
-   * Une liste vide n'est pas une liste absente.
-   *
-   * Le test précédent (`length > 0`) confondait les deux : supprimer ses six
-   * habitudes une à une les faisait toutes réapparaître au rechargement, et
-   * elles étaient même réécrites en base. Impossible de repartir d'une liste
-   * vide. On ne sème donc que si la clé n'existe pas du tout.
-   */
-  if (Array.isArray(definitions)) return definitions;
-
-  /*
-   * Premier démarrage. Les habitudes de Twaylo chez Twaylo, rien ailleurs.
-   *
-   * « Communauté → DM / Stories » ou « Point finance » ne veulent rien dire
-   * pour quelqu'un qui vient d'arriver ; ce sont les siennes. Un OS neuf
-   * démarre sans habitude, et le sas y pose celles qui correspondent aux
-   * réponses données. La clé est écrite dans les deux cas, sinon la question
-   * se reposerait à chaque lecture.
-   */
-  const semees = (await uid()) === USER_ID ? HABITUDES_DEFAUT : [];
-  await ecrireHabitudesDef(semees);
-  return semees;
-}
-
-
-export async function ecrireHabitudesDef(definitions: HabitudeDef[]): Promise<void> {
-  await majSentinelle({ definitions });
-}
-
-/* ------------------------------------------------------------------ */
-/* Skills — les compétences façon RPG                                  */
-/* ------------------------------------------------------------------ */
-
-/** Les compétences de départ de Twaylo, groupées par domaine. */
-const SKILLS_DEFAUT: { nom: string; categorie: string }[] = [
-  { nom: "Anglais", categorie: "Langues" },
-  { nom: "Espagnol", categorie: "Langues" },
-  { nom: "Maps GeoLayers", categorie: "Création" },
-  { nom: "Montage", categorie: "Création" },
-  { nom: "Storytelling", categorie: "Création" },
-  { nom: "Shorts", categorie: "Création" },
-  { nom: "Branding", categorie: "Création" },
-  { nom: "Financier", categorie: "Business" },
-  { nom: "Muscu", categorie: "Corps" },
-  { nom: "Beauté", categorie: "Corps" },
-  { nom: "Physique", categorie: "Corps" },
-];
-
-/**
- * Les compétences, rangées dans la sentinelle (config libre).
- *
- * Absentes de la config (premier accès), on sème le jeu de départ — une seule
- * fois : une fois la clé écrite, même vidée, on la respecte. Twaylo reste
- * maître de sa liste.
- */
-export async function lireSkills(): Promise<Skill[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-  const skills = (data?.habitudes as { skills?: Skill[] } | null)?.skills;
-  if (Array.isArray(skills)) return skills;
-
-  /*
-   * « Maps GeoLayers », « Shorts », « Beauté » : ce sont les compétences de
-   * Twaylo. Servies à tout le monde, elles donnaient à un nouvel OS une liste
-   * de onze compétences qu'il n'a jamais choisies — et une courbe de
-   * progression sur des choses qu'il ne pratique pas.
-   */
-  const depart = (await uid()) === USER_ID ? SKILLS_DEFAUT : [];
-  const semes: Skill[] = depart.map((s, i) => ({
-    id: `skill-${i}-${s.nom.toLowerCase().replace(/[^a-z]/g, "")}`,
-    nom: s.nom,
-    categorie: s.categorie,
-    niveau: 0,
-    historique: [],
-  }));
-  await majSentinelle({ skills: semes });
-  return semes;
-}
-
-export async function ecrireSkills(skills: Skill[]): Promise<void> {
-  await majSentinelle({ skills });
-}
-
-
-export type { BlocageStocke };
-
-/**
- * L'ordre des tâches clés, comme simple liste d'identifiants.
- *
- * La table `tasks` n'a pas de colonne d'ordre et on ne peut plus faire de DDL
- * (le jeton d'accès a été révoqué). La liste vit donc sur la ligne sentinelle,
- * à côté des habitudes et des blocages. Les tâches absentes de la liste
- * viennent après, dans leur ordre de création.
- */
-export async function lireOrdreTaches(): Promise<string[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  const ordre = (data?.habitudes as { ordreTaches?: string[] } | null)?.ordreTaches;
-  return Array.isArray(ordre) ? ordre : [];
-}
-
-export async function ecrireOrdreTaches(ordreTaches: string[]): Promise<void> {
-  await majSentinelle({ ordreTaches });
-}
-
-/**
- * L'ordre des objectifs, comme simple liste d'identifiants.
- *
- * Même mécanique que l'ordre des tâches, et pour la même raison : la table
- * `goals` n'a pas de colonne d'ordre et aucune migration n'est possible. Sans
- * cette liste, glisser un objectif à l'intérieur de sa colonne le ferait
- * revenir à sa place au rechargement — un geste qui « ne marche pas », alors
- * que le déplacement entre horizons, lui, aurait tenu. Deux comportements pour
- * le même geste, c'est pire que pas de geste du tout.
- */
-export async function lireOrdreObjectifs(): Promise<string[]> {
-  const brut = (await lireSentinelle()).ordreObjectifs;
-  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
-}
-
-export async function ecrireOrdreObjectifs(ordreObjectifs: string[]): Promise<void> {
-  await majSentinelle({ ordreObjectifs: ordreObjectifs.slice(0, 200) });
-}
-
-/**
- * LES TÂCHES GELÉES — celles qui reviennent tous les jours.
- *
- * « Poster sur Snap et Facebook » n'est pas une tâche qu'on finit : c'est une
- * tâche qu'on refait. Cochée le soir, elle disparaissait au passage au jour
- * suivant avec toutes les autres, et il fallait la retaper chaque matin.
- * Gelée, elle est simplement décochée et reste à sa place.
- *
- * Une liste d'identifiants sur la sentinelle, comme l'ordre des tâches : la
- * table `tasks` n'a pas de colonne pour ça et aucune migration n'est possible
- * (le jeton d'accès a été révoqué).
- *
- * Bornée à 60 : une todo dont la moitié est quotidienne n'est plus une todo,
- * c'est une journée type — et celle-là existe déjà, dans son onglet.
- */
-const MAX_GELEES = 60;
-
-export async function lireTachesGelees(): Promise<string[]> {
-  const brut = (await lireSentinelle()).tachesGelees;
-  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
-}
-
-/**
- * Gèle ou dégèle une tâche.
- *
- * Passe par l'écrivain vérifié de la sentinelle, comme tout le reste : geler
- * une tâche pendant que l'OS enregistre l'ordre des tâches ne doit pas effacer
- * l'un ou l'autre.
- */
-export async function basculerTacheGelee(id: string, gelee: boolean): Promise<string[]> {
-  const actuelles = await lireTachesGelees();
-  const suivantes = gelee
-    ? actuelles.includes(id)
-      ? actuelles
-      : [id, ...actuelles].slice(0, MAX_GELEES)
-    : actuelles.filter((x) => x !== id);
-  if (suivantes.length !== actuelles.length) {
-    await majSentinelle({ tachesGelees: suivantes });
-  }
-  return suivantes;
-}
-
-export async function lireBlocages(): Promise<BlocageStocke[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  const blocages = (data?.habitudes as { blocages?: BlocageStocke[] } | null)?.blocages;
-  return Array.isArray(blocages) ? blocages : [];
-}
-
-export async function ecrireBlocages(blocages: BlocageStocke[]): Promise<void> {
-  await majSentinelle({ blocages });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1527,101 +744,318 @@ export async function supprimerObjectif(id: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Revenus                                                             */
+/* Les cinq objectifs du PROJECT 90, repérés par leur clé             */
 /* ------------------------------------------------------------------ */
 
 /**
- * Un relevé mensuel de revenus.
+ * Le préfixe posé dans `goals.categorie`.
  *
- * Saisi à la main, faute de mieux : lire YouTube Analytics demande un parcours
- * OAuth complet, avec consentement Google et jeton à rafraîchir. Un chiffre
- * que Twaylo recopie une fois par mois depuis son Studio est vrai ; un
- * graphique inventé est joli et faux.
+ * Les cinq objectifs sont des constantes du cockpit (`OBJECTIFS_P90`) : leur
+ * nom, leur KPI, leur cible et leurs jalons vivent dans le code. La base ne
+ * porte que ce qui bouge — la valeur atteinte et les jalons cochés.
+ *
+ * Il faut donc relier une ligne de `goals` à l'objectif qu'elle suit. Par son
+ * titre, ce serait fragile : renommer « Twaylo » en « Chaîne Twaylo » dans le
+ * code casserait le lien et la valeur saisie disparaîtrait de l'écran. La clé
+ * est donc rangée dans `categorie`, qui est du texte libre et que rien
+ * d'autre n'utilise.
  */
-export type RevenuDB = {
+export const PREFIXE_P90 = "p90:";
+
+export type JalonDB = { texte: string; fait: boolean };
+
+export type ObjectifP90DB = {
   id: string;
-  periode: string;
-  date: string;
-  revenu_estime: number | null;
-  rpm: number | null;
-  vues_monetisees: number | null;
-  objectif_mois: number | null;
-  sources: Record<string, number>;
+  /** L'identifiant de l'objectif dans `OBJECTIFS_P90` (« momentum », …). */
+  cle: string;
+  /** La valeur atteinte, telle que Twaylo l'a saisie. */
+  valeur: string;
+  /** Les jalons cochés, repérés par leur texte. */
+  jalons: JalonDB[];
+  statut: string;
 };
 
-export async function lireRevenus(limite = 24): Promise<RevenuDB[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("revenue_snapshots")
-    .select("id, periode, date, revenu_estime, rpm, vues_monetisees, objectif_mois, sources")
-    .eq("user_id", (await uid()))
-    .order("date", { ascending: false })
-    .limit(limite);
-
-  if (error) throw error;
-  return (data ?? []) as RevenuDB[];
-}
-
 /**
- * Enregistre le relevé d'un mois. Le même mois saisi deux fois se remplace au
- * lieu de s'ajouter — la contrainte d'unicité porte sur (user, periode, date).
- */
-export async function ecrireRevenu(patch: {
-  date: string;
-  revenu_estime: number | null;
-  rpm: number | null;
-  vues_monetisees: number | null;
-  objectif_mois: number | null;
-  sources: Record<string, number>;
-}): Promise<void> {
-  const { error } = await supabaseAdmin().from("revenue_snapshots").upsert(
-    { user_id: (await uid()), periode: "mois", ...patch },
-    { onConflict: "user_id,periode,date" },
-  );
-
-  if (error) throw error;
-}
-
-export async function supprimerRevenu(id: string): Promise<void> {
-  const { error } = await supabaseAdmin()
-    .from("revenue_snapshots")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", (await uid()));
-
-  if (error) throw error;
-}
-
-/* ------------------------------------------------------------------ */
-/* YouTube — jeton de rafraîchissement                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * Le refresh token OAuth de YouTube.
+ * Les cinq lignes d'objectif, semées au premier passage.
  *
- * Rangé sur la ligne sentinelle, à côté des habitudes et des blocages. Il ne
- * quitte jamais le serveur : /api/state ne lit que `definitions` et
- * `blocages` de ce jsonb, jamais `youtube`. La clé service_role contourne
- * RLS, mais le navigateur ne voit passer que des statistiques déjà calculées,
- * pas le jeton qui a servi à les obtenir.
+ * Semées ici et non dans un script : une migration demanderait le jeton
+ * d'accès, qui a été révoqué. L'identifiant déduit de la clé rend le semis
+ * rejouable — deux onglets ouverts en même temps écrivent les mêmes cinq
+ * lignes au lieu d'en créer dix.
+ *
+ * Aucun drapeau de sentinelle ici, contrairement aux tâches : ces cinq lignes
+ * ne sont pas un jeu de démarrage qu'on peut vouloir jeter, ce sont les
+ * objectifs du cockpit. Si l'une manque, elle doit revenir — sinon la page
+ * Objectifs afficherait un trou définitif.
  */
-export async function lireTokenYoutube(): Promise<string | null> {
+export async function lireObjectifsP90(): Promise<ObjectifP90DB[]> {
+  const db = supabaseAdmin();
+  const moi = await uid();
+  const COLONNES = "id, objectif, portee, statut, categorie, cible";
+
+  const lire = async () => {
+    const { data, error } = await db
+      .from("goals")
+      .select(COLONNES)
+      .eq("user_id", moi)
+      .like("categorie", `${PREFIXE_P90}%`);
+    if (error) throw error;
+    return (data ?? []) as {
+      id: string;
+      statut: string;
+      categorie: string | null;
+      cible: string | null;
+    }[];
+  };
+
+  let lignes = await lire();
+  const presentes = new Set(lignes.map((l) => (l.categorie ?? "").slice(PREFIXE_P90.length)));
+  const manquantes = OBJECTIFS_P90.filter((o) => !presentes.has(o.id));
+
+  if (manquantes.length > 0) {
+    const { error } = await db.from("goals").upsert(
+      manquantes.map((o) => ({
+        id: uuidStable(moi, `${PREFIXE_P90}${o.id}`),
+        user_id: moi,
+        objectif: o.nom,
+        // Les 90 jours sont un trimestre, et la contrainte de la colonne
+        // n'accepte que quatre horizons : c'est le seul qui corresponde.
+        portee: "trimestre",
+        categorie: `${PREFIXE_P90}${o.id}`,
+        cible: JSON.stringify({
+          pct: 0,
+          valeur: "",
+          etapes: o.jalons.map((j) => ({ texte: j.texte, fait: false })),
+        }),
+      })),
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+    if (error) throw error;
+    lignes = await lire();
+  }
+
+  return lignes.map((l) => {
+    const contenu = lireCible(l.cible);
+    return {
+      id: l.id,
+      cle: (l.categorie ?? "").slice(PREFIXE_P90.length),
+      valeur: contenu.valeur,
+      jalons: contenu.etapes,
+      statut: l.statut,
+    };
+  });
+}
+
+/**
+ * Enregistre la valeur atteinte ou les jalons cochés d'un objectif.
+ *
+ * Fusionne au lieu de remplacer : cocher un jalon ne doit pas effacer la
+ * valeur saisie dix secondes plus tôt, et inversement. Les deux vivent dans le
+ * même JSON, c'est donc ici que la fusion doit se faire.
+ */
+export async function majObjectifP90(
+  cle: string,
+  patch: { valeur?: string; jalons?: JalonDB[]; statut?: string },
+): Promise<void> {
+  const lignes = await lireObjectifsP90();
+  const ligne = lignes.find((l) => l.cle === cle);
+  if (!ligne) throw new Error(`Objectif P90 inconnu : ${cle}`);
+
+  await majObjectif(ligne.id, {
+    cible: {
+      pct: 0,
+      valeur: patch.valeur ?? ligne.valeur,
+      etapes: patch.jalons ?? ligne.jalons,
+    },
+    ...(patch.statut ? { statut: patch.statut } : {}),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Les OP sponsors : semis, et l'étape « Payé » sans migration         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les OP, semées au premier passage comme les tâches.
+ *
+ * Même protection : identifiant déduit de la marque, drapeau sur la sentinelle,
+ * et rien chez quelqu'un d'autre que Twaylo.
+ */
+export async function lireDealsP90(): Promise<DealDB[]> {
+  const existantes = await lireDeals();
+  if (existantes.length > 0) return existantes;
+
+  if (await dejaSeme("p90OpsSemees")) return [];
+  if (await semisInterdit("p90OpsSemees")) return [];
+
+  const moi = await uid();
+  const { error } = await supabaseAdmin()
+    .from("deals")
+    .upsert(
+      SEMIS_OPS.map((op) => {
+        const { etape } = etapeVersDB(op.facture ? "facture" : "livre");
+        return {
+          id: uuidStable(moi, `op:${op.marque}`),
+          user_id: moi,
+          nom: op.marque,
+          etape,
+          montant: op.brut,
+          note: encoderOp({
+            chaine: op.chaine,
+            facture: op.facture,
+            expandia: op.expandia,
+            litige: op.litige ?? false,
+            diffusion: op.diffusion,
+            paiement: op.paiement,
+            note: op.note,
+          }),
+        };
+      }),
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+  if (error) throw error;
+
+  await majSentinelle({ p90OpsSemees: true });
+  return lireDeals();
+}
+
+/**
+ * Une violation de contrainte, et non une autre erreur.
+ *
+ * Postgres répond `23514` quand une valeur sort d'un `check`. C'est le cas
+ * exact de l'étape « réglé » si la migration 0004 n'a jamais été appliquée en
+ * base — et elle s'applique à la main, donc rien ne garantit qu'elle l'ait été.
+ */
+function contrainteRefusee(error: { code?: string } | null): boolean {
+  return error?.code === "23514";
+}
+
+/**
+ * Déplace une OP, en survivant à une migration non appliquée.
+ *
+ * « Payé » s'écrit `etape = 'regle'`, valeur ajoutée par la migration 0004.
+ * Si elle n'est pas passée, l'écriture est refusée — et marquer une OP payée
+ * « ne marcherait tout simplement pas », sans un mot. On retombe alors sur
+ * « livré » plus le drapeau `y` dans le JSON, que la lecture comprend aussi
+ * bien. La fonctionnalité ne dépend donc plus de l'état de la base.
+ */
+export async function majDealP90(
+  id: string,
+  patch: { nom?: string; montant?: number | null; note?: string | null; etape?: EtapeOp },
+): Promise<void> {
+  const { etape: etapeBase, facture } = patch.etape
+    ? etapeVersDB(patch.etape)
+    : { etape: undefined, facture: false };
+
+  const champs: { nom?: string; montant?: number | null; note?: string | null; etape?: string } = {};
+  if (patch.nom !== undefined) champs.nom = patch.nom;
+  if (patch.montant !== undefined) champs.montant = patch.montant;
+  if (patch.note !== undefined) champs.note = patch.note;
+  if (etapeBase !== undefined) champs.etape = etapeBase;
+
+  if (Object.keys(champs).length === 0) return;
+
+  const ecrire = async (c: typeof champs) => {
+    const { error } = await supabaseAdmin()
+      .from("deals")
+      .update(c)
+      .eq("id", id)
+      .eq("user_id", (await uid()));
+    return error;
+  };
+
+  const error = await ecrire(champs);
+  if (!error) return;
+
+  if (!contrainteRefusee(error) || patch.etape !== "paye") throw error;
+
+  /*
+   * Repli : « livré », et le paiement marqué dans le JSON.
+   *
+   * La note du correctif est réécrite pour porter le drapeau — sans quoi
+   * l'étape retomberait à « Livré » au rechargement et l'OP repasserait pour
+   * impayée.
+   */
+  console.error("[deals] étape « regle » refusée par la base, repli sur le drapeau JSON");
+  const note = typeof patch.note === "string" ? patch.note : null;
+  const avecDrapeau = marquerPayeDansNote(note);
+  const erreurRepli = await ecrire({ ...champs, etape: "livre", note: avecDrapeau });
+  if (erreurRepli) throw erreurRepli;
+  if (!facture) return;
+}
+
+/**
+ * Pose le drapeau « payé » dans le JSON de la note, sans toucher au reste.
+ *
+ * Écrit à la main plutôt qu'en passant par `encoderOp` : au moment du repli on
+ * n'a que le texte, et le re-décoder pour le ré-encoder ferait perdre une clé
+ * qu'une version plus récente aurait ajoutée.
+ */
+function marquerPayeDansNote(note: string | null): string {
+  let base: Record<string, unknown> = {};
+  if (note && note.trim().startsWith("{")) {
+    try {
+      const parse = JSON.parse(note);
+      if (parse && typeof parse === "object" && !Array.isArray(parse)) {
+        base = parse as Record<string, unknown>;
+      }
+    } catch {
+      /* Une note illisible n'empêche pas de marquer le paiement. */
+    }
+  } else if (note && note.trim()) {
+    base = { n: note.trim().slice(0, 400) };
+  }
+  return JSON.stringify({ ...base, f: 1, y: 1 });
+}
+
+/* ------------------------------------------------------------------ */
+/* La revue de semaine                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * La revue vit sur la ligne du LUNDI de sa semaine, dans `daily_logs`.
+ *
+ * Pourquoi pas une table dédiée : elle aurait demandé une migration, et le
+ * jeton d'accès a été révoqué. Ancrer la revue sur le premier jour de sa
+ * semaine est défendable en soi — une revue appartient à une semaine, et une
+ * semaine commence un lundi.
+ *
+ * La fusion est simple, et elle peut l'être : la revue est désormais la SEULE
+ * chose qui écrit une ligne de journée. Les habitudes, les repas, la chose du
+ * jour et l'instantané des tâches sont partis avec leurs onglets, et avec eux
+ * les écritures concurrentes contre lesquelles l'ancien `ecrireJour` se
+ * protégeait.
+ */
+export async function lireRevueJour(lundi: string): Promise<unknown> {
   const { data, error } = await supabaseAdmin()
     .from("daily_logs")
     .select("habitudes")
     .eq("user_id", (await uid()))
-    .eq("jour", JOUR_SENTINELLE)
+    .eq("jour", lundi)
     .maybeSingle();
 
   if (error) throw error;
-  const token = (data?.habitudes as { youtube?: { refresh_token?: string } } | null)
-    ?.youtube?.refresh_token;
-  return typeof token === "string" && token ? token : null;
+  return (data?.habitudes as Record<string, unknown> | null)?.revue ?? null;
 }
 
-export async function ecrireTokenYoutube(refreshToken: string): Promise<void> {
-  await majSentinelle({ youtube: { refresh_token: refreshToken } });
-}
+export async function ecrireRevueJour(lundi: string, revue: unknown): Promise<void> {
+  const db = supabaseAdmin();
+  const moi = await uid();
 
-export async function oublierTokenYoutube(): Promise<void> {
-  await majSentinelle({ youtube: {} });
+  const { data, error: erreurLecture } = await db
+    .from("daily_logs")
+    .select("habitudes")
+    .eq("user_id", moi)
+    .eq("jour", lundi)
+    .maybeSingle();
+  if (erreurLecture) throw erreurLecture;
+
+  const actuel = (data?.habitudes ?? {}) as Record<string, unknown>;
+  const { error } = await db
+    .from("daily_logs")
+    .upsert(
+      { user_id: moi, jour: lundi, habitudes: { ...actuel, revue } },
+      { onConflict: "user_id,jour" },
+    );
+  if (error) throw error;
 }

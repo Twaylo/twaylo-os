@@ -1,386 +1,298 @@
 "use client";
 
-import { useState } from "react";
-import { useOs, type DealVue } from "@/lib/os-context";
-import { localDateKey, localDateKeyOffset } from "@/lib/local-date";
-import { Panel } from "@/components/Panel";
-import { Kanban, type ColonneKanban } from "@/components/Kanban";
-import { ViewHeader } from "@/components/views/ViewHeader";
+import { useMemo, useState } from "react";
+import {
+  CHAINES,
+  ETAPES_OP,
+  SEUIL_MONTANT_TEXTE,
+  SEUIL_RETARD,
+  alertesOp,
+  bilanEncaissement,
+  commissionOp,
+  joursDeRetard,
+  netOp,
+  nomChaine,
+  paiementAInscrire,
+  type EtapeOp,
+  type IdChaine,
+  type Op,
+} from "@/lib/p90";
+import { useCockpit } from "@/lib/p90-context";
+import { Bouton, Carte, Champ, Euros, Puce, Surtitre, Vide, formaterEuros, formaterJour } from "@/components/p90/ui";
 
 /**
- * Sponsors · Deals — le CRM « business ».
+ * LES SPONSORS — le pipeline des OP, et surtout l'argent qui est dehors.
  *
- * Les quatre étapes d'une négociation, avec un montant éditable sur chaque
- * carte. Les statistiques du haut sont calculées à partir des deals, jamais
- * saisies : un total recopié à la main finit toujours par mentir.
+ * Deux écrans en un. En haut « À encaisser » : ce qui est livré, facturé, pas
+ * payé, total net, et le retard. C'est la partie qui compte — une OP oubliée
+ * trois mois est une OP qu'on ne réclame plus.
+ *
+ * En dessous, le pipeline complet, de Prospect à Payé.
+ *
+ * LE NET N'EST JAMAIS SAISI. Expandia prend 30 %, sur la chaîne Twaylo
+ * uniquement et seulement quand l'OP passe par elle : le calcul vit dans le
+ * domaine, pas dans une case que Twaylo remplirait à la main — un chiffre
+ * recopié finit toujours par mentir.
  */
-
-const ETAPES = [
-  { id: "prospect", nom: "Prospect", couleur: "#b48cf0" },
-  { id: "negociation", nom: "Négociation", couleur: "#e6c060" },
-  { id: "signe", nom: "Signé", couleur: "#5fd39a" },
-  { id: "livre", nom: "Livré", couleur: "#61c9db" },
-  // Réglé = l'argent réellement encaissé, l'étape finale après la livraison.
-  { id: "regle", nom: "Réglé", couleur: "#3ddc84" },
-];
-
-function MontantEditable({ deal }: { deal: DealVue }) {
-  const { majMontantDeal } = useOs();
-  const [edite, setEdite] = useState(false);
-  const [brouillon, setBrouillon] = useState("");
-
-  if (edite) {
-    return (
-      <input
-        autoFocus
-        type="number"
-        value={brouillon}
-        // La carte parente est `draggable` : sans ces gardes, cliquer dans le
-        // champ (surtout en bougeant un peu) démarre un glissé de carte au lieu
-        // d'éditer. On coupe le glissé sur ce champ et on l'empêche d'atteindre
-        // le parent.
-        draggable={false}
-        onPointerDown={(e) => e.stopPropagation()}
-        onChange={(e) => setBrouillon(e.target.value)}
-        // Le clic dans le champ ne doit pas ouvrir le menu de la carte.
-        onClick={(e) => e.stopPropagation()}
-        onBlur={() => {
-          /*
-           * Un nombre, ou rien.
-           *
-           * Le champ est en `type="number"`, mais son contenu peut rester
-           * intermédiaire — un « - » ou un « 1e » seuls, que le navigateur
-           * accepte le temps de la frappe. `Number` en fait NaN, la carte
-           * affichait « NaN € » et la base recevait un `null` : deux chiffres
-           * différents pour la même saisie, jusqu'au rechargement.
-           */
-          const n = Number(brouillon);
-          majMontantDeal(deal.id, brouillon.trim() === "" || !Number.isFinite(n) ? null : n);
-          setEdite(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") setEdite(false);
-        }}
-        placeholder="€"
-        aria-label={`Montant de ${deal.nom}`}
-        className="w-[76px] rounded-[6px] px-[6px] py-[2px] text-right font-mono text-[12px] font-extrabold text-white outline-none"
-        style={{
-          background: "rgba(255,255,255,0.08)",
-          border: "1px solid rgba(255,255,255,0.22)",
-        }}
-      />
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        setBrouillon(deal.montant === null ? "" : String(deal.montant));
-        setEdite(true);
-      }}
-      title="Cliquer pour fixer le montant"
-      // Sans montant, « — € » ressemblait à un champ mort : rien n'indiquait
-      // qu'on pouvait cliquer, et les totaux du haut restaient donc vides
-      // pendant que les prix s'écrivaient dans le nom du deal. « + prix » dit
-      // ce qu'il faut faire, comme « + date » juste à côté.
-      /*
-       * Zéro est un montant, pas une absence de montant.
-       *
-       * Le test de vérité confondait les deux : un deal négocié à 0 € — une
-       * collaboration en échange de visibilité, un produit offert — s'affichait
-       * « + prix », comme si rien n'avait été saisi. La base, elle, distingue
-       * bien le zéro du vide.
-       */
-      className={`flex-none cursor-pointer rounded-[6px] px-[5px] font-extrabold transition-all hover:brightness-125 ${
-        deal.montant !== null ? "font-mono text-[12px]" : "text-[11px]"
-      }`}
-      style={{
-        color: deal.montant !== null ? "var(--color-ver-soft)" : "rgba(255,255,255,0.3)",
-      }}
-    >
-      {deal.montant !== null ? `${deal.montant.toLocaleString("fr-FR")} €` : "+ prix"}
-    </button>
-  );
-}
-
-/**
- * Combien de jours avant l'échéance — négatif si elle est passée.
- *
- * Les deux dates sont ancrées à midi UTC avant d'être soustraites : en partant
- * de minuit, un changement d'heure décale le résultat d'un jour entier, et une
- * échéance « demain » s'afficherait « aujourd'hui » deux fois par an.
- */
-function joursAvant(echeance: string): number {
-  const cible = Date.parse(`${echeance}T12:00:00Z`);
-  const aujourdhui = Date.parse(`${localDateKey()}T12:00:00Z`);
-  return Math.round((cible - aujourdhui) / 86_400_000);
-}
-
-/**
- * La couleur de l'échéance : calme quand c'est loin, rouge quand ça brûle.
- *
- * On interpole en continu plutôt que par paliers — le but est de voir d'un
- * coup d'œil, sur tout le tableau, lequel des deals chauffe le plus. Au-delà
- * d'un mois c'est vert franc ; le rouge arrive le jour J ; passé la date, on
- * sature et on l'annonce en toutes lettres.
- */
-function couleurEcheance(jours: number): { teinte: string; libelle: string | null } {
-  if (jours < 0) return { teinte: "hsl(0,85%,62%)", libelle: "en retard" };
-  const t = Math.max(0, Math.min(1, 1 - jours / 30));
-  // 145° (vert) → 0° (rouge). La saturation monte avec l'urgence pour que le
-  // rouge saute aux yeux là où le vert reste discret.
-  const teinte = `hsl(${Math.round(145 - 145 * t)},${Math.round(55 + 30 * t)}%,${Math.round(64 - 4 * t)}%)`;
-  return { teinte, libelle: jours === 0 ? "aujourd'hui" : null };
-}
-
-const MOIS_COURTS = [
-  "janv.", "févr.", "mars", "avr.", "mai", "juin",
-  "juil.", "août", "sept.", "oct.", "nov.", "déc.",
-];
-
-/** « 12 août » — court, sans l'année quand c'est l'année en cours. */
-function formaterEcheance(echeance: string): string {
-  const [a, m, j] = echeance.split("-").map(Number);
-  const anneeCourante = Number(localDateKey().slice(0, 4));
-  const base = `${j} ${MOIS_COURTS[m - 1] ?? ""}`.trim();
-  return a === anneeCourante ? base : `${base} ${a}`;
-}
-
-/**
- * Le bouton d'échéance : cliquer ouvre un sélecteur de date natif (donc le
- * calendrier du téléphone sur mobile), vider le champ efface la date.
- */
-function EcheanceEditable({ deal }: { deal: DealVue }) {
-  const { majEcheanceDeal } = useOs();
-  const [edite, setEdite] = useState(false);
-
-  if (edite) {
-    return (
-      <input
-        autoFocus
-        type="date"
-        defaultValue={deal.echeance ?? ""}
-        // Même précaution que pour le montant : la carte est `draggable`, et un
-        // léger mouvement en ouvrant le calendrier lancerait un glissé.
-        draggable={false}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        /*
-         * La date se valide en sortant du champ, pas à chaque frappe.
-         *
-         * `onChange` part à chaque chiffre tapé : au clavier, « 12/08/2026 »
-         * passait par des dates incomplètes — enregistrées puis refermant le
-         * champ au premier coup — et effacer pour ressaisir vidait l'échéance
-         * existante. Le calendrier, lui, referme sur son propre changement.
-         */
-        onBlur={(e) => {
-          majEcheanceDeal(deal.id, e.target.value || null);
-          setEdite(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") {
-            // Échap abandonne : on remet la valeur d'origine avant que le
-            // `blur` ne la lise.
-            (e.target as HTMLInputElement).value = deal.echeance ?? "";
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        aria-label={`Échéance de ${deal.nom}`}
-        className="w-[128px] rounded-[6px] px-[6px] py-[2px] font-mono text-[11px] font-extrabold text-white outline-none"
-        style={{
-          background: "rgba(255,255,255,0.08)",
-          border: "1px solid rgba(255,255,255,0.22)",
-          colorScheme: "dark",
-        }}
-      />
-    );
-  }
-
-  if (!deal.echeance) {
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setEdite(true);
-        }}
-        title="Fixer une échéance"
-        className="flex-none cursor-pointer rounded-[6px] px-[5px] py-[1px] text-[11px] font-extrabold text-white/30 transition-all hover:text-white/60"
-      >
-        + date
-      </button>
-    );
-  }
-
-  const jours = joursAvant(deal.echeance);
-  const { teinte, libelle } = couleurEcheance(jours);
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        setEdite(true);
-      }}
-      title={
-        jours < 0
-          ? `En retard de ${-jours} jour${jours < -1 ? "s" : ""}`
-          : jours === 0
-            ? "C'est aujourd'hui"
-            : `Dans ${jours} jour${jours > 1 ? "s" : ""}`
-      }
-      className="flex-none cursor-pointer rounded-[6px] px-[6px] py-[1px] font-mono text-[11px] font-extrabold transition-all hover:brightness-125"
-      style={{
-        color: teinte,
-        background: `color-mix(in srgb, ${teinte} 14%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${teinte} 45%, transparent)`,
-      }}
-    >
-      {formaterEcheance(deal.echeance)}
-      {libelle && <span className="ml-[4px] font-sans font-bold">· {libelle}</span>}
-    </button>
-  );
-}
-
-/** Le libellé de la case chiffrée qui surplombe chaque colonne. */
-const LIBELLE_STAT: Record<string, string> = {
-  prospect: "Prospects",
-  negociation: "En négociation",
-  signe: "Argent signé",
-  livre: "Livré",
-  regle: "Réglé",
-};
-
-const somme = (deals: DealVue[], etapes: string[]) =>
-  deals.filter((d) => etapes.includes(d.etape)).reduce((n, d) => n + (d.montant ?? 0), 0);
-
-const euro = (n: number) => (n === 0 ? "—" : `${n.toLocaleString("fr-FR")} €`);
-
-/**
- * Une case chiffrée par colonne, dans le MÊME ordre que le tableau.
- *
- * Les cases affichaient auparavant « Argent signé » avant « En négociation »,
- * alors que le tableau range Négociation avant Signé : chaque chiffre
- * surplombait la mauvaise colonne. Ici la liste est dérivée de `ETAPES`, donc
- * l'alignement ne peut plus se défaire — ajouter une étape ajoute sa case au
- * bon endroit.
- *
- * Plus de « Pipeline total » non plus : additionner un deal en négociation avec
- * un deal signé fabrique un chiffre auquel on se met à croire, alors que l'un
- * peut encore tomber à l'eau. L'acquis et l'attente sont désormais annoncés
- * séparément, dans le sous-titre.
- *
- * Recalculées depuis la liste affichée à chaque rendu : déplacer un deal ou
- * corriger un montant met les chiffres à jour dans le même geste.
- */
-function calculerStats(deals: DealVue[]) {
-  return ETAPES.map((e) => ({
-    label: LIBELLE_STAT[e.id] ?? e.nom,
-    value: euro(somme(deals, [e.id])),
-    color: e.couleur,
-  }));
-}
 
 export function SponsorsView() {
-  const { deals, ajouterDeal, deplacerDeal, supprimerDeal, demoMode, data } = useOs();
+  const { aujourdhui, ops, pret, ajouterOp, modifierOp, supprimerOp } = useCockpit();
+  const [nouvelle, setNouvelle] = useState("");
+  const [ouverte, setOuverte] = useState<string | null>(null);
 
-  // En démo, on reconstruit des deals depuis le jeu de démonstration pour que
-  // l'écran soit plein quand Twaylo filme.
-  const listeDemo: DealVue[] = data.dealColumns.flatMap((col, i) =>
-    col.deals.map((d, j) => ({
-      id: `demo-${i}-${j}`,
-      nom: d.name,
-      etape: ETAPES[i]?.id ?? "prospect",
-      montant: d.amount === "—" ? null : Number(d.amount.replace(/\D/g, "")) * 1000,
-      note: d.note,
-      // Échéances échelonnées : de quoi montrer tout le dégradé vert → rouge
-      // sur une prise de vue, sans exposer de vraies dates.
-      echeance: localDateKeyOffset([2, 9, 21, 40][(i + j) % 4]),
-    })),
-  );
-
-  const liste = demoMode ? listeDemo : (deals ?? []);
-  // Toujours recalculées depuis la liste affichée — y compris en démo, pour que
-  // les cases restent alignées sur les colonnes qu'elles surplombent.
-  const stats = calculerStats(liste);
-  const total = liste.length;
-
-  // L'acquis d'un côté, l'attente de l'autre : un deal en négociation n'est pas
-  // de l'argent, et le mélanger au signé ferait croire à un chiffre plus gros
-  // qu'il n'est.
-  // Signé, livré ET réglé sont de l'argent gagné — seule l'étape en amont
-  // (prospect, négociation) reste incertaine.
-  const acquis = somme(liste, ["signe", "livre", "regle"]);
-  const attente = somme(liste, ["prospect", "negociation"]);
-  const clos = liste.filter((d) => ["signe", "livre", "regle"].includes(d.etape)).length;
-  const taux = total > 0 ? Math.round((clos / total) * 100) : null;
-
-  const colonnes: ColonneKanban<DealVue>[] = ETAPES.map((e) => ({
-    id: e.id,
-    nom: e.nom,
-    couleur: e.couleur,
-    items: liste.filter((d) => d.etape === e.id),
-  }));
+  const bilan = useMemo(() => bilanEncaissement(ops, aujourdhui), [ops, aujourdhui]);
+  const total = useMemo(() => ops.reduce((s, o) => s + netOp(o), 0), [ops]);
 
   return (
-    <>
-      <ViewHeader
-        title="Sponsors · Deals"
-        subtitle={
-          total > 0
-            ? [
-                `${total} deal${total > 1 ? "s" : ""}`,
-                acquis > 0 ? `${euro(acquis)} acquis` : null,
-                attente > 0 ? `${euro(attente)} en attente` : null,
-                taux === null ? null : `${taux} % de closing`,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-            : "Aucun deal — écris un nom dans une colonne pour commencer"
-        }
-      />
+    <div className="entree-vue space-y-[13px]">
+      {/* ---------- À encaisser ---------- */}
+      <Carte>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <Surtitre>À encaisser</Surtitre>
+          <div className="flex items-baseline gap-[11px]">
+            <span className="text-[11px] text-[var(--p90-texte-2)]">
+              {bilan.lignes.length} OP · net
+            </span>
+            <Euros valeur={bilan.total} className="text-[22px] font-semibold" />
+          </div>
+        </div>
 
-      <div className="mb-[14px] grid grid-cols-2 gap-[14px] md:grid-cols-3 xl:grid-cols-5">
-        {stats.map((s) => (
-          <Panel key={s.label} accent={s.color} size="sm" className="px-[17px] py-[15px]">
-            <div className="text-[11px] font-bold text-white/45">{s.label}</div>
-            <div
-              className="mt-[5px] font-mono text-[22px] font-black"
-              style={{ color: s.color }}
-            >
-              {s.value}
-            </div>
-          </Panel>
-        ))}
-      </div>
-
-      <Kanban
-        colonnes={colonnes}
-        cleDe={(d) => d.id}
-        onDeplacer={deplacerDeal}
-        onSupprimer={supprimerDeal}
-        onAjouter={(etape, nom) => void ajouterDeal(nom, etape)}
-        placeholderAjout="Nom du sponsor…"
-        // Assez pour accueillir une carte sans que les colonnes vides ne
-        // creusent un trou sur toute la page.
-        hauteurMin={150}
-        rendre={(d) => (
-          <>
-            <div className="flex items-center justify-between gap-2">
-              <div className="truncate text-[13.5px] font-extrabold">{d.nom}</div>
-              <MontantEditable deal={d} />
-            </div>
-            <div className="mt-[5px] flex items-center justify-between gap-2">
-              <EcheanceEditable deal={d} />
-            </div>
-            {d.note && <div className="mt-1 text-[11.5px] text-white/50">{d.note}</div>}
-          </>
+        {bilan.enRetard > 0 && (
+          <div
+            role="alert"
+            className="mt-[9px] rounded-[8px] px-[9px] py-[7px] text-[12px] font-medium"
+            style={{ background: "rgba(224,92,92,0.10)", border: "1px solid var(--p90-danger)" }}
+          >
+            <Euros valeur={bilan.enRetard} /> en retard de plus de {SEUIL_RETARD} jours.
+          </div>
         )}
-      />
-    </>
+
+        {bilan.lignes.length === 0 ? (
+          <Vide indice="Une OP passe ici dès qu'elle est livrée.">Rien à encaisser</Vide>
+        ) : (
+          <div className="mt-[9px] space-y-[5px]">
+            {bilan.lignes.map((op) => {
+              const retard = joursDeRetard(op, aujourdhui);
+              return (
+                <div key={op.id} className="flex flex-wrap items-center gap-[7px] py-[3px]">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{op.marque}</span>
+                  <Puce>{nomChaine(op.meta.chaine)}</Puce>
+                  {op.meta.expandia && <Puce titre="Commission Expandia 30 %">via Expandia</Puce>}
+                  {paiementAInscrire(op) ? (
+                    <Puce ton="alerte" titre="Sans cette date, aucun retard ne peut être compté">
+                      date de paiement à renseigner
+                    </Puce>
+                  ) : (
+                    <Puce ton={retard > SEUIL_RETARD ? "danger" : retard > 0 ? "alerte" : "neutre"}>
+                      {retard > 0 ? `${retard} j de retard` : `attendu le ${formaterJour(op.meta.paiement)}`}
+                    </Puce>
+                  )}
+                  {op.meta.litige && <Puce ton="danger">litige</Puce>}
+                  <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Carte>
+
+      {/* ---------- Le pipeline ---------- */}
+      <Carte>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <Surtitre>Pipeline des OP</Surtitre>
+          <span className="text-[11px] text-[var(--p90-texte-2)]">
+            {ops.length} OP · {formaterEuros(total)} net au total
+          </span>
+        </div>
+
+        <form
+          className="mt-[9px] flex items-center gap-[6px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const nom = nouvelle.trim();
+            if (!nom) return;
+            setNouvelle("");
+            void ajouterOp(nom);
+          }}
+        >
+          <Champ valeur={nouvelle} onChange={setNouvelle} placeholder="Nouvelle marque…" className="flex-1" aria="Nouvelle OP" />
+          <Bouton type="submit" ton="plein" disabled={!nouvelle.trim()}>
+            Ajouter
+          </Bouton>
+        </form>
+
+        {!pret && ops.length === 0 && <Vide>Lecture des OP…</Vide>}
+        {pret && ops.length === 0 && <Vide indice="Tape une marque ci-dessus.">Aucune OP</Vide>}
+
+        <div className="mt-[11px] space-y-[7px]">
+          {ops.map((op) => (
+            <LigneOp
+              key={op.id}
+              op={op}
+              aujourdhui={aujourdhui}
+              ouverte={ouverte === op.id}
+              surOuvrir={() => setOuverte(ouverte === op.id ? null : op.id)}
+              surModifier={(patch) => void modifierOp(op.id, patch)}
+              surSupprimer={() => {
+                setOuverte(null);
+                void supprimerOp(op.id);
+              }}
+            />
+          ))}
+        </div>
+      </Carte>
+    </div>
+  );
+}
+
+/** Une OP : la ligne lisible, et l'éditeur en dessous. */
+function LigneOp({
+  op,
+  aujourdhui,
+  ouverte,
+  surOuvrir,
+  surModifier,
+  surSupprimer,
+}: {
+  op: Op;
+  aujourdhui: string;
+  ouverte: boolean;
+  surOuvrir: () => void;
+  surModifier: (patch: Parameters<ReturnType<typeof useCockpit>["modifierOp"]>[1]) => void;
+  surSupprimer: () => void;
+}) {
+  const [brut, setBrut] = useState(String(op.brut || ""));
+  const alertes = alertesOp(op, aujourdhui);
+  const commission = commissionOp(op);
+
+  return (
+    <div className="carte-haute p-[11px]">
+      <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer flex-wrap items-center gap-[7px] text-left">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{op.marque}</span>
+        <Puce ton={op.etape === "paye" ? "succes" : op.etape === "prospect" ? "neutre" : "accent"}>
+          {ETAPES_OP.find((e) => e.id === op.etape)?.nom}
+        </Puce>
+        <Puce>{nomChaine(op.meta.chaine)}</Puce>
+        <span className="nombres w-[150px] flex-none text-right text-[12px]">
+          <Euros valeur={op.brut} className="text-[var(--p90-texte-2)]" />
+          {commission > 0 && <span className="text-[var(--p90-texte-2)]"> − {formaterEuros(commission)}</span>}
+        </span>
+        <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
+      </button>
+
+      {alertes.length > 0 && (
+        <div className="mt-[5px] flex flex-wrap gap-[4px]">
+          {alertes.map((a) => (
+            <Puce key={a.texte} ton={a.ton}>
+              {a.texte}
+            </Puce>
+          ))}
+        </div>
+      )}
+
+      {ouverte && (
+        <div className="entree-ligne mt-[9px] space-y-[9px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
+          <div className="flex flex-wrap items-center gap-[5px]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Étape
+            </span>
+            {ETAPES_OP.map((e) => (
+              <Puce
+                key={e.id}
+                actif={op.etape === e.id}
+                ton={e.id === "paye" ? "succes" : "accent"}
+                onClick={() => surModifier({ etape: e.id as EtapeOp })}
+              >
+                {e.nom}
+              </Puce>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-[5px]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Chaîne
+            </span>
+            {CHAINES.map((c) => (
+              <Puce
+                key={c.id}
+                actif={op.meta.chaine === c.id}
+                onClick={() => surModifier({ meta: { ...op.meta, chaine: c.id as IdChaine } })}
+              >
+                {c.nom}
+              </Puce>
+            ))}
+            <Puce
+              actif={op.meta.expandia}
+              ton="alerte"
+              titre="30 % de commission, sur la chaîne Twaylo uniquement"
+              onClick={() => surModifier({ meta: { ...op.meta, expandia: !op.meta.expandia } })}
+            >
+              via Expandia
+            </Puce>
+            <Puce
+              actif={op.meta.litige}
+              ton="danger"
+              onClick={() => surModifier({ meta: { ...op.meta, litige: !op.meta.litige } })}
+            >
+              litige
+            </Puce>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-[7px]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Brut
+            </span>
+            <Champ
+              type="number"
+              valeur={brut}
+              onChange={setBrut}
+              aria="Montant brut"
+              className="w-[110px]"
+              onBlur={() => {
+                const v = Number(brut);
+                if (Number.isFinite(v) && v !== op.brut) surModifier({ brut: Math.max(0, v) });
+              }}
+            />
+            <span className="text-[11px] text-[var(--p90-texte-2)]">
+              net <Euros valeur={netOp(op)} />
+              {commission > 0 && ` (commission ${formaterEuros(commission)})`}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-[7px]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Diffusion
+            </span>
+            <Champ
+              type="date"
+              valeur={op.meta.diffusion ?? ""}
+              onChange={(v) => surModifier({ meta: { ...op.meta, diffusion: v || undefined } })}
+              aria="Date de diffusion"
+              className="w-[150px]"
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Paiement attendu
+            </span>
+            <Champ
+              type="date"
+              valeur={op.meta.paiement ?? ""}
+              onChange={(v) => surModifier({ meta: { ...op.meta, paiement: v || undefined } })}
+              aria="Date de paiement attendue"
+              className="w-[150px]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-[7px] pt-[3px]">
+            <span className="text-[10px] text-[var(--p90-texte-2)] opacity-70">
+              Alerte si l&apos;OP est sous {SEUIL_MONTANT_TEXTE} une fois engagée, ou payée avec plus de{" "}
+              {SEUIL_RETARD} jours de retard.
+            </span>
+            <Bouton ton="danger" onClick={surSupprimer}>
+              Supprimer
+            </Bouton>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

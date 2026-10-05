@@ -1,221 +1,72 @@
 import { uid, supabaseAdmin } from "./supabase";
-import { lireSentinelle, majSentinelle } from "./sentinelle";
-import { estQuadrant, quadrantParDefaut, type Quadrant } from "./eisenhower";
-import { NIVEAUX, type Niveau } from "./types";
 
 /**
- * Les Oubliés — l'archive vivante de ce qui traîne.
+ * LES OUBLIÉS — le filet, et plus le balai.
  *
- * Une tâche secondaire ou annexe qui passe QUATRE jours sans être cochée ne
- * doit plus encombrer la todo : elle glisse ici, marquée `abandonnee` dans la
- * même table (aucune nouvelle table possible, et le statut existe déjà dans la
- * contrainte). Rien n'est perdu : l'archive garde tout, compte les jours
- * (J5, J6…), et un oublié se remet dans la todo en un geste.
+ * Avant, ce module BALAYAIT : toute tâche non prioritaire passée quatre jours
+ * sans être cochée glissait ici, toute seule. Dans un cockpit dont la todo est
+ * pilotée par les échéances, cette règle effaçait de l'écran des tâches du plan
+ * encore à venir — « Clôture des précommandes », datée du 30 novembre, aurait
+ * disparu le 9 octobre, en silence.
  *
- * Le focus principal (urgence « aujourdhui ») est intouchable : ce qui fait
- * la journée ne s'archive jamais tout seul.
+ * L'archive reste, et devient ce qu'elle aurait dû être : l'endroit où tombe
+ * ce qu'on SUPPRIME. Un clic de travers sur une liste de vingt lignes ne
+ * détruit plus rien, il déplace. On remet une tâche dans la todo en un geste,
+ * et l'effacement définitif se fait d'ici, là où l'on voit ce qu'on vise.
+ *
+ * Rangé dans la même table, au statut `abandonnee` : aucune table ne peut être
+ * ajoutée (le jeton d'accès Supabase a été révoqué) et ce statut existait déjà
+ * dans la contrainte.
  */
-
-const JOURS_AVANT_OUBLI = 4;
-
-/**
- * Les tâches gelées, lues ici plutôt qu'importées de `db`.
- *
- * `db` importe déjà ce module (pour l'archivage) : lui réimporter
- * `lireTachesGelees` fermerait le cercle. Les deux lisent la même clé de la
- * même sentinelle, et cette lecture-ci ne sert qu'à protéger l'archivage.
- */
-async function lireTachesGeleesBrutes(): Promise<string[]> {
-  const brut = (await lireSentinelle()).tachesGelees;
-  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
-}
 
 export type TacheOubliee = {
   id: string;
   titre: string;
+  /** Le JSON de la meta P90, tel quel : le navigateur le décode. */
   categorie: string | null;
-  urgence: string;
-  /** Depuis combien de jours elle attend (depuis sa création). */
+  /** Depuis combien de jours elle dort ici. */
   jours: number;
-  /** Sa case dans la matrice d'Eisenhower. */
-  quadrant: Quadrant;
-  /** Faux tant que Twaylo n'a pas tranché lui-même : c'est le rangement d'office. */
-  quadrantChoisi: boolean;
 };
-
-/**
- * Les cases choisies à la main, par identifiant de tâche.
- *
- * Rangées sur la sentinelle : la table `tasks` n'a pas de colonne pour ça et
- * aucune migration n'est possible (le jeton d'accès a été révoqué). Ne sont
- * mémorisés que les choix de Twaylo — le rangement d'office se recalcule, il
- * n'a pas à être stocké.
- */
-async function lireQuadrants(): Promise<Record<string, Quadrant>> {
-  const brut = (await lireSentinelle()).oubliesQuadrants;
-  if (!brut || typeof brut !== "object") return {};
-
-  const propre: Record<string, Quadrant> = {};
-  for (const [id, q] of Object.entries(brut as Record<string, unknown>)) {
-    if (estQuadrant(q)) propre[id] = q;
-  }
-  return propre;
-}
-
-/**
- * Par l'écrivain vérifié de la sentinelle, qui porte aussi les skills, les
- * journées types, l'ordre des tâches et les habitudes.
- *
- * Cette fonction relisait puis écrasait de son côté : ranger un oublié
- * pendant que l'OS enregistrait autre chose pouvait effacer l'autre réglage.
- */
-async function ecrireQuadrants(quadrants: Record<string, Quadrant>): Promise<void> {
-  await majSentinelle({ oubliesQuadrants: quadrants });
-}
-
-/** Range un oublié dans une case — le choix de Twaylo prime sur le rangement d'office. */
-export async function classerOubliee(id: string, quadrant: Quadrant): Promise<void> {
-  const quadrants = await lireQuadrants();
-  await ecrireQuadrants({ ...quadrants, [id]: quadrant });
-}
-
-/**
- * Fait glisser vers l'archive ce qui a dépassé les quatre jours. Idempotent
- * et appelé à chaque lecture des tâches : une todo qui s'affiche est une todo
- * déjà nettoyée.
- */
-export function seuilOubli(): string {
-  return new Date(Date.now() - JOURS_AVANT_OUBLI * 86_400_000).toISOString();
-}
-
-/**
- * Le MÊME jugement que l'écriture ci-dessous, mais appliqué en mémoire.
- *
- * Les deux doivent rester rigoureusement d'accord : la lecture des tâches
- * n'attend plus l'archivage, elle le double d'un filtre local pour ne pas
- * réafficher une ligne que l'écriture est en train de retirer. Si les
- * conditions divergeaient, on masquerait à l'écran une tâche que la base
- * garde — une tâche cochée le jour même, par exemple, que le SELECT laisse
- * passer (il n'exclut que `abandonnee`) et que ce prédicat doit conserver.
- * D'où la fonction unique, lue par les deux chemins.
- */
-export function estOubliee(
-  t: { statut: string; urgence: string; created_at?: string | null },
-  seuil: string,
-): boolean {
-  return (
-    (t.statut === "ouverte" || t.statut === "en_cours") &&
-    t.urgence !== "aujourdhui" &&
-    typeof t.created_at === "string" &&
-    t.created_at < seuil
-  );
-}
-
-export async function archiverTachesOubliees(): Promise<void> {
-  /*
-   * Les tâches GELÉES ne s'oublient jamais.
-   *
-   * Une tâche quotidienne est vieille par nature — « poster sur Snap » date du
-   * jour où on l'a écrite et ne bougera plus. L'archivage la voyait donc comme
-   * une tâche qui traîne depuis quatre jours et la rangeait dans les Oubliés,
-   * en silence : la corvée du jour disparaissait toute seule de la todo, sans
-   * que rien ne le signale.
-   */
-  const gelees = await lireTachesGeleesBrutes();
-
-  let requete = supabaseAdmin()
-    .from("tasks")
-    .update({ statut: "abandonnee" })
-    .eq("user_id", (await uid()))
-    .in("statut", ["ouverte", "en_cours"])
-    .neq("urgence", "aujourdhui")
-    .lt("created_at", seuilOubli());
-  if (gelees.length > 0) requete = requete.not("id", "in", `(${gelees.join(",")})`);
-
-  const { error } = await requete;
-
-  /*
-   * Journalisé, jamais propagé.
-   *
-   * Cette écriture de ménage est lancée en parallèle de la lecture des tâches.
-   * En faisant remonter son échec, un hoquet d'écriture chez Supabase faisait
-   * échouer /api/state tout entier : l'écran gardait les données de la veille
-   * et affichait une erreur, pour un ménage dont personne n'attend le
-   * résultat. Il repassera à la lecture suivante.
-   */
-  if (error) console.error("[oublies] archivage impossible :", error);
-}
 
 export async function lireOubliees(): Promise<TacheOubliee[]> {
   const { data, error } = await supabaseAdmin()
     .from("tasks")
-    .select("id, titre, categorie, urgence, created_at")
+    .select("id, titre, categorie, created_at")
     .eq("user_id", (await uid()))
     .eq("statut", "abandonnee")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  const lignes = data ?? [];
-  const quadrants = await lireQuadrants();
 
-  /*
-   * Les choix devenus orphelins sont oubliés à leur tour : une tâche reprise
-   * ou jetée ne doit pas laisser sa case derrière elle. Le ménage se fait ici,
-   * à la lecture, plutôt que dans chaque chemin de sortie.
-   */
-  const vivants = new Set(lignes.map((t) => t.id as string));
-  const restants = Object.fromEntries(
-    Object.entries(quadrants).filter(([id]) => vivants.has(id)),
-  );
-  if (Object.keys(restants).length !== Object.keys(quadrants).length) {
-    try {
-      await ecrireQuadrants(restants);
-    } catch (err) {
-      console.error("[oublies] ménage des cases impossible :", err);
-    }
-  }
-
-  return lignes.map((t) => {
-    const jours = Math.max(
+  return (data ?? []).map((t) => ({
+    id: t.id as string,
+    titre: t.titre as string,
+    categorie: (t.categorie as string | null) ?? null,
+    jours: Math.max(
       0,
       Math.floor((Date.now() - Date.parse(t.created_at as string)) / 86_400_000),
-    );
-    const id = t.id as string;
-    const choisi = restants[id];
-    return {
-      id,
-      titre: t.titre as string,
-      categorie: (t.categorie as string | null) ?? null,
-      urgence: t.urgence as string,
-      jours,
-      quadrant: choisi ?? quadrantParDefaut(t.urgence as string, jours),
-      quadrantChoisi: Boolean(choisi),
-    };
-  });
+    ),
+  }));
 }
 
+/** Ce que le navigateur a besoin de savoir pour réafficher la tâche reprise. */
+export type TacheReprise = { id: string; titre: string; urgence: string; categorie: string | null };
+
 /**
- * Remet un oublié dans la todo. Le compteur repart de zéro — sans ça, la
- * tâche repartirait à l'archive dès la lecture suivante, puisque sa date de
- * création est précisément ce qui l'y a envoyée.
+ * Remet un oublié dans la todo.
+ *
+ * La date de création REPART DE ZÉRO : c'est elle qui donne l'âge affiché dans
+ * la liste, et une tâche reprise aujourd'hui ne doit pas s'afficher « 40 j »
+ * comme si on la repoussait depuis quarante jours.
  */
-export async function reprendreOubliee(
-  id: string,
-  niveau?: Niveau,
-): Promise<TacheReprise | null> {
+export async function reprendreOubliee(id: string): Promise<TacheReprise | null> {
   const { data, error } = await supabaseAdmin()
     .from("tasks")
-    .update({
-      statut: "ouverte",
-      created_at: new Date().toISOString(),
-      // Le quadrant décide du niveau de retour : ce qui sort de « Faire »
-      // revient en focus principal, ce qui sort de « Déléguer » en annexe.
-      ...(niveau ? { urgence: NIVEAUX[niveau].urgence } : {}),
-    })
+    .update({ statut: "ouverte", created_at: new Date().toISOString() })
     .eq("id", id)
     .eq("user_id", (await uid()))
     .eq("statut", "abandonnee")
-    .select("id, titre, urgence")
+    .select("id, titre, urgence, categorie")
     .maybeSingle();
 
   if (error) throw error;
@@ -224,11 +75,9 @@ export async function reprendreOubliee(
     id: data.id as string,
     titre: data.titre as string,
     urgence: data.urgence as string,
+    categorie: (data.categorie as string | null) ?? null,
   };
 }
-
-/** Ce que le navigateur a besoin de savoir pour réafficher la tâche reprise. */
-export type TacheReprise = { id: string; titre: string; urgence: string };
 
 /** Jette un oublié pour de bon — le seul effacement, et il est volontaire. */
 export async function supprimerOubliee(id: string): Promise<void> {

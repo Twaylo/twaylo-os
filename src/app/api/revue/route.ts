@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { uid, isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase";
-import { ecrireJour } from "@/lib/db";
-import { REVUE_VIDE, type Revue } from "@/lib/types";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { ecrireRevueJour, lireRevueJour } from "@/lib/db";
 
 /**
  * La revue de semaine.
@@ -16,6 +15,28 @@ import { REVUE_VIDE, type Revue } from "@/lib/types";
  * Le jour est fourni par le client, qui seul connaît le fuseau réel de
  * Twaylo — le serveur pourrait être ailleurs.
  */
+
+type Revue = {
+  gains: string;
+  bouclesOuvertes: string;
+  contenuPublie: string;
+  top3: string;
+  ceQuiADerape: string;
+  personnesARelancer: string;
+  patternSante: string;
+  scelle: boolean;
+};
+
+const REVUE_VIDE: Revue = {
+  gains: "",
+  bouclesOuvertes: "",
+  contenuPublie: "",
+  top3: "",
+  ceQuiADerape: "",
+  personnesARelancer: "",
+  patternSante: "",
+  scelle: false,
+};
 
 function estUnJour(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -47,18 +68,6 @@ function bornerRevue(brut: Record<string, unknown>): Revue {
   };
 }
 
-async function lireLigne(lundi: string) {
-  const { data, error } = await supabaseAdmin()
-    .from("daily_logs")
-    .select("habitudes")
-    .eq("user_id", (await uid()))
-    .eq("jour", lundi)
-    .maybeSingle();
-
-  if (error) throw error;
-  return (data?.habitudes ?? {}) as Record<string, unknown>;
-}
-
 export async function GET(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ connecte: false, revue: REVUE_VIDE });
@@ -70,10 +79,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    const etat = await lireLigne(lundi);
+    const stockee = await lireRevueJour(lundi);
     return NextResponse.json({
       connecte: true,
-      revue: { ...REVUE_VIDE, ...((etat.revue ?? {}) as Partial<Revue>) },
+      revue: { ...REVUE_VIDE, ...((stockee ?? {}) as Partial<Revue>) },
     });
   } catch (err) {
     console.error("[revue] lecture impossible :", err);
@@ -107,16 +116,12 @@ export async function POST(req: Request) {
 
   try {
     /*
-     * Écriture par le canal commun de la journée, pas en direct.
-     *
-     * La ligne du lundi porte aussi les habitudes cochées et les repas de ce
-     * jour-là, et `ecrireJour` fusionne PUIS vérifie : deux écritures qui se
-     * croisent — la revue tapée pendant qu'une habitude se synchronise — ne
-     * s'effacent plus l'une l'autre.
+     * La ligne du lundi est relue puis fusionnée avant d'être réécrite : elle
+     * ne porte plus que la revue depuis que les habitudes, les repas et
+     * l'instantané des tâches sont partis avec leurs onglets, mais la fusion
+     * reste — elle ne coûte rien et protège ce qu'on n'aurait pas vu.
      */
-    await ecrireJour(corps.lundi, {
-      etat: { revue: bornerRevue(corps.revue as Record<string, unknown>) },
-    });
+    await ecrireRevueJour(corps.lundi, bornerRevue(corps.revue as Record<string, unknown>));
     return NextResponse.json({ persiste: true });
   } catch (err) {
     console.error("[revue] écriture impossible :", err);

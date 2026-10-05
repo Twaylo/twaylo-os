@@ -14,4 +14,4 @@ export const SITE =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ?? "https://twaylo-os.vercel.app";
 
 /** Les pages ouvertes à tous — celles qu'un moteur a le droit de lire. */
-export const PAGES_PUBLIQUES = ["/bienvenue", "/demarrer", "/login"] as const;
+export const PAGES_PUBLIQUES = ["/login"] as const;

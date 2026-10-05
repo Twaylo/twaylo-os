@@ -1,34 +1,27 @@
 import type { Metadata, Viewport } from "next";
 
 import { SITE } from "@/lib/site";
-import { Nunito, JetBrains_Mono } from "next/font/google";
-import { EcranLancement } from "@/components/EcranLancement";
-import { FinLancement } from "@/components/FinLancement";
-import { ImagesLancementIOS } from "@/components/ImagesLancementIOS";
+import { Inter } from "next/font/google";
 import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
-/*
- * Les graisses sont énumérées, et c'est le bon choix — mesuré, pas supposé.
+/**
+ * Inter, et une seule police.
  *
- * J'ai essayé les versions variables (une seule ressource couvrant tout l'axe
- * des graisses au lieu de cinq fichiers statiques) en pensant alléger le
- * chargement. Chargement à froid mesuré : 68,8 Ko de polices avant, 77,8 Ko
- * après. La variable coûte PLUS ici, parce que l'interface n'utilise que cinq
- * graisses discrètes du sous-ensemble latin, là où l'axe continu embarque
- * tout. Et `display: swap` — l'autre motif de la tentative — est déjà le
- * défaut de next/font. La note reste pour qu'on ne refasse pas l'essai.
+ * Il y en avait deux : Nunito pour le texte, JetBrains Mono pour les chiffres.
+ * Inter fait les deux — son jeu `tabular-nums` aligne les colonnes de montants
+ * aussi bien qu'une chasse fixe, sans la seconde ressource à charger ni le
+ * contraste de styles entre une ligne et le chiffre au bout.
+ *
+ * Les graisses sont énumérées plutôt que variables, et c'est mesuré, pas
+ * supposé : l'interface n'utilise que quatre graisses discrètes du
+ * sous-ensemble latin, là où l'axe continu d'une police variable embarque tout.
+ * `display: swap` est déjà le défaut de next/font.
  */
-const nunito = Nunito({
-  variable: "--font-nunito",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800", "900"],
-});
-
-const jetbrains = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -41,9 +34,8 @@ export const metadata: Metadata = {
    * ligne de texte gris.
    */
   metadataBase: new URL(SITE),
-  title: "Twaylo OS — ton système d'exploitation personnel",
-  description:
-    "Un seul endroit qui tient ta journée, tes objectifs et ta progression. Construit autour de ta vie en deux minutes, gratuit.",
+  title: "PROJECT 90 — le cockpit",
+  description: "Les 90 jours : la todo, le Kanban, les sponsors et les objectifs.",
   applicationName: "Twaylo OS",
   /*
    * Rien n'est indexé PAR DÉFAUT, et c'est délibéré.
@@ -104,7 +96,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07121d",
+  themeColor: "#0b0b0c",
   /*
    * `cover` : la page occupe l'écran jusque sous l'encoche, à nous de gérer
    * les marges de sécurité. Sans ça, iOS laisse deux bandes noires en mode
@@ -131,7 +123,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${nunito.variable} ${jetbrains.variable} h-full antialiased`}
+      className={`${inter.variable} h-full antialiased`}
       /*
        * Le fond en style en ligne, et pas seulement dans la feuille de style.
        *
@@ -140,25 +132,10 @@ export default function RootLayout({
        * l'OS. Écrit ici, il fait partie du document lui-même et s'applique dès
        * la première ligne, sans attendre aucun fichier.
        */
-      style={{ background: "#07121d" }}
+      style={{ background: "#0b0b0c" }}
     >
       <body className="min-h-full">
-        {/*
-         * Les balises d'image de lancement d'iOS. React 19 les remonte
-         * lui-même dans l'en-tête du document ; les métadonnées de Next ne
-         * savent produire que des `meta`, pas des `link` à requête média.
-         */}
-        <ImagesLancementIOS />
-
-        {/*
-         * L'écran de lancement AVANT le contenu, et rendu côté serveur : il
-         * fait partie du HTML livré, donc il est peint avant qu'une seule
-         * ligne de JavaScript n'ait tourné. C'est tout son objet — couvrir
-         * précisément le moment où React n'existe pas encore.
-         */}
-        <EcranLancement />
         {children}
-        <FinLancement />
         <ServiceWorkerLoader />
       </body>
     </html>

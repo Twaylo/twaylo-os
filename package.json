@@ -12,13 +12,10 @@
     "donnees:asam": "node scripts/asam-recuperer.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.112.3",
     "@supabase/supabase-js": "^2.110.7",
     "next": "16.2.10",
-    "node-ical": "^0.26.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "web-push": "^3.6.7"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
@@ -27,7 +24,6 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "maplibre-gl": "^6.3.0",

@@ -55,46 +55,17 @@ const CHEMINS_PUBLICS = new Set([
    */
   "/sw.js",
   /*
-   * L'image de lancement d'iOS : réclamée sans cookie, comme le manifeste.
-   * Derrière la porte, elle recevait la page de connexion en HTML, et iOS
-   * repeignait alors son fond blanc au démarrage.
-   *
-   * Ce qu'on ouvre : un logo sur fond sombre, aux dimensions bornées.
-   */
-  "/splash",
-  /*
-   * La page publique de présentation : c'est la porte d'entrée, elle ne
-   * peut évidemment pas être derrière la porte. Elle n'affiche aucune
-   * donnée — uniquement ce que le produit propose.
-   */
-  "/bienvenue",
-  /*
-   * Le sas est ouvert : on ne peut pas exiger un compte de quelqu'un qui
-   * vient précisément en créer un. Son premier écran demande si l'on continue
-   * avec son OS ou si l'on en crée un nouveau, et les routes qui ÉCRIVENT
-   * (`/api/sas/appliquer`) restent, elles, derrière la porte.
-   */
-  "/demarrer",
-  // Les crons Vercel ne savent envoyer que `Authorization: Bearer CRON_SECRET`
-  // — pas de cookie, pas de x-api-secret. Chaque route vérifie ce secret
-  // elle-même et refuse tout si la variable manque.
-  "/api/cron/brief-matin",
-  "/api/cron/recap-soir",
-  /*
-   * Les trois fichiers d'un site publié : le plan, les règles pour les
-   * robots, et l'image de partage.
+   * Les deux fichiers d'un site publié : le plan et les règles pour les robots.
    *
    * Ils DOIVENT être ouverts. Un moteur qui reçoit la page de connexion à la
    * place de `robots.txt` considère qu'il n'y a pas de règles et fait ce qu'il
-   * veut ; un réseau social qui reçoit du HTML à la place d'une image affiche
-   * un lien nu. Aucun ne présente le moindre cookie.
+   * veut. Aucun ne présente le moindre cookie.
    *
-   * Ce qu'on ouvre : une liste de trois adresses publiques, une consigne
-   * d'indexation, et une image dessinée à partir de rien.
+   * Ce qu'on ouvre : une liste d'adresses publiques et une consigne
+   * d'indexation.
    */
   "/robots.txt",
   "/sitemap.xml",
-  "/opengraph-image",
   /*
    * « /piraterie » N'EST PLUS listé ici, et c'est délibéré : c'est désormais
    * la porte des Tway'tools qui décide, plus bas. L'y remettre rouvrirait
@@ -293,24 +264,20 @@ export async function middleware(req: NextRequest) {
   }
 
   /*
-   * La racine mène à la PRÉSENTATION, pas au mot de passe.
+   * Tout mène au mot de passe, racine comprise.
    *
-   * Quelqu'un qui arrive sans être connecté n'est pas forcément quelqu'un qui
-   * a oublié de se connecter : c'est d'abord quelqu'un qui découvre. Le
-   * renvoyer sur un champ de mot de passe, c'est une porte close sans
-   * enseigne — et c'est ce qui arrivait aussi après une déconnexion.
+   * La racine menait à une page de présentation du produit. Twaylo OS n'est
+   * plus un produit — c'est son cockpit à lui — et il n'y a donc plus personne
+   * à convaincre : derrière cette adresse il n'y a qu'un tableau de bord
+   * privé, et la bonne réponse à un visiteur non connecté est la porte.
    *
-   * Les autres chemins gardent la connexion et leur destination : celui qui
-   * visait `/demarrer` doit y revenir une fois entré, pas atterrir ailleurs.
+   * Les autres chemins gardent leur destination : celui qui visait un onglet
+   * doit y revenir une fois entré, pas atterrir ailleurs.
    */
   const destination = req.nextUrl.clone();
   destination.search = "";
-  if (pathname === "/") {
-    destination.pathname = "/bienvenue";
-  } else {
-    destination.pathname = "/login";
-    destination.searchParams.set("next", pathname + search);
-  }
+  destination.pathname = "/login";
+  if (pathname !== "/") destination.searchParams.set("next", pathname + search);
   return NextResponse.redirect(destination);
 }
 

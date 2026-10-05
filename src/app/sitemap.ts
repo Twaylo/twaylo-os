@@ -8,7 +8,7 @@ import { PAGES_PUBLIQUES, SITE } from "@/lib/site";
  * Le plan du site, différent selon l'adresse (voir `lib/hotes`).
  *
  * Sur l'adresse des Tway'tools : la bibliothèque et l'outil. Sur celle de
- * l'OS : ses trois pages ouvertes, rien d'autre. Un plan unique servi aux
+ * l'OS : sa seule page ouverte, la connexion, et rien d'autre. Un plan unique servi aux
  * deux donnerait aux moteurs la liste des chemins de l'OS depuis l'adresse
  * publique — l'inverse de ce qu'on cherche.
  *
@@ -31,6 +31,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return PAGES_PUBLIQUES.map((chemin) => ({
     url: `${SITE}${chemin}`,
     changeFrequency: "monthly" as const,
-    priority: chemin === "/bienvenue" ? 1 : 0.6,
+    priority: 0.5,
   }));
 }

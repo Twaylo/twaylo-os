@@ -686,9 +686,15 @@ export function nomEtapeOp(e: EtapeOp): string {
  * livre et regle — « Facturé » n'existe pas et aucune migration n'est
  * possible. Facturé est donc « livré, et la facture est partie » : l'étape
  * reste `livre`, un drapeau dans le JSON porte la facture. `regle` = Payé.
+ *
+ * Et « Payé » a son drapeau aussi (`paye`), pour une raison de terrain : la
+ * valeur `regle` vient de la migration 0004, qui s'applique à la main. Si elle
+ * n'est pas passée, la base refuse l'écriture — marquer une OP payée « ne
+ * marcherait tout simplement pas ». Le repli écrit alors `livre` + le drapeau,
+ * que cette lecture comprend aussi bien.
  */
-export function etapeDepuisDB(etape: string, facture: boolean): EtapeOp {
-  if (etape === "regle") return "paye";
+export function etapeDepuisDB(etape: string, facture: boolean, paye = false): EtapeOp {
+  if (etape === "regle" || paye) return "paye";
   if (etape === "livre") return facture ? "facture" : "livre";
   if (etape === "signe" || etape === "negociation" || etape === "prospect") return etape;
   return "prospect";
@@ -735,6 +741,11 @@ export type MetaOp = {
   expandia: boolean;
   /** Un litige en cours — Legal Place, par exemple. */
   litige: boolean;
+  /**
+   * Payée, quand la base a refusé l'étape `regle` (migration 0004 non
+   * appliquée). Jamais écrit autrement : l'étape reste la source normale.
+   */
+  paye?: boolean;
   /** Le texte libre, celui qu'on écrit à la main. */
   note?: string;
 };
@@ -749,6 +760,7 @@ export function encoderOp(m: MetaOp): string | null {
   if (m.facture) o.f = 1;
   if (m.expandia) o.x = 1;
   if (m.litige) o.g = 1;
+  if (m.paye) o.y = 1;
   if (m.note && m.note.trim()) o.n = m.note.trim().slice(0, 400);
   return Object.keys(o).length === 0 ? null : JSON.stringify(o);
 }
@@ -780,6 +792,7 @@ export function decoderOp(brut: string | null | undefined): MetaOp {
     facture: o.f === 1 || o.f === true,
     expandia: o.x === 1 || o.x === true,
     litige: o.g === 1 || o.g === true,
+    ...(o.y === 1 || o.y === true ? { paye: true } : {}),
     note: typeof o.n === "string" && o.n.trim() ? o.n.trim().slice(0, 400) : undefined,
   };
 }

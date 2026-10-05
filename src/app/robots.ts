@@ -16,7 +16,9 @@ import { SITE } from "@/lib/site";
  * · Sur l'adresse des Tway'tools : la bibliothèque et l'outil, ouverts ; les
  *   routes d'API, refusées. Rien de l'OS n'y est même nommé.
  * · Sur l'adresse de l'OS : le principe est inversé par rapport à l'habitude —
- *   on INTERDIT tout, puis on autorise les trois pages publiques. Le reste est
+ *   on INTERDIT tout, puis on autorise la seule page publique qui reste, la
+ *   connexion (la présentation du produit est partie : ce n'est plus un
+ *   produit, c'est un cockpit privé). Le reste est
  *   un tableau de bord personnel derrière un mot de passe ; un robot n'y
  *   trouverait que l'écran de connexion, mais l'exclure explicitement évite de
  *   voir apparaître « twaylo-os.vercel.app/journal » dans des résultats.
@@ -40,7 +42,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: [
       {
         userAgent: "*",
-        allow: ["/bienvenue", "/demarrer", "/login"],
+        allow: ["/login"],
         disallow: ["/", "/api/"],
       },
     ],
