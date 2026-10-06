@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   CHAINES,
   ETAPES_OP,
+  SEUIL_MONTANT_TEXTE,
   SEUIL_RETARD,
   alertesOp,
   bilanEncaissement,
@@ -17,7 +18,7 @@ import {
   type Op,
 } from "@/lib/p90";
 import { useCockpit } from "@/lib/p90-context";
-import { Bouton, Carte, Champ, Etiq, Euros, Meta, Puce, Surtitre, Vide, formaterEuros, formaterJour } from "@/components/p90/ui";
+import { Bouton, Carte, Champ, Euros, Puce, Surtitre, Vide, formaterEuros, formaterJour } from "@/components/p90/ui";
 
 /**
  * LES SPONSORS — le pipeline des OP, et surtout l'argent qui est dehors.
@@ -73,28 +74,20 @@ export function SponsorsView() {
             {bilan.lignes.map((op) => {
               const retard = joursDeRetard(op, aujourdhui);
               return (
-                <div key={op.id} className="flex items-baseline gap-[9px] py-[3px]">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium">{op.marque}</div>
-                    <Meta
-                      bouts={[
-                        { texte: nomChaine(op.meta.chaine) },
-                        op.meta.expandia ? { texte: "via Expandia", titre: "Commission Expandia 30 %" } : null,
-                        paiementAInscrire(op)
-                          ? {
-                              texte: "date de paiement à renseigner",
-                              ton: "alerte",
-                              titre: "Sans cette date, aucun retard ne peut être compté",
-                            }
-                          : {
-                              texte: retard > 0 ? `${retard} j de retard` : `attendu le ${formaterJour(op.meta.paiement)}`,
-                              ton: retard > SEUIL_RETARD ? "danger" : retard > 0 ? "alerte" : "neutre",
-                              fort: retard > 0,
-                            },
-                        op.meta.litige ? { texte: "litige", ton: "danger", fort: true } : null,
-                      ]}
-                    />
-                  </div>
+                <div key={op.id} className="flex flex-wrap items-center gap-[7px] py-[3px]">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{op.marque}</span>
+                  <Puce>{nomChaine(op.meta.chaine)}</Puce>
+                  {op.meta.expandia && <Puce titre="Commission Expandia 30 %">via Expandia</Puce>}
+                  {paiementAInscrire(op) ? (
+                    <Puce ton="alerte" titre="Sans cette date, aucun retard ne peut être compté">
+                      date de paiement à renseigner
+                    </Puce>
+                  ) : (
+                    <Puce ton={retard > SEUIL_RETARD ? "danger" : retard > 0 ? "alerte" : "neutre"}>
+                      {retard > 0 ? `${retard} j de retard` : `attendu le ${formaterJour(op.meta.paiement)}`}
+                    </Puce>
+                  )}
+                  {op.meta.litige && <Puce ton="danger">litige</Puce>}
                   <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
                 </div>
               );
@@ -174,32 +167,35 @@ function LigneOp({
 
   return (
     <div className="carte-haute p-[11px]">
-      <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer items-baseline gap-[9px] text-left">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold">{op.marque}</div>
-          <Meta
-            bouts={[
-              {
-                texte: ETAPES_OP.find((e) => e.id === op.etape)?.nom ?? "",
-                ton: op.etape === "paye" ? "succes" : op.etape === "prospect" ? "neutre" : "accent",
-                fort: true,
-              },
-              { texte: nomChaine(op.meta.chaine) },
-              commission > 0 ? { texte: `brut ${formaterEuros(op.brut)} − ${formaterEuros(commission)}` } : null,
-              /* Les alertes à la suite, en couleur : ce sont les seules
-                 informations colorées de la ligne, donc les seules qui sautent
-                 aux yeux. */
-              ...alertes.map((a) => ({ texte: a.texte, ton: a.ton, fort: true })),
-            ]}
-          />
-        </div>
+      <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer flex-wrap items-center gap-[7px] text-left">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{op.marque}</span>
+        <Puce ton={op.etape === "paye" ? "succes" : op.etape === "prospect" ? "neutre" : "accent"}>
+          {ETAPES_OP.find((e) => e.id === op.etape)?.nom}
+        </Puce>
+        <Puce>{nomChaine(op.meta.chaine)}</Puce>
+        <span className="nombres w-[150px] flex-none text-right text-[12px]">
+          <Euros valeur={op.brut} className="text-[var(--p90-texte-2)]" />
+          {commission > 0 && <span className="text-[var(--p90-texte-2)]"> − {formaterEuros(commission)}</span>}
+        </span>
         <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
       </button>
+
+      {alertes.length > 0 && (
+        <div className="mt-[5px] flex flex-wrap gap-[4px]">
+          {alertes.map((a) => (
+            <Puce key={a.texte} ton={a.ton}>
+              {a.texte}
+            </Puce>
+          ))}
+        </div>
+      )}
 
       {ouverte && (
         <div className="entree-ligne mt-[9px] space-y-[9px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
           <div className="flex flex-wrap items-center gap-[5px]">
-            <Etiq l="w-[74px]">Étape</Etiq>
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Étape
+            </span>
             {ETAPES_OP.map((e) => (
               <Puce
                 key={e.id}
@@ -213,7 +209,9 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[5px]">
-            <Etiq l="w-[74px]">Chaîne</Etiq>
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Chaîne
+            </span>
             {CHAINES.map((c) => (
               <Puce
                 key={c.id}
@@ -241,7 +239,9 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <Etiq l="w-[74px]">Brut</Etiq>
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Brut
+            </span>
             <Champ
               type="number"
               valeur={brut}
@@ -260,7 +260,9 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <Etiq l="w-[74px]">Diffusion</Etiq>
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Diffusion
+            </span>
             <Champ
               type="date"
               valeur={op.meta.diffusion ?? ""}
@@ -268,7 +270,9 @@ function LigneOp({
               aria="Date de diffusion"
               className="w-[150px]"
             />
-            <Etiq l="">Paiement attendu</Etiq>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+              Paiement attendu
+            </span>
             <Champ
               type="date"
               valeur={op.meta.paiement ?? ""}
@@ -278,9 +282,11 @@ function LigneOp({
             />
           </div>
 
-          {/* Les seuils ne sont plus écrits ici : les alertes le disent
-              elles-mêmes, en toutes lettres, au moment où elles se déclenchent. */}
-          <div className="flex justify-end pt-[3px]">
+          <div className="flex flex-wrap items-center justify-between gap-[7px] pt-[3px]">
+            <span className="text-[10px] text-[var(--p90-texte-2)] opacity-70">
+              Alerte si l&apos;OP est sous {SEUIL_MONTANT_TEXTE} une fois engagée, ou payée avec plus de{" "}
+              {SEUIL_RETARD} jours de retard.
+            </span>
             <Bouton ton="danger" onClick={surSupprimer}>
               Supprimer
             </Bouton>

@@ -212,30 +212,6 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
-/* Les champs                                                          */
-/* ------------------------------------------------------------------ */
-
-.champ {
-  background: var(--p90-fond);
-  border: 1px solid var(--p90-bord);
-  color: var(--p90-texte);
-  transition: border-color var(--p90-vitesse) ease, background var(--p90-vitesse) ease;
-}
-.champ:focus {
-  border-color: var(--p90-accent);
-}
-
-/* Effacé au repos, un champ dès qu'on le touche. */
-.champ-fantome {
-  background: transparent;
-  border-color: transparent;
-}
-.champ-fantome:focus {
-  background: var(--p90-fond);
-  border-color: var(--p90-accent);
-}
-
-/* ------------------------------------------------------------------ */
 /* Le glisser-déposer                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -248,52 +224,18 @@ body {
  */
 .poignee {
   touch-action: none;
-  min-width: 18px;
+  min-width: 26px;
   min-height: 30px;
   cursor: grab;
-  transition: opacity var(--p90-vitesse) ease;
-}
-.poignee:active {
-  cursor: grabbing;
-}
-
-/*
- * Elle ne se montre QUE sous le curseur — et toujours au doigt.
- *
- * Vingt poignées alignées le long du bord gauche, même à 40 %, forment une
- * colonne de points qui se lit avant les intitulés : la décoration passe
- * devant le contenu. Là où un curseur existe, la poignée apparaît quand la
- * souris arrive sur la ligne, c'est-à-dire quand on va s'en servir.
- *
- * Au doigt il n'y a pas de survol : elle reste visible, sinon rien ne dirait
- * où attraper la tâche. Et elle grossit — 34 × 44 px —, parce qu'un doigt
- * n'est pas un curseur. Ailleurs elle n'en fait que 18 : invisible, elle
- * décalait quand même tous les intitulés de la liste vers la droite.
- */
-@media (hover: hover) {
-  .poignee,
-  .modifier-ligne {
-    opacity: 0;
-  }
-  .group:hover .poignee,
-  .group:hover .modifier-ligne {
-    opacity: 1;
-  }
 }
 @media (hover: none) {
   .poignee {
     min-width: 34px;
     min-height: 44px;
-    opacity: 0.3;
-  }
-  /* Sans survol, ce bouton resterait invisible en occupant sa largeur : le
-     même éditeur s'ouvre en touchant l'intitulé. */
-  .modifier-ligne {
-    display: none;
   }
 }
-.modifier-ligne {
-  transition: opacity var(--p90-vitesse) ease;
+.poignee:active {
+  cursor: grabbing;
 }
 
 /*

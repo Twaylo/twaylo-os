@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BLOCS,
+  blocSuggere,
   filtrerVue,
   joursRestants,
   nomObjectif,
+  scorePriorite,
   troisPriorites,
   type IdBloc,
   type MetaTache,
@@ -15,7 +17,7 @@ import { emojiVisible } from "@/lib/emoji-tache";
 import { useCockpit, type TacheVue } from "@/lib/p90-context";
 import { useGlisser } from "@/lib/use-glisser";
 import { LigneTache } from "@/components/p90/LigneTache";
-import { Bouton, Carte, Champ, Meta, Puce, Surtitre, Vide } from "@/components/p90/ui";
+import { Bouton, Carte, Champ, Puce, Surtitre, Vide, formaterJour } from "@/components/p90/ui";
 
 /**
  * LA TODO — le module qui porte tout le reste.
@@ -255,23 +257,17 @@ export function TodoView() {
             Rien à prioriser
           </Vide>
         ) : (
-          <ol className="mt-[9px] space-y-[7px]">
+          <ol className="mt-[9px] space-y-[6px]">
             {priorites.map((t, i) => {
               const jours = joursRestants(t.meta.echeance, aujourdhui);
               return (
                 <li key={t.id} className="flex items-start gap-[9px]">
-                  {/*
-                    Le rang : un chiffre lime, et un cadre sur le premier seul.
-                    Trois pastilles encadrées se valaient à l'œil — or tout
-                    l'intérêt de cette carte est de dire par où COMMENCER.
-                  */}
                   <span
-                    className="nombres mt-[1px] flex-none text-center text-[12px] font-bold leading-[18px]"
+                    className="nombres mt-[1px] flex-none rounded-[6px] px-[6px] text-[12px] font-bold leading-[20px]"
                     style={{
-                      width: 18,
-                      borderRadius: 5,
-                      color: i === 0 ? "var(--p90-fond)" : "var(--p90-accent)",
+                      color: i === 0 ? "#0b0b0c" : "var(--p90-accent)",
                       background: i === 0 ? "var(--p90-accent)" : "transparent",
+                      border: "1px solid var(--p90-accent)",
                     }}
                   >
                     {i + 1}
@@ -285,16 +281,19 @@ export function TodoView() {
                       {emojiVisible(t.titre) && <span className="mr-[5px]">{emojiVisible(t.titre)}</span>}
                       {t.titre}
                     </div>
-                    <Meta
-                      bouts={[
-                        { texte: nomObjectif(t.meta.objectif) },
-                        jours === null
-                          ? null
-                          : jours < 0
-                            ? { texte: `${-jours} j de retard`, ton: "danger", fort: true }
-                            : { texte: jours === 0 ? "aujourd'hui" : `dans ${jours} j` },
-                      ]}
-                    />
+                    <div className="mt-[2px] flex flex-wrap items-center gap-[4px]">
+                      <Puce ton={t.meta.objectif === "momentum" ? "accent" : "neutre"}>
+                        {nomObjectif(t.meta.objectif)}
+                      </Puce>
+                      {jours !== null && (
+                        <Puce ton={jours <= 0 ? "danger" : jours <= 2 ? "alerte" : "neutre"}>
+                          {jours < 0 ? `${-jours} j de retard` : jours === 0 ? "aujourd'hui" : `dans ${jours} j`}
+                        </Puce>
+                      )}
+                      <Puce titre="Score de priorité : échéance + objectif + impact">
+                        {scorePriorite(t, aujourdhui)} pts
+                      </Puce>
+                    </div>
                   </button>
                 </li>
               );
@@ -315,8 +314,9 @@ export function TodoView() {
           Tout
         </Puce>
         <span className="nombres text-[11px] text-[var(--p90-texte-2)]">
-          {filtrees.length}
-          {horsVue > 0 && vue !== "tout" && ` · ${horsVue} plus loin`}
+          {filtrees.length} tâche{filtrees.length > 1 ? "s" : ""}
+          {horsVue > 0 && vue === "semaine" && ` · ${horsVue} plus loin`}
+          {horsVue > 0 && vue === "aujourdhui" && ` · ${horsVue} hors du jour`}
         </span>
 
         <span className="flex-1" />
@@ -385,14 +385,7 @@ export function TodoView() {
         </Carte>
       )}
 
-      {/*
-        Les quatre blocs côte à côte sur grand écran : la journée entière
-        tient alors dans un seul coup d'œil, sans défilement.
-
-        `items-start` : sans lui, un bloc vide prend la hauteur du bloc le plus
-        rempli d'à côté — un grand rectangle noir vide au milieu de la journée.
-      */}
-      <div ref={grilleRef} className="grid grid-cols-1 items-start gap-[11px] lg:grid-cols-2 xl:grid-cols-4">
+      <div ref={grilleRef} className="grid grid-cols-1 gap-[11px] lg:grid-cols-2">
         {parBloc.map(({ bloc, items }) => {
           const faitesBloc = items.filter((t) => t.faite).length;
           return (
@@ -403,11 +396,11 @@ export function TodoView() {
               className={`zone-depot ${dragId && zoneCourante === bloc.id ? "zone-visee" : ""}`}
               style={{ minHeight: items.length === 0 ? 108 : undefined }}
             >
-              {/* Le nom, l'horaire et le compte sur une seule ligne. */}
-              <div className="flex items-baseline gap-[7px]">
-                <span className="text-[11px] font-semibold tracking-[0.04em]">{bloc.nom}</span>
-                <span className="nombres text-[10px] text-[var(--p90-texte-2)]">{bloc.plage}</span>
-                <span className="flex-1" />
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold tracking-[0.04em]">{bloc.nom}</div>
+                  <div className="nombres text-[10px] text-[var(--p90-texte-2)]">{bloc.plage}</div>
+                </div>
                 {items.length > 0 && (
                   <span
                     className="nombres flex-none text-[10px] font-semibold"
@@ -421,11 +414,42 @@ export function TodoView() {
               </div>
 
               {/*
-                Un bloc vide ne dit pas qu'il est vide : il se voit. La carte
-                garde sa hauteur pour rester une cible de dépôt atteignable,
-                et son cadre s'allume quand une tâche arrive dessus.
+                LE CHAMP D'AJOUT EST EN HAUT, au-dessus de la liste.
+
+                En bas, il fallait descendre sous treize lignes pour noter ce
+                qui vient de traverser l'esprit — et sur téléphone, défiler
+                jusqu'au bout du bloc avant même de pouvoir taper. Or une tâche
+                créée prend la TÊTE de la liste : le champ est maintenant juste
+                au-dessus de l'endroit où la ligne va apparaître.
               */}
-              <div className="mt-[7px] space-y-[1px]">
+              <form
+                className="mt-[9px] flex items-center gap-[6px]"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void ajouter(bloc.id);
+                }}
+              >
+                <Champ
+                  valeur={saisie[bloc.id] ?? ""}
+                  onChange={(v) => setSaisie((p) => ({ ...p, [bloc.id]: v }))}
+                  placeholder={`Ajouter dans ${bloc.nom}…`}
+                  aria={`Ajouter une tâche dans ${bloc.nom}`}
+                  className="flex-1"
+                />
+                {/* L'emoji que la tâche RECEVRA, pendant la frappe. */}
+                {(saisie[bloc.id] ?? "").trim() && (
+                  <span className="flex-none text-[15px]">{emojiVisible(saisie[bloc.id] ?? "")}</span>
+                )}
+                <Bouton type="submit" ton="plein" disabled={!(saisie[bloc.id] ?? "").trim()}>
+                  +
+                </Bouton>
+              </form>
+              <div className="mt-[9px] space-y-[1px]">
+                {items.length === 0 && (
+                  <div className="py-[9px] text-center text-[11px] text-[var(--p90-texte-2)] opacity-50">
+                    Rien dans ce bloc
+                  </div>
+                )}
                 {items.map((t) => (
                   <LigneTache
                     key={t.id}
@@ -460,37 +484,6 @@ export function TodoView() {
                 ))}
               </div>
 
-              {/*
-                Le champ d'ajout, dans le bloc : la tâche naît déjà rangée.
-                Effacé tant qu'il est vide, et le bouton n'apparaît qu'une fois
-                qu'il y a quelque chose à envoyer — sinon ce sont huit boîtes
-                de plus sur un écran qui n'en demande aucune.
-              */}
-              <form
-                className="mt-[7px] flex items-center gap-[6px]"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void ajouter(bloc.id);
-                }}
-              >
-                <Champ
-                  valeur={saisie[bloc.id] ?? ""}
-                  onChange={(v) => setSaisie((p) => ({ ...p, [bloc.id]: v }))}
-                  placeholder="+ Ajouter"
-                  aria={`Ajouter une tâche dans ${bloc.nom}`}
-                  fantome={!(saisie[bloc.id] ?? "")}
-                  className="flex-1"
-                />
-                {(saisie[bloc.id] ?? "").trim() && (
-                  <>
-                    {/* L'emoji que la tâche RECEVRA, pendant la frappe. */}
-                    <span className="flex-none text-[15px]">{emojiVisible(saisie[bloc.id] ?? "")}</span>
-                    <Bouton type="submit" ton="plein">
-                      +
-                    </Bouton>
-                  </>
-                )}
-              </form>
             </Carte>
           );
         })}
@@ -501,6 +494,18 @@ export function TodoView() {
           <Vide indice="Tape une tâche dans le bloc où elle doit se faire.">Aucune tâche</Vide>
         </Carte>
       )}
+
+      {/* Le rappel du bloc suggéré par objectif, pour qui range à la main. */}
+      <div className="px-[2px] text-[10px] text-[var(--p90-texte-2)] opacity-60">
+        Les tâches créées depuis un objectif tombent dans son bloc :{" "}
+        {["momentum", "twaylo", "terrain"].map((o, i) => (
+          <span key={o}>
+            {i > 0 && " · "}
+            {nomObjectif(o)} → {BLOCS.find((b) => b.id === blocSuggere(o))?.nom}
+          </span>
+        ))}
+        . Échéance la plus proche en haut de la carte du jour ({formaterJour(aujourdhui)}).
+      </div>
     </div>
   );
 }

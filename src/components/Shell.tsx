@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CockpitProvider, useCockpit } from "@/lib/p90-context";
-import { compteARebours } from "@/lib/p90";
+import { compteARebours, P90_DEBUT, P90_FIN } from "@/lib/p90";
+import { Barre } from "@/components/p90/ui";
 import { TodoView } from "@/components/views/TodoView";
 import { KanbanView } from "@/components/views/KanbanView";
 import { SponsorsView } from "@/components/views/SponsorsView";
@@ -40,17 +41,11 @@ const NOMS = Object.keys(ONGLETS) as Onglet[];
 const CLE_ONGLET = "twaylo-p90-onglet";
 
 /**
- * LE BANDEAU — où on en est dans les 90 jours, en une ligne.
+ * LE BANDEAU — où on en est dans les 90 jours.
  *
- * Deux dates comptent : le 1er novembre, quand Momentum ouvre, et le
- * 31 décembre, quand tout se juge. Affichées en jours, pas en dates : « J-27 »
- * se lit sans calculer, « 1er novembre » demande de compter.
- *
- * Il portait aussi les dates de début et de fin, une barre étiquetée et un
- * « jour 3 sur 88 ». Trois façons de dire la même chose au-dessus de la todo,
- * sur l'écran qu'on ouvre quarante fois par jour. Il n'en reste que les deux
- * compteurs, et le temps écoulé passé dans un filet de deux pixels au bord du
- * bandeau — on le voit avancer sans jamais avoir à le lire.
+ * Deux dates comptent et une seule barre : le 1er novembre, quand Momentum
+ * ouvre, et le 31 décembre, quand tout se juge. Affichées en jours, pas en
+ * dates : « J-27 » se lit sans calculer, « 1er novembre » demande de compter.
  */
 function Bandeau() {
   const { aujourdhui, etatReseau } = useCockpit();
@@ -66,48 +61,38 @@ function Bandeau() {
         paddingTop: "env(safe-area-inset-top, 0px)",
       }}
     >
-      <div className="relative mx-auto flex max-w-[1500px] flex-wrap items-baseline gap-x-[14px] gap-y-[4px] px-[18px] py-[10px]">
-        <span className="text-[13px] font-semibold tracking-[-0.01em]">PROJECT 90</span>
+      <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-[18px] gap-y-[7px] px-[18px] py-[11px]">
+        <div className="flex items-baseline gap-[9px]">
+          <span className="text-[14px] font-semibold tracking-[-0.01em]">PROJECT 90</span>
+          <span className="nombres text-[10px] text-[var(--p90-texte-2)]">
+            {P90_DEBUT.slice(8)}/{P90_DEBUT.slice(5, 7)} → {P90_FIN.slice(8)}/{P90_FIN.slice(5, 7)}
+          </span>
+        </div>
 
-        <span className="flex-1" />
+        <div className="flex items-baseline gap-[13px]">
+          <Compteur
+            valeur={r.versOuverture}
+            libelle="Momentum ouvre"
+            ton={r.versOuverture <= 7 ? "var(--p90-accent)" : undefined}
+          />
+          <Compteur valeur={r.versFin} libelle="fin des 90 jours" />
+        </div>
+
+        <div className="min-w-[120px] flex-1">
+          <Barre pct={r.pctEcoule} couleur="var(--p90-texte-2)" hauteur={4} etiquette="Temps écoulé" />
+          <div className="nombres mt-[3px] text-[10px] text-[var(--p90-texte-2)]">
+            jour {r.ecoules} sur {r.total}
+          </div>
+        </div>
 
         {etatReseau === "hors_ligne" && (
-          <span className="text-[10px] font-semibold" style={{ color: "var(--p90-alerte)" }}>
+          <span
+            className="rounded-[6px] px-[7px] py-[2px] text-[10px] font-semibold"
+            style={{ color: "var(--p90-alerte)", border: "1px solid var(--p90-alerte)" }}
+          >
             hors ligne
           </span>
         )}
-
-        <Compteur
-          valeur={r.versOuverture}
-          libelle="ouverture"
-          ton={r.versOuverture <= 7 ? "var(--p90-accent)" : undefined}
-        />
-        <Compteur valeur={r.versFin} libelle="fin" />
-
-        {/*
-          Le filet du temps écoulé, posé SUR la bordure du bandeau.
-          Il n'a pas d'étiquette : une barre qui se remplit de gauche à droite
-          au fil d'un compte à rebours n'en demande pas.
-        */}
-        <div
-          className="absolute inset-x-0 bottom-[-1px] h-[2px]"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(r.pctEcoule)}
-          aria-label="Temps écoulé sur les 90 jours"
-          title={`Jour ${r.ecoules} sur ${r.total}`}
-        >
-          <span
-            className="block h-full"
-            style={{
-              width: `${Math.max(0, Math.min(100, r.pctEcoule))}%`,
-              background: "var(--p90-texte-2)",
-              opacity: 0.5,
-              transition: "width var(--p90-vitesse) ease",
-            }}
-          />
-        </div>
       </div>
     </header>
   );
@@ -116,12 +101,12 @@ function Bandeau() {
 function Compteur({ valeur, libelle, ton }: { valeur: number; libelle: string; ton?: string }) {
   const passe = valeur < 0;
   return (
-    <span className="flex items-baseline gap-[4px]">
-      <span className="nombres text-[15px] font-semibold" style={{ color: ton }}>
+    <div className="leading-[1.1]">
+      <div className="nombres text-[18px] font-semibold" style={{ color: ton }}>
         {passe ? `+${-valeur}` : `J-${valeur}`}
-      </span>
-      <span className="text-[10px] text-[var(--p90-texte-2)]">{libelle}</span>
-    </span>
+      </div>
+      <div className="text-[9px] uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">{libelle}</div>
+    </div>
   );
 }
 
@@ -138,7 +123,7 @@ function Rail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => voi
   return (
     <nav
       ref={railRef}
-      className="rail-onglets mx-auto flex max-w-[1500px] gap-[16px] overflow-x-auto px-[18px] pt-[10px] pb-[2px]"
+      className="rail-onglets mx-auto flex max-w-[1500px] gap-[5px] overflow-x-auto px-[18px] py-[9px]"
       aria-label="Modules"
     >
       {NOMS.map((nom) => {
@@ -150,10 +135,11 @@ function Rail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => voi
             data-onglet={nom}
             onClick={() => surChoix(nom)}
             aria-current={choisi ? "page" : undefined}
-            className="cible-doigt flex-none cursor-pointer px-[2px] text-[12px] font-semibold transition-colors"
+            className="cible-doigt flex-none cursor-pointer rounded-[8px] px-[13px] py-[7px] text-[12px] font-semibold transition-all"
             style={{
-              color: choisi ? "var(--p90-accent)" : "var(--p90-texte-2)",
-              boxShadow: choisi ? "inset 0 -2px 0 0 var(--p90-accent)" : undefined,
+              color: choisi ? "#0b0b0c" : "var(--p90-texte-2)",
+              background: choisi ? "var(--p90-accent)" : "var(--p90-surface)",
+              border: `1px solid ${choisi ? "var(--p90-accent)" : "var(--p90-bord)"}`,
               transitionDuration: "var(--p90-vitesse)",
             }}
           >
@@ -202,7 +188,7 @@ function Cockpit() {
       <Bandeau />
       <Rail actif={onglet} surChoix={choisir} />
       <main
-        className="mx-auto max-w-[1500px] px-[18px] pt-[13px] pb-[30px]"
+        className="mx-auto max-w-[1500px] px-[18px] pb-[30px]"
         style={{
           paddingBottom: "calc(30px + env(safe-area-inset-bottom, 0px))",
           paddingLeft: "max(18px, env(safe-area-inset-left, 0px))",

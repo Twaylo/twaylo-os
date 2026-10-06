@@ -15,7 +15,7 @@ import {
 import { emojiVisible } from "@/lib/emoji-tache";
 import { useCockpit, type TacheVue } from "@/lib/p90-context";
 import { useGlisser } from "@/lib/use-glisser";
-import { Bouton, Carte, Etiq, Meta, Puce, Vide, formaterJour } from "@/components/p90/ui";
+import { Bouton, Carte, Puce, Surtitre, Vide, formaterJour } from "@/components/p90/ui";
 
 /**
  * LE KANBAN — la MÊME donnée que la todo, vue autrement.
@@ -102,15 +102,12 @@ export function KanbanView() {
 
   return (
     <div className="entree-vue space-y-[13px]">
-      {/*
-        Les filtres à nu, sans carte autour.
-        Une carte sert à grouper ce qui se lit ; une rangée de boutons se lit
-        déjà comme une rangée de boutons, et l'encadrer repoussait les quatre
-        colonnes — le contenu de l'écran — d'un cran vers le bas.
-      */}
-      <div className="space-y-[5px]">
-        <div className="flex flex-wrap items-center gap-[5px]">
-          <Etiq>Objectif</Etiq>
+      <Carte>
+        <Surtitre>Filtres</Surtitre>
+        <div className="mt-[7px] flex flex-wrap items-center gap-[5px]">
+          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            Objectif
+          </span>
           {OBJECTIFS_P90.map((o) => (
             <Puce
               key={o.id}
@@ -122,8 +119,10 @@ export function KanbanView() {
             </Puce>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-[5px]">
-          <Etiq>Qui</Etiq>
+        <div className="mt-[5px] flex flex-wrap items-center gap-[5px]">
+          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            Qui
+          </span>
           {RESPONSABLES.map((r) => (
             <Puce key={r} actif={filtreQui === r} onClick={() => setFiltreQui(filtreQui === r ? null : r)}>
               {r}
@@ -141,7 +140,7 @@ export function KanbanView() {
             </Bouton>
           )}
         </div>
-      </div>
+      </Carte>
 
       {!pret && taches.length === 0 && (
         <Carte>
@@ -171,6 +170,11 @@ export function KanbanView() {
             </div>
 
             <div className="mt-[9px] space-y-[6px]">
+              {items.length === 0 && (
+                <div className="py-[13px] text-center text-[11px] text-[var(--p90-texte-2)] opacity-50">
+                  Vide
+                </div>
+              )}
               {items.map((t) => {
                 const jours = joursRestants(t.meta.echeance, aujourdhui);
                 return (
@@ -197,29 +201,32 @@ export function KanbanView() {
                         {t.titre}
                       </div>
                     </button>
-                    <Meta
-                      className="mt-[4px]"
-                      bouts={[
-                        t.meta.objectif ? { texte: nomObjectif(t.meta.objectif) } : null,
-                        t.meta.responsables.length > 0 ? { texte: t.meta.responsables.join(", ") } : null,
-                        t.meta.echeance
-                          ? {
-                              texte:
-                                jours !== null && jours < 0
-                                  ? `${-jours} j de retard`
-                                  : formaterJour(t.meta.echeance),
-                              ton: jours !== null && jours < 0 ? "danger" : "neutre",
-                              fort: jours !== null && jours < 0,
-                            }
-                          : null,
-                      ]}
-                    />
+                    <div className="mt-[5px] flex flex-wrap items-center gap-[4px]">
+                      {t.meta.objectif && (
+                        <Puce ton={t.meta.objectif === "momentum" ? "accent" : "neutre"}>
+                          {nomObjectif(t.meta.objectif)}
+                        </Puce>
+                      )}
+                      {t.meta.responsables.map((r) => (
+                        <Puce key={r}>{r}</Puce>
+                      ))}
+                      {t.meta.echeance && (
+                        <Puce ton={jours === null ? "neutre" : jours < 0 ? "danger" : jours <= 2 ? "alerte" : "neutre"}>
+                          {formaterJour(t.meta.echeance)}
+                        </Puce>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           </Carte>
         ))}
+      </div>
+
+      <div className="px-[2px] text-[10px] text-[var(--p90-texte-2)] opacity-60">
+        Une carte = une tâche de la todo. Glisse-la d&apos;une colonne à l&apos;autre ; à l&apos;intérieur
+        d&apos;une colonne, l&apos;ordre est celui de la priorité (échéance, objectif, impact).
       </div>
     </div>
   );
