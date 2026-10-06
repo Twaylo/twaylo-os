@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BLOCS,
+  couleurObjectif,
   blocSuggere,
   filtrerVue,
   joursRestants,
@@ -244,10 +245,11 @@ export function TodoView() {
   return (
     <div className="entree-vue space-y-[13px]">
       {/* ---------- Les trois priorités ---------- */}
-      <Carte>
+      {/* Le dégradé signature sur la carte maîtresse — une seule la porte. */}
+      <Carte accent="var(--grad)">
         <div className="flex items-baseline justify-between gap-2">
-          <Surtitre>Les 3 priorités du jour</Surtitre>
-          <span className="nombres text-[11px] font-semibold text-[var(--p90-texte-2)]">
+          <Surtitre couleur="var(--color-cya-soft)">Les 3 priorités du jour</Surtitre>
+          <span className="nombres text-[11px] font-semibold text-white/40">
             {faites}/{vivantes.length} faites
           </span>
         </div>
@@ -265,9 +267,9 @@ export function TodoView() {
                   <span
                     className="nombres mt-[1px] flex-none rounded-[6px] px-[6px] text-[12px] font-bold leading-[20px]"
                     style={{
-                      color: i === 0 ? "#0b0b0c" : "var(--p90-accent)",
-                      background: i === 0 ? "var(--p90-accent)" : "transparent",
-                      border: "1px solid var(--p90-accent)",
+                      color: i === 0 ? "#07121d" : "var(--color-cya)",
+                      background: i === 0 ? "var(--grad)" : "transparent",
+                      border: `1px solid ${i === 0 ? "transparent" : "rgba(34,211,238,0.35)"}`,
                     }}
                   >
                     {i + 1}
@@ -282,9 +284,7 @@ export function TodoView() {
                       {t.titre}
                     </div>
                     <div className="mt-[2px] flex flex-wrap items-center gap-[4px]">
-                      <Puce ton={t.meta.objectif === "momentum" ? "accent" : "neutre"}>
-                        {nomObjectif(t.meta.objectif)}
-                      </Puce>
+                      <Puce couleur={couleurObjectif(t.meta.objectif)}>{nomObjectif(t.meta.objectif)}</Puce>
                       {jours !== null && (
                         <Puce ton={jours <= 0 ? "danger" : jours <= 2 ? "alerte" : "neutre"}>
                           {jours < 0 ? `${-jours} j de retard` : jours === 0 ? "aujourd'hui" : `dans ${jours} j`}
@@ -313,7 +313,7 @@ export function TodoView() {
         <Puce actif={vue === "tout"} ton="accent" onClick={() => setVue("tout")}>
           Tout
         </Puce>
-        <span className="nombres text-[11px] text-[var(--p90-texte-2)]">
+        <span className="nombres text-[11px] text-white/40">
           {filtrees.length} tâche{filtrees.length > 1 ? "s" : ""}
           {horsVue > 0 && vue === "semaine" && ` · ${horsVue} plus loin`}
           {horsVue > 0 && vue === "aujourdhui" && ` · ${horsVue} hors du jour`}
@@ -349,8 +349,8 @@ export function TodoView() {
       {echec && (
         <div
           role="alert"
-          className="entree-ligne flex flex-wrap items-center gap-[9px] rounded-[var(--p90-rayon)] px-[11px] py-[9px]"
-          style={{ background: "rgba(214,165,80,0.10)", border: "1px solid var(--p90-alerte)" }}
+          className="entree-ligne flex flex-wrap items-center gap-[9px] rounded-[14px] px-[11px] py-[9px]"
+          style={{ background: "rgba(255,198,61,0.12)", border: "1px solid rgba(255,198,61,0.35)" }}
         >
           <span className="min-w-0 flex-1 text-[12px] font-medium">{echec}</span>
           <Bouton onClick={oublierEchec}>Fermer</Bouton>
@@ -360,8 +360,8 @@ export function TodoView() {
       {aSupprimer && (
         <div
           role="status"
-          className="entree-ligne relative flex items-center gap-[9px] overflow-hidden rounded-[var(--p90-rayon)] px-[11px] py-[9px]"
-          style={{ background: "rgba(224,92,92,0.10)", border: "1px solid var(--p90-danger)" }}
+          className="entree-ligne relative flex items-center gap-[9px] overflow-hidden rounded-[14px] px-[11px] py-[9px]"
+          style={{ background: "rgba(255,61,139,0.12)", border: "1px solid rgba(255,61,139,0.35)" }}
         >
           <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
             « {aSupprimer.titre} » part aux Oubliés
@@ -391,6 +391,8 @@ export function TodoView() {
           return (
             <Carte
               key={bloc.id}
+              accent={bloc.couleur}
+              survol={false}
               innerRef={setZoneRef(bloc.id)}
               zone={bloc.id}
               className={`zone-depot ${dragId && zoneCourante === bloc.id ? "zone-visee" : ""}`}
@@ -398,14 +400,14 @@ export function TodoView() {
             >
               <div className="flex items-baseline justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[11px] font-semibold tracking-[0.04em]">{bloc.nom}</div>
-                  <div className="nombres text-[10px] text-[var(--p90-texte-2)]">{bloc.plage}</div>
+                  <Surtitre couleur={bloc.couleur}>{bloc.nom}</Surtitre>
+                  <div className="nombres mt-[3px] text-[10px] text-white/35">{bloc.plage}</div>
                 </div>
                 {items.length > 0 && (
                   <span
                     className="nombres flex-none text-[10px] font-semibold"
                     style={{
-                      color: faitesBloc === items.length ? "var(--p90-succes)" : "var(--p90-texte-2)",
+                      color: faitesBloc === items.length ? "var(--color-ver)" : "rgba(255,255,255,0.4)",
                     }}
                   >
                     {faitesBloc}/{items.length}
@@ -446,7 +448,7 @@ export function TodoView() {
               </form>
               <div className="mt-[9px] space-y-[1px]">
                 {items.length === 0 && (
-                  <div className="py-[9px] text-center text-[11px] text-[var(--p90-texte-2)] opacity-50">
+                  <div className="py-[9px] text-center text-[11px] text-white/40 opacity-50">
                     Rien dans ce bloc
                   </div>
                 )}
@@ -496,7 +498,7 @@ export function TodoView() {
       )}
 
       {/* Le rappel du bloc suggéré par objectif, pour qui range à la main. */}
-      <div className="px-[2px] text-[10px] text-[var(--p90-texte-2)] opacity-60">
+      <div className="px-[2px] text-[10px] text-white/40 opacity-60">
         Les tâches créées depuis un objectif tombent dans son bloc :{" "}
         {["momentum", "twaylo", "terrain"].map((o, i) => (
           <span key={o}>

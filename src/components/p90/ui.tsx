@@ -3,88 +3,146 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 
 /**
- * LES BRIQUES DU COCKPIT.
+ * LES BRIQUES DU COCKPIT, au langage visuel d'origine.
  *
- * Six composants, et volontairement six : l'ancien fichier d'interface en
- * portait douze, dont des badges de format vidéo et un bouton de dictée pour
- * des onglets qui n'existent plus.
+ * Verre dépoli sur fond encre, un filet de couleur en tête de chaque carte,
+ * des pastilles rondes et des boutons teintés dans la couleur de ce qu'ils
+ * font. C'est la maquette de Twaylo OS, reprise après l'essai d'un noir
+ * uniforme : sept modules peints de la même couleur se ressemblent tous, et
+ * c'est la couleur qui permet de retrouver « la carte verte » sans lire.
  *
- * Aucune ne porte de couleur en dur — tout vient des variables du thème, pour
- * qu'un changement de palette soit un changement de palette et non une chasse
- * aux valeurs hexadécimales dans trente fichiers.
+ * Aucune carte ne choisit sa teinte ici : elle la reçoit. Les couleurs vivent
+ * dans `globals.css` et dans `p90.ts`, pour qu'un changement de palette reste
+ * un changement de palette.
  */
 
-/** Une surface. `zone` la marque comme cible de dépôt, lisible depuis le DOM. */
+/** Les sept accents de la maquette, et le gris. */
+export const TONS = {
+  neutre: { vif: "rgba(255,255,255,0.55)", fond: "rgba(255,255,255,0.05)", bord: "rgba(255,255,255,0.09)" },
+  accent: { vif: "var(--color-cya)", fond: "rgba(34,211,238,0.13)", bord: "rgba(34,211,238,0.3)" },
+  bleu: { vif: "var(--color-ble)", fond: "rgba(79,156,255,0.13)", bord: "rgba(79,156,255,0.3)" },
+  violet: { vif: "var(--color-vio)", fond: "rgba(176,107,255,0.13)", bord: "rgba(176,107,255,0.3)" },
+  succes: { vif: "var(--color-ver)", fond: "rgba(61,220,132,0.13)", bord: "rgba(61,220,132,0.32)" },
+  alerte: { vif: "var(--color-amb)", fond: "rgba(255,198,61,0.13)", bord: "rgba(255,198,61,0.32)" },
+  corail: { vif: "var(--color-cor)", fond: "rgba(255,122,61,0.13)", bord: "rgba(255,122,61,0.3)" },
+  danger: { vif: "var(--color-mag)", fond: "rgba(255,61,139,0.13)", bord: "rgba(255,61,139,0.32)" },
+} as const;
+
+export type Ton = keyof typeof TONS;
+
+/**
+ * Une carte en verre. `accent` peint la barre fine du haut.
+ *
+ * Une couleur par carte, et c'est tout l'intérêt : on repère le pipeline des
+ * OP à son filet corail avant d'avoir lu son titre. `zone` la marque comme
+ * cible de dépôt, lisible depuis le DOM.
+ */
 export function Carte({
   children,
+  accent = "rgba(255,255,255,0.14)",
   className = "",
   style,
   innerRef,
   zone,
+  survol = true,
   haute = false,
 }: {
   children: ReactNode;
+  /** La couleur du filet du haut. `var(--grad)` pour la carte maîtresse. */
+  accent?: string;
   className?: string;
   style?: CSSProperties;
   innerRef?: Ref<HTMLDivElement>;
   zone?: string;
+  /** Le léger soulèvement au survol. À couper sur une carte de dépôt. */
+  survol?: boolean;
   /** Surface haute : pour ce qui se pose SUR une carte. */
   haute?: boolean;
 }) {
+  if (haute) {
+    return (
+      <div ref={innerRef} data-zone={zone} className={`carte-haute p-[14px] ${className}`} style={style}>
+        {children}
+      </div>
+    );
+  }
   return (
     <div
       ref={innerRef}
       data-zone={zone}
-      className={`${haute ? "carte-haute" : "carte"} p-[14px] ${className}`}
+      className={`carte ${survol ? "carte-hover" : ""} p-[16px] ${className}`}
       style={style}
     >
+      <span className="panel-accent" style={{ background: accent }} aria-hidden />
       {children}
     </div>
   );
 }
 
-/** Le surtitre d'un bloc : petit, espacé, gris. */
-export function Surtitre({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`surtitre ${className}`}>{children}</div>;
+/** Le libellé en tête de carte : pastille colorée, puis le texte capitalisé. */
+export function Surtitre({
+  children,
+  couleur = "rgba(255,255,255,0.45)",
+  pastille,
+  className = "",
+}: {
+  children: ReactNode;
+  couleur?: string;
+  /** La pastille, si elle doit différer du texte. */
+  pastille?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`surtitre ${className}`} style={{ color: couleur }}>
+      <span className="pastille-titre" style={{ background: pastille ?? couleur }} aria-hidden />
+      {children}
+    </div>
+  );
 }
 
 /**
- * Une étiquette. `ton` choisit sa couleur parmi les états du thème.
+ * Une étiquette ronde, teintée dans son ton.
  *
  * `onClick` la rend cliquable — un filtre du Kanban est une puce qu'on allume,
- * pas une liste déroulante : un geste au lieu de trois.
+ * pas une liste déroulante : un geste au lieu de trois. Allumée, elle prend sa
+ * couleur pleine ; éteinte, elle reste un verre discret.
  */
 export function Puce({
   children,
   ton = "neutre",
+  couleur,
   actif = false,
   onClick,
   titre,
   className = "",
 }: {
   children: ReactNode;
-  ton?: "neutre" | "accent" | "succes" | "alerte" | "danger";
+  ton?: Ton;
+  /**
+   * Une couleur hors des huit tons — celle d'un objectif, d'un bloc, d'une
+   * étape d'OP. Le fond et la bordure s'en déduisent par `color-mix` : une
+   * seule source de vérité, et personne n'a à écrire trois rgba à la main
+   * chaque fois qu'on ajoute un objectif.
+   */
+  couleur?: string;
   actif?: boolean;
   onClick?: () => void;
   titre?: string;
   className?: string;
 }) {
-  const couleur = {
-    neutre: "var(--p90-texte-2)",
-    accent: "var(--p90-accent)",
-    succes: "var(--p90-succes)",
-    alerte: "var(--p90-alerte)",
-    danger: "var(--p90-danger)",
-  }[ton];
+  const t = couleur
+    ? {
+        vif: couleur,
+        fond: `color-mix(in srgb, ${couleur} 13%, transparent)`,
+        bord: `color-mix(in srgb, ${couleur} 32%, transparent)`,
+      }
+    : TONS[ton];
 
-  const style: CSSProperties = {
-    color: actif ? "var(--p90-fond)" : couleur,
-    background: actif ? couleur : "transparent",
-    border: `1px solid ${actif ? couleur : "var(--p90-bord)"}`,
-    transition: `all var(--p90-vitesse) ease`,
-  };
+  const style: CSSProperties = actif
+    ? { color: "#07121d", background: t.vif, border: `1px solid ${t.vif}` }
+    : { color: t.vif, background: t.fond, border: `1px solid ${t.bord}` };
 
-  const classes = `inline-flex items-center gap-[4px] rounded-[6px] px-[6px] py-[2px] text-[10px] font-semibold leading-[16px] ${className}`;
+  const classes = `inline-flex items-center gap-[4px] rounded-full px-[9px] py-[3px] text-[10.5px] font-extrabold leading-[15px] transition-all ${className}`;
 
   if (!onClick) {
     return (
@@ -94,7 +152,13 @@ export function Puce({
     );
   }
   return (
-    <button type="button" onClick={onClick} title={titre} className={`${classes} cursor-pointer hover:brightness-125`} style={style}>
+    <button
+      type="button"
+      onClick={onClick}
+      title={titre}
+      className={`${classes} cursor-pointer hover:brightness-125`}
+      style={style}
+    >
       {children}
     </button>
   );
@@ -103,7 +167,7 @@ export function Puce({
 /** Une barre de progression. La valeur est bornée ici, pas chez l'appelant. */
 export function Barre({
   pct,
-  couleur = "var(--p90-accent)",
+  couleur = "var(--grad)",
   hauteur = 6,
   etiquette,
 }: {
@@ -120,12 +184,12 @@ export function Barre({
       aria-valuemax={100}
       aria-valuenow={borne}
       aria-label={etiquette}
-      className="w-full overflow-hidden rounded-full"
-      style={{ height: hauteur, background: "var(--p90-bord)" }}
+      className="bar-track w-full"
+      style={{ height: hauteur }}
     >
       <span
         className="block h-full rounded-full"
-        style={{ width: `${borne}%`, background: couleur, transition: `width var(--p90-vitesse) ease` }}
+        style={{ width: `${borne}%`, background: couleur, transition: "width 0.4s ease" }}
       />
     </div>
   );
@@ -135,14 +199,14 @@ export function Barre({
 export function Vide({ children, indice }: { children: ReactNode; indice?: string }) {
   return (
     <div className="py-[26px] text-center">
-      <div className="text-[12px] font-semibold text-[var(--p90-texte-2)]">{children}</div>
-      {indice && <div className="mt-[3px] text-[11px] text-[var(--p90-texte-2)] opacity-60">{indice}</div>}
+      <div className="text-[12.5px] font-extrabold text-white/40">{children}</div>
+      {indice && <div className="mt-[3px] text-[11px] text-white/25">{indice}</div>}
     </div>
   );
 }
 
 /**
- * Un bouton. `ton` « plein » pour l'action principale, « fin » pour le reste.
+ * Un bouton. `ton` « plein » porte le dégradé signature, le reste est teinté.
  *
  * 44 px de haut au doigt via `cible-doigt` : une cible de 30 px se rate une
  * fois sur trois sur un téléphone, et un bouton raté passe pour un bug.
@@ -158,16 +222,21 @@ export function Bouton({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  ton?: "plein" | "fin" | "danger";
+  ton?: "plein" | "fin" | "danger" | "succes";
   type?: "button" | "submit";
   disabled?: boolean;
   titre?: string;
   className?: string;
 }) {
   const styles: Record<string, CSSProperties> = {
-    plein: { background: "var(--p90-accent)", color: "#0b0b0c", border: "1px solid var(--p90-accent)" },
-    fin: { background: "var(--p90-haute)", color: "var(--p90-texte)", border: "1px solid var(--p90-bord)" },
-    danger: { background: "transparent", color: "var(--p90-danger)", border: "1px solid var(--p90-danger)" },
+    plein: { background: "var(--grad)", color: "#07121d", border: "1px solid transparent" },
+    fin: {
+      background: "rgba(255,255,255,0.05)",
+      color: "rgba(255,255,255,0.72)",
+      border: "1px solid rgba(255,255,255,0.09)",
+    },
+    succes: { background: TONS.succes.fond, color: TONS.succes.vif, border: `1px solid ${TONS.succes.bord}` },
+    danger: { background: TONS.danger.fond, color: TONS.danger.vif, border: `1px solid ${TONS.danger.bord}` },
   };
   return (
     <button
@@ -175,8 +244,8 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`cible-doigt inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-[8px] px-[11px] py-[7px] text-[12px] font-semibold transition-all hover:brightness-115 disabled:cursor-default disabled:opacity-40 ${className}`}
-      style={{ ...styles[ton], transitionDuration: "var(--p90-vitesse)" }}
+      className={`cible-doigt inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-[11px] px-[12px] py-[7px] text-[11.5px] font-extrabold transition-all hover:brightness-125 disabled:cursor-default disabled:opacity-40 ${className}`}
+      style={styles[ton]}
     >
       {children}
     </button>
@@ -215,19 +284,18 @@ export function Champ({
       autoFocus={autoFocus}
       placeholder={placeholder}
       aria-label={aria}
-      className={`min-w-0 rounded-[8px] px-[9px] py-[7px] text-[13px] outline-none transition-all placeholder:text-[var(--p90-texte-2)] placeholder:opacity-50 focus:border-[var(--p90-accent)] ${className}`}
+      className={`min-w-0 rounded-[11px] px-[11px] py-[8px] text-[13px] font-semibold outline-none transition-all focus:border-[var(--color-cya)] ${className}`}
       style={{
-        background: "var(--p90-fond)",
-        border: "1px solid var(--p90-bord)",
-        color: "var(--p90-texte)",
-        transitionDuration: "var(--p90-vitesse)",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        color: "var(--color-fg)",
       }}
     />
   );
 }
 
 /**
- * Un montant en euros, en chasse tabulaire.
+ * Un montant en euros, en chasse fixe.
  *
  * Formaté ici et nulle part ailleurs : `toLocaleString` rend une espace fine
  * insécable dont le code varie selon la version d'ICU, et deux montants
@@ -249,7 +317,7 @@ export function Euros({
   );
 }
 
-/** « 2 500 € », avec une espace insécable fine, toujours la même. */
+/** « 2 500 € », avec U+202F — une espace fine insécable, toujours la même. */
 export function formaterEuros(valeur: number): string {
   if (!Number.isFinite(valeur)) return "—";
   const entier = Math.round(valeur);

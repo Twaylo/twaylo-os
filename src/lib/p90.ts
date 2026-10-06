@@ -113,6 +113,15 @@ export type ObjectifP90 = {
   /** 1 = Momentum. Le rang pèse dans la priorisation, c'est son seul rôle. */
   rang: number;
   nom: string;
+  /**
+   * Sa couleur, parmi les sept de la maquette.
+   *
+   * Un objectif se retrouve à sa teinte avant d'être lu — sur la carte qui le
+   * porte, sur l'étiquette d'une tâche, dans le filtre du Kanban. C'est la
+   * raison d'être de la palette : cinq objectifs du même gris sont cinq
+   * paragraphes à lire.
+   */
+  couleur: string;
   /** Ce qui est compté, en une ligne. */
   kpi: string;
   /** Le symbole collé au chiffre (« € », « abonnés »…). */
@@ -136,6 +145,7 @@ export const OBJECTIFS_P90: ObjectifP90[] = [
     id: "momentum",
     rang: 1,
     nom: "Momentum",
+    couleur: "var(--color-mag)",
     kpi: "Contracté en décembre",
     unite: "€",
     depart: 0,
@@ -154,6 +164,7 @@ export const OBJECTIFS_P90: ObjectifP90[] = [
     id: "twaylo",
     rang: 2,
     nom: "Twaylo",
+    couleur: "var(--color-amb)",
     kpi: "Abonnés YouTube",
     unite: "abonnés",
     depart: 316_000,
@@ -172,6 +183,7 @@ export const OBJECTIFS_P90: ObjectifP90[] = [
     id: "terrain",
     rang: 3,
     nom: "Terrain & international",
+    couleur: "var(--color-vio)",
     kpi: "Abonnés cumulés EN · ES · BN",
     unite: "abonnés",
     depart: 0,
@@ -189,6 +201,7 @@ export const OBJECTIFS_P90: ObjectifP90[] = [
     id: "trigger",
     rang: 4,
     nom: "Trigger Warning",
+    couleur: "var(--color-cor)",
     kpi: "Vestes précommandées",
     unite: "vestes",
     depart: 0,
@@ -208,6 +221,7 @@ export const OBJECTIFS_P90: ObjectifP90[] = [
     id: "tresorerie",
     rang: 5,
     nom: "Trésorerie",
+    couleur: "var(--color-ver)",
     kpi: "Encaissé sur les OP dues",
     unite: "€",
     depart: 0,
@@ -234,6 +248,12 @@ export function nomObjectif(id: string | undefined): string {
   if (!id) return "Sans objectif";
   if (id === ID_TRANSVERSE) return "Tous";
   return PAR_ID.get(id)?.nom ?? "Sans objectif";
+}
+
+/** Sa couleur, ou le gris de « sans objectif ». */
+export function couleurObjectif(id: string | undefined): string {
+  if (!id || id === ID_TRANSVERSE) return "rgba(255,255,255,0.45)";
+  return PAR_ID.get(id)?.couleur ?? "rgba(255,255,255,0.45)";
 }
 
 export function estPortee(v: unknown): v is Portee {
@@ -298,6 +318,8 @@ export type Bloc = {
   fin: number;
   /** « 9h → 11h30 », tel qu'affiché. */
   plage: string;
+  /** Sa couleur — quatre cartes de journée, quatre teintes. */
+  couleur: string;
   /**
    * La valeur rangée dans `tasks.urgence`.
    *
@@ -310,10 +332,10 @@ export type Bloc = {
 };
 
 export const BLOCS: Bloc[] = [
-  { id: "momentum", nom: "Momentum", debut: 540, fin: 690, plage: "9h → 11h30", urgence: "aujourdhui" },
-  { id: "creation", nom: "Création Twaylo", debut: 690, fin: 780, plage: "11h30 → 13h", urgence: "semaine" },
-  { id: "tournages", nom: "Tournages", debut: 840, fin: 990, plage: "14h → 16h30", urgence: "mois" },
-  { id: "operations", nom: "Opérations", debut: 990, fin: 1110, plage: "16h30 → 18h30", urgence: "un_jour" },
+  { id: "momentum", nom: "Momentum", debut: 540, fin: 690, plage: "9h → 11h30", urgence: "aujourdhui", couleur: "var(--color-mag)" },
+  { id: "creation", nom: "Création Twaylo", debut: 690, fin: 780, plage: "11h30 → 13h", urgence: "semaine", couleur: "var(--color-amb)" },
+  { id: "tournages", nom: "Tournages", debut: 840, fin: 990, plage: "14h → 16h30", urgence: "mois", couleur: "var(--color-vio)" },
+  { id: "operations", nom: "Opérations", debut: 990, fin: 1110, plage: "16h30 → 18h30", urgence: "un_jour", couleur: "var(--color-cya)" },
 ];
 
 export const BLOC_PAR_DEFAUT: IdBloc = "operations";
@@ -613,10 +635,10 @@ export function filtrerVue<T extends TacheP90>(taches: T[], vue: Vue, aujourdhui
 export type ColonneKanban = "afaire" | "encours" | "bloque" | "fait";
 
 export const COLONNES_KANBAN: { id: ColonneKanban; nom: string; couleur: string }[] = [
-  { id: "afaire", nom: "À faire", couleur: "var(--p90-texte-2)" },
-  { id: "encours", nom: "En cours", couleur: "var(--p90-accent)" },
-  { id: "bloque", nom: "Bloqué", couleur: "var(--p90-danger)" },
-  { id: "fait", nom: "Fait", couleur: "var(--p90-succes)" },
+  { id: "afaire", nom: "À faire", couleur: "var(--color-ble)" },
+  { id: "encours", nom: "En cours", couleur: "var(--color-cya)" },
+  { id: "bloque", nom: "Bloqué", couleur: "var(--color-mag)" },
+  { id: "fait", nom: "Fait", couleur: "var(--color-ver)" },
 ];
 
 /**
@@ -674,12 +696,12 @@ export function nomChaine(id: IdChaine | undefined): string {
 export type EtapeOp = "prospect" | "negociation" | "signe" | "livre" | "facture" | "paye";
 
 export const ETAPES_OP: { id: EtapeOp; nom: string; couleur: string }[] = [
-  { id: "prospect", nom: "Prospect", couleur: "var(--p90-texte-2)" },
-  { id: "negociation", nom: "Négo", couleur: "var(--p90-alerte)" },
-  { id: "signe", nom: "Signé", couleur: "var(--p90-accent)" },
-  { id: "livre", nom: "Livré", couleur: "var(--p90-accent)" },
-  { id: "facture", nom: "Facturé", couleur: "var(--p90-alerte)" },
-  { id: "paye", nom: "Payé", couleur: "var(--p90-succes)" },
+  { id: "prospect", nom: "Prospect", couleur: "rgba(255,255,255,0.45)" },
+  { id: "negociation", nom: "Négo", couleur: "var(--color-amb)" },
+  { id: "signe", nom: "Signé", couleur: "var(--color-ble)" },
+  { id: "livre", nom: "Livré", couleur: "var(--color-vio)" },
+  { id: "facture", nom: "Facturé", couleur: "var(--color-cor)" },
+  { id: "paye", nom: "Payé", couleur: "var(--color-ver)" },
 ];
 
 export function estEtapeOp(v: unknown): v is EtapeOp {

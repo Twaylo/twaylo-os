@@ -97,19 +97,23 @@ function BlocObjectif({
   const coches = new Map((suivi?.jalons ?? []).map((j) => [j.texte, j.fait]));
   const faits = def.jalons.filter((j) => coches.get(j.texte)).length;
 
-  const couleur = pct >= 100 ? "var(--p90-succes)" : restant < 0 ? "var(--p90-danger)" : "var(--p90-accent)";
+  /*
+   * La couleur de la barre dit l'ÉTAT, celle de la carte dit l'OBJECTIF.
+   * Atteint : vert. En retard : magenta. Sinon, sa propre teinte.
+   */
+  const couleur = pct >= 100 ? "var(--color-ver)" : restant < 0 ? "var(--color-mag)" : def.couleur;
 
   return (
-    <Carte>
+    <Carte accent={def.couleur}>
       <div className="flex flex-wrap items-baseline justify-between gap-[7px]">
         <div className="min-w-0">
           <div className="flex items-center gap-[7px]">
             <span
               className="nombres flex-none rounded-[6px] px-[5px] text-[10px] font-bold leading-[18px]"
               style={{
-                color: def.rang === 1 ? "#0b0b0c" : "var(--p90-texte-2)",
-                background: def.rang === 1 ? "var(--p90-accent)" : "transparent",
-                border: `1px solid ${def.rang === 1 ? "var(--p90-accent)" : "var(--p90-bord)"}`,
+                color: def.rang === 1 ? "#07121d" : def.couleur,
+                background: def.rang === 1 ? def.couleur : "transparent",
+                border: `1px solid ${def.rang === 1 ? def.couleur : "rgba(255,255,255,0.12)"}`,
               }}
               title={def.rang === 1 ? "Objectif n°1 : il pèse le plus dans la priorisation" : `Rang ${def.rang}`}
             >
@@ -117,18 +121,18 @@ function BlocObjectif({
             </span>
             <h2 className="text-[15px] font-semibold">{def.nom}</h2>
           </div>
-          <div className="mt-[2px] text-[11px] text-[var(--p90-texte-2)]">{def.detail}</div>
+          <div className="mt-[2px] text-[11px] text-white/40">{def.detail}</div>
         </div>
 
         <div className="text-right">
           <div className="nombres text-[20px] font-semibold" style={{ color: couleur }}>
             {euros ? <Euros valeur={valeur} /> : formaterNombre(valeur)}
-            <span className="text-[12px] font-normal text-[var(--p90-texte-2)]">
+            <span className="text-[12px] font-normal text-white/40">
               {" / "}
               {euros ? <Euros valeur={cible} /> : `${formaterNombre(cible)} ${def.unite}`}
             </span>
           </div>
-          <div className="text-[10px] text-[var(--p90-texte-2)]">
+          <div className="text-[10px] text-white/40">
             {def.kpi} · {formaterJour(def.echeance)}
             {restant >= 0 ? ` · J-${restant}` : ` · ${-restant} j de retard`}
           </div>
@@ -137,7 +141,7 @@ function BlocObjectif({
 
       <div className="mt-[9px]">
         <Barre pct={pct} couleur={couleur} etiquette={`Progression ${def.nom}`} />
-        <div className="mt-[4px] flex items-baseline justify-between text-[10px] text-[var(--p90-texte-2)]">
+        <div className="mt-[4px] flex items-baseline justify-between text-[10px] text-white/40">
           <span>
             {def.depart > 0 && `départ ${formaterNombre(def.depart)} · `}
             {pct} % du chemin
@@ -151,7 +155,7 @@ function BlocObjectif({
       {/* La valeur : saisie à la main, SAUF la trésorerie qui se déduit. */}
       <div className="mt-[9px] flex flex-wrap items-center gap-[7px]">
         {tresor ? (
-          <span className="text-[11px] text-[var(--p90-texte-2)]">
+          <span className="text-[11px] text-white/40">
             Calculée depuis les OP passées en « Payé » — rien à saisir ici.
           </span>
         ) : saisie === null ? (
@@ -175,14 +179,14 @@ function BlocObjectif({
                 setSaisie(null);
               }}
             />
-            <span className="text-[11px] text-[var(--p90-texte-2)]">{def.unite}</span>
+            <span className="text-[11px] text-white/40">{def.unite}</span>
           </>
         )}
       </div>
 
       {/* Les jalons, cochables. */}
-      <div className="mt-[9px] space-y-[3px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
-        <Surtitre>Jalons</Surtitre>
+      <div className="mt-[9px] space-y-[3px] border-t pt-[9px]" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+        <Surtitre couleur={def.couleur}>Jalons</Surtitre>
         {def.jalons.map((j) => {
           const fait = Boolean(coches.get(j.texte));
           const jours = j.date ? ecartJours(aujourdhui, j.date) : null;
@@ -191,7 +195,7 @@ function BlocObjectif({
               key={j.texte}
               type="button"
               onClick={() => surJalon(j.texte, !fait)}
-              className="flex w-full cursor-pointer items-center gap-[7px] rounded-[6px] px-[3px] py-[4px] text-left transition-colors hover:bg-[var(--p90-haute)]"
+              className="flex w-full cursor-pointer items-center gap-[7px] rounded-[6px] px-[3px] py-[4px] text-left transition-colors hover:bg-white/5"
             >
               <span
                 className="flex-none rounded-[4px] text-center"
@@ -200,9 +204,9 @@ function BlocObjectif({
                   height: 15,
                   fontSize: 10,
                   lineHeight: "13px",
-                  color: "#0b0b0c",
-                  border: `1px solid ${fait ? "var(--p90-succes)" : "var(--p90-bord)"}`,
-                  background: fait ? "var(--p90-succes)" : "transparent",
+                  color: "#07121d",
+                  border: `1px solid ${fait ? "var(--color-ver)" : "rgba(255,255,255,0.16)"}`,
+                  background: fait ? "var(--color-ver)" : "rgba(255,255,255,0.03)",
                 }}
                 aria-hidden
               >
@@ -220,7 +224,7 @@ function BlocObjectif({
       </div>
 
       {def.id === "momentum" && (
-        <div className="mt-[7px] text-[10px] text-[var(--p90-texte-2)] opacity-70">
+        <div className="mt-[7px] text-[10px] text-white/40 opacity-70">
           Ouverture le {formaterJour(P90_OUVERTURE)} au soir · tout se juge au {formaterJour(P90_FIN)}.
         </div>
       )}

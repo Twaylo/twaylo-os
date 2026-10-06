@@ -67,12 +67,12 @@ export function OubliesView() {
 
   return (
     <div className="entree-vue space-y-[13px]">
-      <Carte>
+      <Carte accent="var(--color-mag)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Surtitre>Oubliés — la sauvegarde</Surtitre>
-          <span className="nombres text-[11px] text-[var(--p90-texte-2)]">{liste?.length ?? 0}</span>
+          <Surtitre couleur="var(--color-mag-soft)">Oubliés — la sauvegarde</Surtitre>
+          <span className="nombres text-[11px] text-white/40">{liste?.length ?? 0}</span>
         </div>
-        <div className="mt-[3px] text-[11px] text-[var(--p90-texte-2)]">
+        <div className="mt-[3px] text-[11px] text-white/40">
           Tout ce qui est supprimé de la todo arrive ici. Rien ne s&apos;y range tout seul.
         </div>
 

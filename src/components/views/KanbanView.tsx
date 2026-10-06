@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   COLONNES_KANBAN,
+  couleurObjectif,
   OBJECTIFS_P90,
   RESPONSABLES,
   colonneDe,
@@ -102,17 +103,17 @@ export function KanbanView() {
 
   return (
     <div className="entree-vue space-y-[13px]">
-      <Carte>
-        <Surtitre>Filtres</Surtitre>
+      <Carte accent="var(--color-ble)">
+        <Surtitre couleur="var(--color-ble-soft)">Filtres</Surtitre>
         <div className="mt-[7px] flex flex-wrap items-center gap-[5px]">
-          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
             Objectif
           </span>
           {OBJECTIFS_P90.map((o) => (
             <Puce
               key={o.id}
               actif={filtreObjectif === o.id}
-              ton={o.id === "momentum" ? "accent" : "neutre"}
+              couleur={o.couleur}
               onClick={() => setFiltreObjectif(filtreObjectif === o.id ? null : o.id)}
             >
               {o.nom}
@@ -120,7 +121,7 @@ export function KanbanView() {
           ))}
         </div>
         <div className="mt-[5px] flex flex-wrap items-center gap-[5px]">
-          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+          <span className="w-[64px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
             Qui
           </span>
           {RESPONSABLES.map((r) => (
@@ -152,26 +153,21 @@ export function KanbanView() {
         {parColonne.map(({ colonne, items }) => (
           <Carte
             key={colonne.id}
+            accent={colonne.couleur}
+            survol={false}
             innerRef={setZoneRef(colonne.id)}
             zone={colonne.id}
             className={`zone-depot ${dragId && zoneCourante === colonne.id ? "zone-visee" : ""}`}
             style={{ minHeight: 140 }}
           >
             <div className="flex items-baseline justify-between gap-2">
-              <div className="flex items-center gap-[6px]">
-                <span
-                  className="inline-block flex-none rounded-full"
-                  style={{ width: 7, height: 7, background: colonne.couleur }}
-                  aria-hidden
-                />
-                <span className="text-[11px] font-semibold tracking-[0.04em]">{colonne.nom}</span>
-              </div>
-              <span className="nombres text-[10px] font-semibold text-[var(--p90-texte-2)]">{items.length}</span>
+              <Surtitre couleur={colonne.couleur}>{colonne.nom}</Surtitre>
+              <span className="nombres text-[10px] font-semibold text-white/40">{items.length}</span>
             </div>
 
             <div className="mt-[9px] space-y-[6px]">
               {items.length === 0 && (
-                <div className="py-[13px] text-center text-[11px] text-[var(--p90-texte-2)] opacity-50">
+                <div className="py-[13px] text-center text-[11px] text-white/40 opacity-50">
                   Vide
                 </div>
               )}
@@ -203,9 +199,7 @@ export function KanbanView() {
                     </button>
                     <div className="mt-[5px] flex flex-wrap items-center gap-[4px]">
                       {t.meta.objectif && (
-                        <Puce ton={t.meta.objectif === "momentum" ? "accent" : "neutre"}>
-                          {nomObjectif(t.meta.objectif)}
-                        </Puce>
+                        <Puce couleur={couleurObjectif(t.meta.objectif)}>{nomObjectif(t.meta.objectif)}</Puce>
                       )}
                       {t.meta.responsables.map((r) => (
                         <Puce key={r}>{r}</Puce>
@@ -224,7 +218,7 @@ export function KanbanView() {
         ))}
       </div>
 
-      <div className="px-[2px] text-[10px] text-[var(--p90-texte-2)] opacity-60">
+      <div className="px-[2px] text-[10px] text-white/40 opacity-60">
         Une carte = une tâche de la todo. Glisse-la d&apos;une colonne à l&apos;autre ; à l&apos;intérieur
         d&apos;une colonne, l&apos;ordre est celui de la priorité (échéance, objectif, impact).
       </div>

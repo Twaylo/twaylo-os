@@ -46,11 +46,11 @@ export function SponsorsView() {
   return (
     <div className="entree-vue space-y-[13px]">
       {/* ---------- À encaisser ---------- */}
-      <Carte>
+      <Carte accent="var(--color-ver)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Surtitre>À encaisser</Surtitre>
+          <Surtitre couleur="var(--color-ver-soft)">À encaisser</Surtitre>
           <div className="flex items-baseline gap-[11px]">
-            <span className="text-[11px] text-[var(--p90-texte-2)]">
+            <span className="text-[11px] text-white/40">
               {bilan.lignes.length} OP · net
             </span>
             <Euros valeur={bilan.total} className="text-[22px] font-semibold" />
@@ -61,7 +61,7 @@ export function SponsorsView() {
           <div
             role="alert"
             className="mt-[9px] rounded-[8px] px-[9px] py-[7px] text-[12px] font-medium"
-            style={{ background: "rgba(224,92,92,0.10)", border: "1px solid var(--p90-danger)" }}
+            style={{ background: "rgba(255,61,139,0.12)", border: "1px solid rgba(255,61,139,0.35)" }}
           >
             <Euros valeur={bilan.enRetard} /> en retard de plus de {SEUIL_RETARD} jours.
           </div>
@@ -97,10 +97,10 @@ export function SponsorsView() {
       </Carte>
 
       {/* ---------- Le pipeline ---------- */}
-      <Carte>
+      <Carte accent="var(--color-cor)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Surtitre>Pipeline des OP</Surtitre>
-          <span className="text-[11px] text-[var(--p90-texte-2)]">
+          <Surtitre couleur="var(--color-cor-soft)">Pipeline des OP</Surtitre>
+          <span className="text-[11px] text-white/40">
             {ops.length} OP · {formaterEuros(total)} net au total
           </span>
         </div>
@@ -169,13 +169,13 @@ function LigneOp({
     <div className="carte-haute p-[11px]">
       <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer flex-wrap items-center gap-[7px] text-left">
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{op.marque}</span>
-        <Puce ton={op.etape === "paye" ? "succes" : op.etape === "prospect" ? "neutre" : "accent"}>
+        <Puce couleur={ETAPES_OP.find((e) => e.id === op.etape)?.couleur}>
           {ETAPES_OP.find((e) => e.id === op.etape)?.nom}
         </Puce>
         <Puce>{nomChaine(op.meta.chaine)}</Puce>
         <span className="nombres w-[150px] flex-none text-right text-[12px]">
-          <Euros valeur={op.brut} className="text-[var(--p90-texte-2)]" />
-          {commission > 0 && <span className="text-[var(--p90-texte-2)]"> − {formaterEuros(commission)}</span>}
+          <Euros valeur={op.brut} className="text-white/40" />
+          {commission > 0 && <span className="text-white/40"> − {formaterEuros(commission)}</span>}
         </span>
         <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
       </button>
@@ -193,7 +193,7 @@ function LigneOp({
       {ouverte && (
         <div className="entree-ligne mt-[9px] space-y-[9px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Étape
             </span>
             {ETAPES_OP.map((e) => (
@@ -209,7 +209,7 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Chaîne
             </span>
             {CHAINES.map((c) => (
@@ -239,7 +239,7 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Brut
             </span>
             <Champ
@@ -253,14 +253,14 @@ function LigneOp({
                 if (Number.isFinite(v) && v !== op.brut) surModifier({ brut: Math.max(0, v) });
               }}
             />
-            <span className="text-[11px] text-[var(--p90-texte-2)]">
+            <span className="text-[11px] text-white/40">
               net <Euros valeur={netOp(op)} />
               {commission > 0 && ` (commission ${formaterEuros(commission)})`}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Diffusion
             </span>
             <Champ
@@ -270,7 +270,7 @@ function LigneOp({
               aria="Date de diffusion"
               className="w-[150px]"
             />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--p90-texte-2)]">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Paiement attendu
             </span>
             <Champ
@@ -283,7 +283,7 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-[7px] pt-[3px]">
-            <span className="text-[10px] text-[var(--p90-texte-2)] opacity-70">
+            <span className="text-[10px] text-white/40 opacity-70">
               Alerte si l&apos;OP est sous {SEUIL_MONTANT_TEXTE} une fois engagée, ou payée avec plus de{" "}
               {SEUIL_RETARD} jours de retard.
             </span>

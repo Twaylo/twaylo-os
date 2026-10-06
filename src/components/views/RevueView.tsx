@@ -147,16 +147,16 @@ export function RevueView() {
 
   return (
     <div className="entree-vue space-y-[13px]">
-      <Carte>
+      <Carte accent="var(--color-vio)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <Surtitre>Revue de la semaine {numero}</Surtitre>
-            <div className="text-[11px] text-[var(--p90-texte-2)]">
+            <Surtitre couleur="var(--color-vio-soft)">Revue de la semaine {numero}</Surtitre>
+            <div className="text-[11px] text-white/40">
               du {du} au {au}
             </div>
           </div>
           <div className="flex items-center gap-[9px]">
-            <span className="nombres text-[11px] text-[var(--p90-texte-2)]">
+            <span className="nombres text-[11px] text-white/40">
               {remplis}/{CHAMPS.length}
             </span>
             <Bouton
@@ -179,7 +179,7 @@ export function RevueView() {
               <div key={c.cle} className="carte-haute p-[11px]">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-[11px] font-semibold">{c.titre}</span>
-                  <span className="text-[10px] text-[var(--p90-texte-2)] opacity-70">{c.aide}</span>
+                  <span className="text-[10px] text-white/40 opacity-70">{c.aide}</span>
                 </div>
                 <textarea
                   value={revue[c.cle]}

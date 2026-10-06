@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BLOCS,
+  couleurObjectif,
   ID_TRANSVERSE,
   NOMS_IMPACT,
   OBJECTIFS_P90,
@@ -80,6 +81,14 @@ export function LigneTache({
 }) {
   const [renomme, setRenomme] = useState<string | null>(null);
 
+  /* L'animation de validation, armée au clic et désarmée quand elle est jouée. */
+  const [fete, setFete] = useState(false);
+  useEffect(() => {
+    if (!fete) return;
+    const t = setTimeout(() => setFete(false), 700);
+    return () => clearTimeout(t);
+  }, [fete]);
+
   const jours = joursRestants(tache.meta.echeance, aujourdhui);
   const age = vieillesse(ageEnJours(tache.creeLe, aujourdhui));
   const emoji = emojiVisible(tache.titre);
@@ -94,7 +103,7 @@ export function LigneTache({
     >
       <div
         className="group flex items-start gap-[7px] rounded-[8px] px-[4px] py-[5px] transition-colors"
-        style={{ background: ouvert ? "var(--p90-haute)" : undefined }}
+        style={{ background: ouvert ? "rgba(255,255,255,0.05)" : undefined }}
         onPointerDown={(e) => surPointerDown(e, false)}
       >
         {/* La poignée : la seule zone qui ne défile pas sous le doigt. */}
@@ -109,23 +118,34 @@ export function LigneTache({
           ⠿
         </span>
 
+        {/*
+          COCHER DOIT SE VOIR.
+          C'est le seul geste de la journée qui dit « c'est fait » — s'il se
+          solde par un carré qui change de gris, la todo devient une corvée
+          administrative. La case tressaille, le ✓ se trace, une onde part.
+          Décocher n'anime rien : on fête l'avancée, pas le retour en arrière.
+        */}
         <button
           type="button"
-          onClick={surBasculer}
+          onClick={() => {
+            if (!tache.faite) setFete(true);
+            surBasculer();
+          }}
           aria-label={tache.faite ? "Décocher" : "Cocher"}
-          className="mt-[1px] flex-none cursor-pointer rounded-[5px] transition-all"
+          className={`relative mt-[1px] flex-none cursor-pointer rounded-[6px] transition-all ${fete ? "case-cochee" : ""}`}
           style={{
-            width: 17,
-            height: 17,
-            border: `1px solid ${tache.faite ? "var(--p90-succes)" : "var(--p90-bord)"}`,
-            background: tache.faite ? "var(--p90-succes)" : "transparent",
-            color: "#0b0b0c",
+            width: 18,
+            height: 18,
+            border: `1px solid ${tache.faite ? "var(--color-ver)" : "rgba(255,255,255,0.16)"}`,
+            background: tache.faite ? "var(--color-ver)" : "rgba(255,255,255,0.03)",
+            color: "#07121d",
             fontSize: 11,
-            lineHeight: "15px",
-            transitionDuration: "var(--p90-vitesse)",
+            lineHeight: "16px",
+            fontWeight: 900,
           }}
         >
           {tache.faite ? "✓" : ""}
+          {fete && <span className="onde-validation" aria-hidden />}
         </button>
 
         <div className="min-w-0 flex-1">
@@ -164,9 +184,7 @@ export function LigneTache({
           {/* Les trois repères qui décident du rang, et rien d'autre. */}
           <div className="mt-[3px] flex flex-wrap items-center gap-[4px]">
             {tache.meta.objectif && (
-              <Puce ton={tache.meta.objectif === "momentum" ? "accent" : "neutre"}>
-                {nomObjectif(tache.meta.objectif)}
-              </Puce>
+              <Puce couleur={couleurObjectif(tache.meta.objectif)}>{nomObjectif(tache.meta.objectif)}</Puce>
             )}
             {tache.meta.responsables.map((r) => (
               <Puce key={r}>{r}</Puce>
@@ -174,8 +192,8 @@ export function LigneTache({
             <Puce ton={tonEcheance(jours)}>{texteEcheance(tache.meta.echeance, jours)}</Puce>
             {tache.meta.bloque && <Puce ton="danger">bloqué</Puce>}
             {tache.enCours && <Puce ton="accent">en cours</Puce>}
-            {tache.gelee && <Puce titre="Revient tous les jours">❄ quotidien</Puce>}
-            {tache.meta.impact === 3 && <Puce ton="alerte">impact fort</Puce>}
+            {tache.gelee && <Puce ton="bleu" titre="Revient tous les jours">❄ quotidien</Puce>}
+            {tache.meta.impact === 3 && <Puce ton="corail">impact fort</Puce>}
             {age && !tache.faite && (
               <Puce ton="alerte" titre={age.titre}>
                 {age.texte}
@@ -209,7 +227,7 @@ export function LigneTache({
               <Puce
                 key={o.id}
                 actif={tache.meta.objectif === o.id}
-                ton={o.id === "momentum" ? "accent" : "neutre"}
+                couleur={o.couleur}
                 onClick={() =>
                   majMeta({ objectif: tache.meta.objectif === o.id ? undefined : (o.id as Portee) })
                 }
@@ -258,6 +276,7 @@ export function LigneTache({
               <Puce
                 key={b.id}
                 actif={tache.bloc === b.id}
+                couleur={b.couleur}
                 onClick={() => surModifier({ bloc: b.id })}
                 titre={b.plage}
               >
@@ -284,7 +303,7 @@ export function LigneTache({
               <Puce
                 key={i}
                 actif={tache.meta.impact === i}
-                ton={i === 3 ? "alerte" : "neutre"}
+                ton={i === 3 ? "corail" : "neutre"}
                 onClick={() => majMeta({ impact: i })}
               >
                 {NOMS_IMPACT[i]}

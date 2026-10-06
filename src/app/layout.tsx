@@ -1,27 +1,34 @@
 import type { Metadata, Viewport } from "next";
 
 import { SITE } from "@/lib/site";
-import { Inter } from "next/font/google";
+import { Nunito, JetBrains_Mono } from "next/font/google";
 import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
-/**
- * Inter, et une seule police.
+/*
+ * Nunito pour le texte, JetBrains Mono pour les chiffres.
  *
- * Il y en avait deux : Nunito pour le texte, JetBrains Mono pour les chiffres.
- * Inter fait les deux — son jeu `tabular-nums` aligne les colonnes de montants
- * aussi bien qu'une chasse fixe, sans la seconde ressource à charger ni le
- * contraste de styles entre une ligne et le chiffre au bout.
+ * Deux polices et non une : les montants, les compteurs à rebours et les
+ * colonnes de dates se lisent en chasse fixe, et le contraste entre la ronde
+ * du texte et la mécanique des chiffres fait la moitié de l'identité de l'OS.
  *
- * Les graisses sont énumérées plutôt que variables, et c'est mesuré, pas
- * supposé : l'interface n'utilise que quatre graisses discrètes du
- * sous-ensemble latin, là où l'axe continu d'une police variable embarque tout.
- * `display: swap` est déjà le défaut de next/font.
+ * Les graisses sont énumérées, et c'est mesuré, pas supposé : les versions
+ * variables (une seule ressource couvrant tout l'axe au lieu de cinq fichiers)
+ * coûtaient PLUS au chargement à froid — 77,8 Ko contre 68,8 — parce que
+ * l'interface n'utilise que cinq graisses discrètes du sous-ensemble latin, là
+ * où l'axe continu embarque tout. `display: swap` est déjà le défaut de
+ * next/font. La note reste pour qu'on ne refasse pas l'essai.
  */
-const inter = Inter({
-  variable: "--font-inter",
+const nunito = Nunito({
+  variable: "--font-nunito",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600", "700", "800", "900"],
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -96,7 +103,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0b0c",
+  themeColor: "#07121d",
   /*
    * `cover` : la page occupe l'écran jusque sous l'encoche, à nous de gérer
    * les marges de sécurité. Sans ça, iOS laisse deux bandes noires en mode
@@ -123,7 +130,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${inter.variable} h-full antialiased`}
+      className={`${nunito.variable} ${jetbrains.variable} h-full antialiased`}
       /*
        * Le fond en style en ligne, et pas seulement dans la feuille de style.
        *
@@ -132,7 +139,7 @@ export default function RootLayout({
        * l'OS. Écrit ici, il fait partie du document lui-même et s'applique dès
        * la première ligne, sans attendre aucun fichier.
        */
-      style={{ background: "#0b0b0c" }}
+      style={{ background: "#07121d" }}
     >
       <body className="min-h-full">
         {children}
