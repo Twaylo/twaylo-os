@@ -210,6 +210,16 @@ export function TodoView() {
 
   const faites = vivantes.filter((t) => t.faite).length;
 
+  /*
+   * LA PROPORTION DE LA JOURNÉE DÉJÀ FAITE, de 0 à 1.
+   *
+   * Elle règle l'intensité de l'animation quand on coche : discrète au réveil,
+   * spectaculaire quand la journée est pliée. Cocher la première tâche du
+   * matin et cocher la dernière du soir ne valent pas la même chose — et une
+   * explosion à chaque case deviendrait une punition dès la troisième.
+   */
+  const intensite = vivantes.length > 0 ? faites / vivantes.length : 0;
+
   /* ---------- Ajouter ---------- */
 
   const ajouter = async (bloc: IdBloc) => {
@@ -446,15 +456,17 @@ export function TodoView() {
                   +
                 </Bouton>
               </form>
-              <div className="mt-[9px] space-y-[1px]">
+              <div className="mt-[9px] space-y-[5px]">
                 {items.length === 0 && (
                   <div className="py-[9px] text-center text-[11px] text-white/40 opacity-50">
                     Rien dans ce bloc
                   </div>
                 )}
-                {items.map((t) => (
+                {items.map((t, i) => (
                   <LigneTache
                     key={t.id}
+                    rang={i}
+                    intensite={intensite}
                     tache={t}
                     aujourdhui={aujourdhui}
                     ouvert={ouvert === t.id}

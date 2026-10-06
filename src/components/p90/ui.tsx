@@ -164,6 +164,50 @@ export function Puce({
   );
 }
 
+const COULEURS_ECLAT = [
+  "var(--color-mag)",
+  "var(--color-amb)",
+  "var(--color-ver)",
+  "var(--color-cya)",
+  "var(--color-vio)",
+];
+
+/**
+ * Les éclats projetés depuis la case cochée.
+ *
+ * Les directions sont CALCULÉES, pas tirées au sort : un tirage aléatoire
+ * donnerait un résultat différent entre le rendu serveur et le rendu
+ * navigateur, et React signalerait une divergence d'hydratation. Un éventail
+ * régulier est de toute façon plus lisible qu'un vrai hasard.
+ */
+export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
+  return (
+    <>
+      {Array.from({ length: nombre }, (_, i) => {
+        const angle = (i / nombre) * Math.PI * 2;
+        // Une alternance de portée évite l'effet « couronne » trop régulier.
+        const rayon = portee * (i % 2 === 0 ? 1 : 0.65);
+        return (
+          <span
+            key={i}
+            className="eclat"
+            aria-hidden
+            style={
+              {
+                background: COULEURS_ECLAT[i % COULEURS_ECLAT.length],
+                "--dx": `${Math.cos(angle) * rayon}px`,
+                "--dy": `${Math.sin(angle) * rayon}px`,
+                "--rot": `${(i % 2 === 0 ? 1 : -1) * 220}deg`,
+                "--duree": `${0.55 + (i % 3) * 0.12}s`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /** Une barre de progression. La valeur est bornée ici, pas chez l'appelant. */
 export function Barre({
   pct,
