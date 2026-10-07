@@ -620,6 +620,35 @@ textarea::placeholder {
 .pulse-dot {
   animation: pulseDot 1.8s ease-in-out infinite;
 }
+
+/*
+ * LA PASTILLE QUAND LA LISTE VIENT DE CHANGER TOUTE SEULE.
+ *
+ * Une seconde de cyan, puis plus rien. C'est volontairement bref : le signal
+ * doit être vu du coin de l'œil par quelqu'un qui regarde sa todo, pas
+ * réclamer l'attention. Ce qui bouge, c'est la bordure et le fond — jamais la
+ * taille, sinon le bandeau tremblerait à chaque arrivée.
+ */
+@keyframes syncFraiche {
+  0% {
+    border-color: var(--color-cya);
+    background: color-mix(in srgb, var(--color-cya) 18%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-cya) 45%, transparent);
+  }
+  55% {
+    border-color: color-mix(in srgb, var(--color-cya) 55%, transparent);
+    background: color-mix(in srgb, var(--color-cya) 10%, transparent);
+    box-shadow: 0 0 0 5px transparent;
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.sync-fraiche {
+  animation: syncFraiche 1.1s ease-out both;
+}
 .logo-mark {
   animation: logoIn 0.5s cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
@@ -855,6 +884,11 @@ textarea::placeholder {
   .logo-sweep,
   .pulse-dot {
     animation: none;
+  }
+  /* La couleur suffit à dire l'arrivée : on garde le mot, on ôte le halo. */
+  .sync-fraiche {
+    animation: none;
+    border-color: color-mix(in srgb, var(--color-cya) 55%, transparent);
   }
   .sablier {
     animation-duration: 6s;

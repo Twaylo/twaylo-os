@@ -141,9 +141,38 @@ function useHorloge() {
  * Discret quand tout va bien, visible quand ça ne va pas. Twaylo doit pouvoir
  * savoir d'un coup d'œil si ce qu'il vient d'écrire est réellement à l'abri —
  * c'est toute la différence entre un carnet et un système.
+ *
+ * Elle dit aussi, depuis la relecture vivante, quand quelque chose est arrivé
+ * de L'AUTRE écran : une seconde de cyan, et le mot « À JOUR ». C'est le seul
+ * endroit où ça se voit sans rien connaître de la todo, et ça répond à la
+ * question qui vient tout de suite quand un écran se met à jour tout seul :
+ * est-ce que c'est vraiment en train de marcher ?
  */
 function Base() {
-  const { etatReseau } = useCockpit();
+  const { etatReseau, sursauts } = useCockpit();
+  const [frais, setFrais] = useState(false);
+  const premier = useRef(true);
+
+  useEffect(() => {
+    // Le compteur part à zéro : ce premier passage n'est pas un changement.
+    if (premier.current) {
+      premier.current = false;
+      return;
+    }
+    // En micro-tâche, comme partout ici : un `setState` synchrone dans un
+    // corps d'effet est une cascade de rendus que le compilateur refuse.
+    let vivant = true;
+    queueMicrotask(() => {
+      if (vivant) setFrais(true);
+    });
+    const t = window.setTimeout(() => {
+      if (vivant) setFrais(false);
+    }, 1_100);
+    return () => {
+      vivant = false;
+      window.clearTimeout(t);
+    };
+  }, [sursauts]);
 
   const etats = {
     inconnu: { couleur: "rgba(255,255,255,0.2)", texte: "…", titre: "Connexion en cours" },
@@ -155,20 +184,33 @@ function Base() {
     },
   } as const;
 
-  const etat = etats[etatReseau];
+  /*
+   * Le signal d'arrivée passe DEVANT l'état.
+   *
+   * Quand la liste vient de changer toute seule, c'est ça qu'il faut lire —
+   * pas « BASE », qui est là en permanence et qu'on ne lit plus.
+   */
+  const vu =
+    frais && etatReseau === "connecte"
+      ? {
+          couleur: "var(--color-cya)",
+          texte: "À JOUR",
+          titre: "Quelque chose vient de changer sur ton autre écran",
+        }
+      : etats[etatReseau];
 
   return (
     <div
-      title={etat.titre}
-      className="hidden flex-none items-center gap-[5px] rounded-full px-[9px] py-[4px] sm:flex"
+      title={vu.titre}
+      className={`hidden flex-none items-center gap-[5px] rounded-full px-[9px] py-[4px] sm:flex ${frais ? "sync-fraiche" : ""}`}
       style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
     >
       <span
         className={`h-[6px] w-[6px] rounded-full ${etatReseau === "inconnu" ? "pulse-dot" : ""}`}
-        style={{ background: etat.couleur }}
+        style={{ background: vu.couleur }}
       />
-      <span className="text-[8.5px] font-black tracking-[0.1em]" style={{ color: etat.couleur }}>
-        {etat.texte}
+      <span className="text-[8.5px] font-black tracking-[0.1em]" style={{ color: vu.couleur }}>
+        {vu.texte}
       </span>
     </div>
   );

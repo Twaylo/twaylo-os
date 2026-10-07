@@ -52,9 +52,25 @@ import {
  *    local, avant même la première réponse du serveur — sinon l'écran reste
  *    vide le temps qu'une fonction serverless sorte de veille, plusieurs
  *    secondes au premier chargement de la journée.
+ *
+ * 4. L'ÉCRAN SE RELIT TOUT SEUL. Twaylo travaille sur deux appareils : il
+ *    coche sur le Mac, il regarde son téléphone. Tant que la liste n'était
+ *    lue qu'une fois, au chargement, le second écran montrait l'état d'il y a
+ *    une heure et il fallait rafraîchir à la main pour voir la vérité. La
+ *    base est donc relue en boucle — court quand ça bouge, long quand ça
+ *    dort, et immédiatement au retour sur l'écran.
  */
 
 const CLE_CACHE = "twaylo-p90-cache";
+
+/**
+ * Ce qu'une lecture de la base a rapporté.
+ *
+ * `differe` mérite son nom : la réponse est bien arrivée, mais un geste local
+ * l'a précédée de peu — on l'écarte, et on relit tout de suite après plutôt
+ * que d'attendre le battement suivant.
+ */
+type Verdict = "change" | "inchange" | "differe" | "echec";
 
 /* ------------------------------------------------------------------ */
 /* Les formes affichées                                                */
@@ -163,6 +179,21 @@ type Cockpit = {
 
   /** Relit tout depuis la base — après une reprise d'oublié, par exemple. */
   recharger: () => Promise<void>;
+
+  /** L'instant de la dernière lecture réussie (ms), 0 avant la première. */
+  derniereLecture: number;
+  /**
+   * Compté à chaque fois qu'une lecture rapporte un changement venu D'AILLEURS
+   * — de l'autre appareil, jamais du geste qu'on vient de faire. Le bandeau
+   * s'en sert pour le dire d'un clin d'œil.
+   */
+  sursauts: number;
+  /**
+   * Suspend la relecture automatique le temps d'un geste, par nom de verrou.
+   * À poser pendant un glisser-déposer : la liste ne doit pas changer sous le
+   * doigt.
+   */
+  verrouSync: (nom: string, actif: boolean) => void;
 };
 
 const CockpitContext = createContext<Cockpit | null>(null);
@@ -181,18 +212,67 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
   const [pret, setPret] = useState(false);
   const [echec, setEchec] = useState<string | null>(null);
   const [etatReseau, setEtatReseau] = useState<"inconnu" | "connecte" | "hors_ligne">("inconnu");
+  const [derniereLecture, setDerniereLecture] = useState(0);
+  const [sursauts, setSursauts] = useState(0);
 
   const oublierEchec = useCallback(() => setEchec(null), []);
 
   /*
-   * Ce que Twaylo a touché depuis le début du chargement.
+   * DE QUOI SAVOIR SI UNE RÉPONSE A LE DROIT DE S'APPLIQUER.
    *
-   * Une réponse serveur partie AVANT un geste ne doit pas écraser ce geste.
-   * Sans ce drapeau, cocher une case pendant que la liste se recharge faisait
-   * réapparaître la case décochée une seconde plus tard — le geste « ne
-   * marchait pas », alors qu'il avait bien été enregistré.
+   * Une réponse serveur partie AVANT un geste ne doit pas écraser ce geste :
+   * cocher une case pendant que la liste se recharge ferait réapparaître la
+   * case décochée une seconde plus tard — le geste « ne marche pas », alors
+   * qu'il a bien été enregistré.
+   *
+   * CE QUI ÉTAIT LÀ AVANT : un simple drapeau « touché », levé au premier
+   * geste et plus jamais rabaissé. Il protégeait le geste, mais il coupait du
+   * même coup toute relecture pour le reste de la session — une seule case
+   * cochée le matin figeait l'écran jusqu'au rafraîchissement suivant. C'est
+   * exactement ce qui empêchait la todo de se mettre à jour toute seule.
+   *
+   * À la place, deux mesures et une question précise : « une écriture a-t-elle
+   * eu lieu DEPUIS QUE CETTE REQUÊTE EST PARTIE ? » Sinon, la réponse est
+   * fraîche et s'applique.
    */
-  const touche = useRef(false);
+  /** Écritures en cours. */
+  const enVol = useRef(0);
+  /** L'instant de la dernière écriture, début comme fin. */
+  const dernierEcrit = useRef(0);
+  /**
+   * A-t-on écrit depuis la dernière liste appliquée ?
+   *
+   * C'est ce qui permet de dire si un changement vient d'AILLEURS ou de soi,
+   * et de ne faire clignoter le bandeau que dans le premier cas. Une fenêtre
+   * de temps (« moins de cinq secondes, c'est nous ») ne marchait pas : entre
+   * le geste et la lecture qui le rapporte, il s'écoule une lecture écartée
+   * PLUS un battement, soit facilement plus que la fenêtre — et la pastille
+   * annonçait « À JOUR » pour une case qu'on venait de cocher soi-même.
+   */
+  const ecritDepuisLecture = useRef(false);
+  /** L'empreinte de la dernière liste reçue : de quoi obtenir un 304. */
+  const empreinte = useRef("");
+  /** Le JSON de la dernière liste reçue : a-t-elle vraiment changé ? */
+  const derniereCharge = useRef("");
+  /** Les gestes qui suspendent la relecture, par nom. */
+  const verrous = useRef(new Set<string>());
+
+  /**
+   * Suspendre la relecture le temps d'un geste, et la reprendre après.
+   *
+   * Un verrou porte un nom : posé deux fois il ne compte qu'une fois, et un
+   * composant démonté en plein geste ne laisse pas la relecture coupée pour
+   * toujours.
+   *
+   * Le cas qui l'impose, c'est le glisser-déposer. La liste se réordonne sous
+   * le doigt à chaque frame ; une liste descendue de la base au milieu de ça
+   * remplacerait les lignes en cours de déplacement, et le doigt tiendrait un
+   * nœud qui n'existe plus.
+   */
+  const verrouSync = useCallback((nom: string, actif: boolean) => {
+    if (actif) verrous.current.add(nom);
+    else verrous.current.delete(nom);
+  }, []);
 
   /* ---------- Le jour courant, qui avance tout seul ---------- */
   useEffect(() => {
@@ -240,44 +320,223 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  /* ---------- Lecture serveur ---------- */
-  const charger = useCallback(async () => {
-    try {
-      const res = await fetch("/api/p90", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as EtatReseau;
-      setEtatReseau(data.connecte ? "connecte" : "hors_ligne");
-      if (!data.connecte) return;
+  /* ------------------------------------------------------------------ */
+  /* LA LECTURE, ET LE BATTEMENT QUI LA REJOUE                           */
+  /* ------------------------------------------------------------------ */
 
-      writeJSON(CLE_CACHE, data);
+  const charger = useCallback(async (): Promise<Verdict> => {
+    // L'heure de départ de la requête : c'est à elle qu'on comparera la
+    // dernière écriture pour savoir si la réponse est encore d'actualité.
+    const debut = Date.now();
+    try {
+      const res = await fetch("/api/p90", {
+        cache: "no-store",
+        /*
+         * L'empreinte de ce qu'on a déjà.
+         *
+         * Le serveur répond 304 — rien du tout — si la liste n'a pas changé.
+         * C'est ce qui rend la relecture en boucle acceptable : sur le forfait
+         * du téléphone, relire dix kilo-octets de JSON identique toutes les
+         * dix secondes ferait des mégaoctets par heure d'écran allumé.
+         */
+        headers: empreinte.current ? { "if-none-match": empreinte.current } : undefined,
+      });
+
+      if (res.status === 304) {
+        setEtatReseau("connecte");
+        setDerniereLecture(Date.now());
+        setPret(true);
+        return "inchange";
+      }
+
       /*
-       * Les listes ne sont remplacées que si rien n'a été touché entre-temps.
+       * 401 : la session a expiré. On va à la porte, tout de suite.
        *
-       * `pret` passe à vrai dans tous les cas : la base a répondu, les calculs
-       * peuvent se faire. Mais une réponse en vol ne doit pas défaire un geste
-       * déjà enregistré.
+       * C'est un cas que la relecture vivante fait apparaître : la page vit
+       * désormais des jours sans être rechargée, et c'est donc ELLE qui
+       * rencontre l'expiration au bout d'une semaine. Sans ce renvoi, l'écran
+       * resterait indéfiniment sur « HORS LIGNE » avec la liste de la semaine
+       * dernière — alors que la seule chose à faire est de retaper le mot de
+       * passe, et qu'on peut l'y mener sans rien lui demander.
        */
-      if (!touche.current) {
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return "echec";
+      }
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      /*
+       * Le texte brut, et pas directement l'objet.
+       *
+       * Il sert deux fois : à décoder, et à répondre à « est-ce que ça a
+       * changé ? » par une comparaison de chaînes. C'est la ceinture du 304 :
+       * si un navigateur, un proxy d'entreprise ou un mode économiseur de
+       * données mangeait la requête conditionnelle, l'écran ne se repeindrait
+       * toujours pas pour rien.
+       */
+      const brut = await res.text();
+      const data = JSON.parse(brut) as EtatReseau;
+      setEtatReseau(data.connecte ? "connecte" : "hors_ligne");
+      if (!data.connecte) return "echec";
+
+      /*
+       * Un geste a eu lieu depuis le départ de la requête : on jette.
+       *
+       * Et on ne retient NI l'empreinte NI le cache. Retenir l'empreinte
+       * d'une réponse écartée ferait répondre 304 à la lecture suivante : le
+       * changement venu de l'autre écran, qui voyageait dans cette réponse,
+       * n'arriverait jamais.
+       */
+      if (enVol.current > 0 || dernierEcrit.current >= debut) return "differe";
+
+      // La toute première liste de la session : elle n'a rien à quoi être
+      // comparée, et son arrivée n'est pas un changement — c'est le
+      // chargement. Sans cette distinction, la pastille annonçait « À JOUR »
+      // à chaque ouverture de l'OS, pour une liste que personne n'avait
+      // touchée.
+      const premiere = derniereCharge.current === "";
+      const nouveau = brut !== derniereCharge.current;
+      empreinte.current = res.headers.get("etag") ?? "";
+      derniereCharge.current = brut;
+      writeJSON(CLE_CACHE, data);
+
+      if (nouveau) {
         if (data.taches) setTaches(data.taches.map(versTacheVue));
         if (data.ops) setOps(data.ops.map(versOp));
         if (data.objectifs) setObjectifs(data.objectifs.map(versObjectifVue));
       }
+      setDerniereLecture(Date.now());
+      // `pret` passe à vrai même sans changement : la base a répondu, les
+      // calculs de l'écran peuvent se faire.
       setPret(true);
+
+      /*
+       * Le sursaut ne compte que ce qui vient D'AILLEURS.
+       *
+       * Après une écriture, la lecture suivante rapporte forcément du nouveau
+       * — le geste qu'on vient de faire. L'annoncer ferait clignoter le bandeau
+       * à chaque case cochée, et le signal ne voudrait plus rien dire.
+       *
+       * On est donc prudent dans ce sens-là : si une écriture a eu lieu depuis
+       * la dernière liste appliquée, le changement lui est attribué, même s'il
+       * portait aussi quelque chose de l'autre écran. Jamais de faux signal,
+       * quitte à en taire un vrai une fois.
+       */
+      const notre = ecritDepuisLecture.current;
+      ecritDepuisLecture.current = false;
+      if (nouveau && !notre && !premiere) setSursauts((n) => n + 1);
+      return nouveau ? "change" : "inchange";
     } catch (err) {
       console.error("[p90] chargement impossible :", err);
       setEtatReseau("hors_ligne");
+      return "echec";
     }
   }, []);
 
+  /*
+   * LE BATTEMENT.
+   *
+   * Pourquoi un battement et non une liaison ouverte en permanence : une
+   * poussée du serveur (SSE, websocket) donnerait la seconde près, mais elle
+   * tient une fonction serverless ouverte en continu, et iOS la coupe dès que
+   * l'application passe en arrière-plan — au retour il faudrait de toute
+   * façon tout relire. Un battement court quand ça bouge, long quand ça dort,
+   * plus une relecture immédiate au retour sur l'écran, donne le même
+   * résultat vu de l'écran sans rien de tout cela.
+   *
+   * Trois cadences, parce qu'un rythme unique est soit trop lent quand on
+   * travaille, soit trop bavard quand l'onglet est oublié devant un café :
+   *   — 4 s dans la minute qui suit un changement : on coche en série, et
+   *     l'autre écran doit suivre tout de suite ;
+   *   — 10 s en temps normal ;
+   *   — 30 s après cinq minutes sans rien.
+   *
+   * ÉCRAN CACHÉ : aucune requête, pas une seule. Un téléphone dans la poche ne
+   * consomme rien, et son réveil déclenche de toute façon une relecture.
+   */
   useEffect(() => {
-    // Même raison que ci-dessus : `charger` pose l'état réseau sans attendre,
-    // et un `setState` synchrone dans un effet est une cascade de rendus.
-    queueMicrotask(() => void charger());
+    let annule = false;
+    let minuteur = 0;
+    let enCours = false;
+    let dernierChangement = Date.now();
+    let dernierDepart = 0;
+
+    const prochain = () => {
+      if (annule) return;
+      const calme = Date.now() - dernierChangement;
+      const delai = calme < 60_000 ? 4_000 : calme < 300_000 ? 10_000 : 30_000;
+      minuteur = window.setTimeout(() => void battre(), delai);
+    };
+
+    const battre = async () => {
+      // Jamais deux lectures en vol : un réveil tombé pendant une lecture est
+      // sans objet, celle qui est en cours est déjà aussi fraîche.
+      if (annule || enCours) return;
+      if (document.visibilityState === "hidden" || verrous.current.size > 0) {
+        prochain();
+        return;
+      }
+      enCours = true;
+      dernierDepart = Date.now();
+      let verdict: Verdict = "echec";
+      try {
+        verdict = await charger();
+      } finally {
+        enCours = false;
+      }
+      // Une réponse écartée vaut un changement : on repasse vite.
+      if (verdict === "change" || verdict === "differe") dernierChangement = Date.now();
+      prochain();
+    };
+
+    /*
+     * LE RETOUR SUR L'ÉCRAN : on relit sans attendre.
+     *
+     * C'est le cas qui obligeait à rafraîchir à la main. Un téléphone qui dort
+     * gèle ses minuteries : au réveil, la liste affichée pouvait avoir dix
+     * heures. Quatre évènements disent « l'écran revient », selon le
+     * navigateur et le mode — onglet, application posée sur l'écran d'accueil,
+     * retour arrière iOS. On écoute les quatre plutôt que de parier sur un.
+     */
+    const reveil = (evt?: Event) => {
+      if (annule || document.visibilityState === "hidden") return;
+      /*
+       * `pageshow` au chargement normal : il n'y a rien à rattraper, la
+       * première lecture vient de partir. Seule la restauration depuis le cache
+       * de navigation (`persisted`) mérite une relecture — c'est le retour
+       * arrière d'iOS, qui rend une page figée telle qu'elle était.
+       */
+      if (evt && "persisted" in evt && evt.persisted === false) return;
+      // Deux évènements de retour se suivent souvent (visibilité PUIS focus) :
+      // une seule lecture suffit.
+      if (Date.now() - dernierDepart < 1_000) return;
+      window.clearTimeout(minuteur);
+      dernierChangement = Date.now();
+      void battre();
+    };
+
+    // La première lecture part tout de suite, dans une micro-tâche : un
+    // `setState` synchrone dans un corps d'effet est une cascade de rendus.
+    queueMicrotask(() => void battre());
+
+    document.addEventListener("visibilitychange", reveil);
+    window.addEventListener("focus", reveil);
+    window.addEventListener("online", reveil);
+    window.addEventListener("pageshow", reveil);
+    return () => {
+      annule = true;
+      window.clearTimeout(minuteur);
+      document.removeEventListener("visibilitychange", reveil);
+      window.removeEventListener("focus", reveil);
+      window.removeEventListener("online", reveil);
+      window.removeEventListener("pageshow", reveil);
+    };
   }, [charger]);
 
-  /** Relecture complète, à la demande : le drapeau « touché » est levé. */
+  /** Relecture complète, à la demande : l'empreinte est oubliée exprès. */
   const recharger = useCallback(async () => {
-    touche.current = false;
+    empreinte.current = "";
     await charger();
   }, [charger]);
 
@@ -298,6 +557,15 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       methode: "POST" | "PATCH" | "DELETE",
       corps?: unknown,
     ): Promise<Record<string, unknown> | null> => {
+      /*
+       * L'écriture se signale, avant et après.
+       *
+       * C'est ce qui protège le geste de la relecture automatique : toute
+       * réponse de lecture partie avant cet instant sera écartée.
+       */
+      enVol.current += 1;
+      dernierEcrit.current = Date.now();
+      ecritDepuisLecture.current = true;
       try {
         const res = await fetch(chemin, {
           method: methode,
@@ -313,6 +581,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.error(`[p90] ${methode} ${chemin} impossible :`, err);
         return null;
+      } finally {
+        enVol.current -= 1;
+        dernierEcrit.current = Date.now();
       }
     },
     [],
@@ -322,7 +593,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     async (titre: string, meta?: Partial<MetaTache>, bloc?: IdBloc) => {
       const propre = titre.trim();
       if (!propre) return false;
-      touche.current = true;
 
       const complete: MetaTache = {
         responsables: [],
@@ -375,7 +645,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       id: string,
       patch: { titre?: string; meta?: MetaTache; bloc?: IdBloc; statut?: string },
     ) => {
-      touche.current = true;
       const avant = taches;
       setTaches((prec) =>
         prec.map((t) =>
@@ -454,7 +723,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
    */
   const reordonner = useCallback(
     async (ordre: string[], bloc?: { id: string; bloc: IdBloc }) => {
-      touche.current = true;
       const avant = taches;
 
       const rang = new Map(ordre.map((x, i) => [x, i]));
@@ -492,7 +760,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
    */
   const supprimerTache = useCallback(
     async (id: string) => {
-      touche.current = true;
       const avant = taches;
       setTaches((prec) => prec.filter((t) => t.id !== id));
 
@@ -509,7 +776,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
 
   const basculerGel = useCallback(
     async (id: string) => {
-      touche.current = true;
       const avant = taches;
       const t = taches.find((x) => x.id === id);
       if (!t) return false;
@@ -535,36 +801,49 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
    * soir où il a été fait.
    */
   const cloturer = useCallback(async () => {
-    touche.current = true;
-    const aDegeler = taches.filter((t) => t.faite && t.gelee);
-    const partantes = taches.filter((t) => t.faite && !t.gelee).map((t) => t.id);
-    if (aDegeler.length === 0 && partantes.length === 0) return true;
+    /*
+     * Sous verrou du début à la fin, et ce n'est pas par précaution.
+     *
+     * La clôture est une SUITE d'écritures : dégeler chaque gelée, puis
+     * effacer tout ce qui est coché. Entre deux, la base est dans un état
+     * intermédiaire que personne ne doit voir — une relecture tombée au milieu
+     * repeindrait l'écran avec les gelées déjà décochées et les cochées encore
+     * là, c'est-à-dire la liste de personne.
+     */
+    verrous.current.add("cloture");
+    try {
+      const aDegeler = taches.filter((t) => t.faite && t.gelee);
+      const partantes = taches.filter((t) => t.faite && !t.gelee).map((t) => t.id);
+      if (aDegeler.length === 0 && partantes.length === 0) return true;
 
-    const avant = taches;
-    setTaches((prec) =>
-      prec
-        .filter((t) => !(t.faite && !t.gelee))
-        .map((t) => (t.faite && t.gelee ? { ...t, faite: false, statut: "ouverte", faiteLe: undefined } : t)),
-    );
+      const avant = taches;
+      setTaches((prec) =>
+        prec
+          .filter((t) => !(t.faite && !t.gelee))
+          .map((t) => (t.faite && t.gelee ? { ...t, faite: false, statut: "ouverte", faiteLe: undefined } : t)),
+      );
 
-    for (const t of aDegeler) {
-      const data = await envoyer("/api/p90/taches", "PATCH", { id: t.id, statut: "ouverte" });
-      if (!data) {
-        setTaches(avant);
-        setEchec("Le dégel n'a pas pu être enregistré : rien n'a été supprimé.");
-        return false;
+      for (const t of aDegeler) {
+        const data = await envoyer("/api/p90/taches", "PATCH", { id: t.id, statut: "ouverte" });
+        if (!data) {
+          setTaches(avant);
+          setEchec("Le dégel n'a pas pu être enregistré : rien n'a été supprimé.");
+          return false;
+        }
       }
-    }
 
-    if (partantes.length > 0) {
-      const data = await envoyer("/api/p90/taches?faites=1", "DELETE");
-      if (!data) {
-        setTaches(avant);
-        setEchec("La clôture n'a pas pu être enregistrée.");
-        return false;
+      if (partantes.length > 0) {
+        const data = await envoyer("/api/p90/taches?faites=1", "DELETE");
+        if (!data) {
+          setTaches(avant);
+          setEchec("La clôture n'a pas pu être enregistrée.");
+          return false;
+        }
       }
+      return true;
+    } finally {
+      verrous.current.delete("cloture");
     }
-    return true;
   }, [envoyer, taches]);
 
   /* ---------- Les OP ---------- */
@@ -699,6 +978,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       supprimerOp,
       modifierObjectif,
       recharger,
+      derniereLecture,
+      sursauts,
+      verrouSync,
     }),
     [
       aujourdhui,
@@ -722,6 +1004,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       supprimerOp,
       modifierObjectif,
       recharger,
+      derniereLecture,
+      sursauts,
+      verrouSync,
     ],
   );
 

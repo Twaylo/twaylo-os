@@ -67,6 +67,7 @@ export function TodoView() {
     supprimerTache,
     basculerGel,
     cloturer,
+    verrouSync,
   } = useCockpit();
 
   /*
@@ -196,6 +197,20 @@ export function TodoView() {
 
   /** La liste à peindre : l'ordre visuel pendant un glissement, sinon l'ordre. */
   const parId = useMemo(() => new Map(filtrees.map((t) => [t.id, t])), [filtrees]);
+  /*
+   * Pendant un glissement, la relecture automatique est suspendue.
+   *
+   * La liste se réordonne sous le doigt à chaque frame ; une liste descendue
+   * de la base au milieu du geste remplacerait les lignes en mouvement, et le
+   * doigt tiendrait un nœud qui n'existe plus. Le verrou se lève au lâcher —
+   * et au démontage, sinon changer d'onglet en plein geste couperait la
+   * relecture pour le reste de la session.
+   */
+  useEffect(() => {
+    verrouSync("glisser", dragId !== null);
+    return () => verrouSync("glisser", false);
+  }, [dragId, verrouSync]);
+
   const affichees: TacheVue[] = dragId
     ? ordreVisuel
         .map((id) => parId.get(id))
