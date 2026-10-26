@@ -21,6 +21,27 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
  * (`actif` faux) : le moteur de glisser-déposer anime déjà les voisines, et
  * deux animations sur les mêmes lignes se contrarieraient.
  */
+/**
+ * La place d'un élément dans la page, SANS ses transformations.
+ *
+ * `getBoundingClientRect` compte les animations en cours : relevées pendant le
+ * fondu d'entrée des lignes (qui les décale de quelques pixels), les places
+ * « d'avant » étaient fausses, et l'ajout suivant faisait glisser toute la
+ * liste de 8 px pour rien. La chaîne des `offsetTop` ignore les
+ * transformations : c'est la place réelle, celle de la mise en page.
+ */
+function placeDe(el: HTMLElement): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  let n: HTMLElement | null = el;
+  while (n) {
+    x += n.offsetLeft;
+    y += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  return { x, y };
+}
+
 export function useFlipListe(
   conteneur: RefObject<HTMLElement | null>,
   /** Une empreinte de la liste : l'ordre des clés, et leur colonne. */
@@ -33,14 +54,14 @@ export function useFlipListe(
   useLayoutEffect(() => {
     const racine = conteneur.current;
     if (!racine) return;
-    const origine = racine.getBoundingClientRect();
+    const origine = placeDe(racine);
     const elements = [...racine.querySelectorAll<HTMLElement>("[data-cle]")];
-    // Des positions RELATIVES au conteneur : un défilement de la page entre
-    // deux rendus ne doit pas faire glisser toute la liste.
+    // Des positions RELATIVES au conteneur : ce qui bouge au-dessus de la
+    // liste, ou un défilement de la page, ne doit pas la faire glisser.
     const apres = new Map(
       elements.map((el) => {
-        const r = el.getBoundingClientRect();
-        return [el.dataset.cle ?? "", { x: r.left - origine.left, y: r.top - origine.top }];
+        const p = placeDe(el);
+        return [el.dataset.cle ?? "", { x: p.x - origine.x, y: p.y - origine.y }];
       }),
     );
 

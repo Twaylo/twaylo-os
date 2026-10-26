@@ -761,9 +761,10 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
         gelee: false,
         creeLe: localDateKey(),
       };
-      setTaches((prec) => [provisoire, ...prec]);
+      // En bas de la pile, comme au serveur (voir `creerTache`).
+      setTaches((prec) => [...prec, provisoire]);
 
-      // Dans la file de l'ORDRE (le serveur la place en tête de liste), et dans
+      // Dans la file de l'ORDRE (le serveur la place en fin de liste), et dans
       // la file de la tâche elle-même : ce qu'on lui fait avant la réponse
       // attend la création.
       const data = await envoyer(

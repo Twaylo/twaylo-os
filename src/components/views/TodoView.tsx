@@ -226,9 +226,9 @@ export function TodoView() {
   /**
    * Crée une ou plusieurs tâches dans une liste.
    *
-   * Plusieurs lignes : créées DE LA DERNIÈRE À LA PREMIÈRE, parce que chaque
-   * tâche créée prend la tête de la liste — dans l'ordre naturel, une liste
-   * collée « A, B, C » s'affichait « C, B, A ».
+   * Plusieurs lignes : créées dans l'ordre où elles sont écrites. Chaque
+   * tâche créée va en bas de la liste : une liste collée « A, B, C » s'affiche
+   * donc « A, B, C », sous ce qui y était déjà.
    *
    * Aucune date posée d'office. Il y en avait une — le jour même — pour que la
    * tâche apparaisse dans la vue du jour ; cette vue n'existe plus, et la date
@@ -237,7 +237,7 @@ export function TodoView() {
    */
   const creer = async (liste: IdListe, lignes: string[]) => {
     const bloc = blocDeListe(liste);
-    for (const ligne of [...lignes].reverse()) {
+    for (const ligne of lignes) {
       const ok = await ajouterTache(ligne, undefined, bloc);
       if (!ok) {
         // La ligne qui a échoué revient dans le champ, et le bandeau la nomme :

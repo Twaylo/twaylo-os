@@ -318,20 +318,20 @@ export async function creerTache(
   const tache = data as TacheDB;
 
   /*
-   * La nouvelle tâche prend la TÊTE de la pile, pas la queue.
+   * La nouvelle tâche va EN BAS de la pile — demande de Twaylo : « quand
+   * j'ajoute une nouvelle tache elle doit se mettre en dessous de la pile, pas
+   * au dessus ». On lit sa liste de haut en bas, dans l'ordre où on l'a
+   * écrite : ce qui vient d'arriver passe après ce qui attendait déjà.
    *
-   * L'ordre d'affichage vient de la liste rangée sur la sentinelle, et une
-   * tâche absente de cette liste est renvoyée en dernier. Sans ce placement,
-   * ce que Twaylo vient de taper atterrissait tout en bas d'une liste de vingt
-   * lignes — c'est-à-dire hors de vue.
-   *
-   * L'échec n'annule pas la création : au pire la tâche s'affiche en bas, ce
-   * qui reste très loin de mériter de perdre ce qui vient d'être écrit.
+   * Placée explicitement en fin de liste d'ordre, et pas seulement laissée
+   * hors de la liste : une tâche absente est bien renvoyée en dernier, mais
+   * le prochain rangement à la main l'aurait fait remonter au hasard. L'échec
+   * n'annule pas la création : au pire elle s'affiche en bas quand même.
    */
   try {
-    await placerEnTeteOrdre(tache.id);
+    await placerDansOrdre(tache.id, "fin");
   } catch (err) {
-    console.error("[taches] placement en tête impossible :", err);
+    console.error("[taches] placement en fin de liste impossible :", err);
   }
 
   return tache;
@@ -360,6 +360,11 @@ const MAX_ORDRE = 300;
  * le plafond et finissaient par évincer des tâches vivantes.
  */
 export async function placerEnTeteOrdre(id: string): Promise<void> {
+  return placerDansOrdre(id, "tete");
+}
+
+/** Comme `placerEnTeteOrdre`, en tête ou en fin de liste. */
+export async function placerDansOrdre(id: string, ou: "tete" | "fin"): Promise<void> {
   const db = supabaseAdmin();
 
   for (let essai = 0; essai < 3; essai++) {
@@ -383,7 +388,8 @@ export async function placerEnTeteOrdre(id: string): Promise<void> {
       retenus = retenus.filter((x) => existants.has(x));
     }
 
-    await ecrireOrdreTaches([id, ...retenus].slice(0, MAX_ORDRE));
+    // Au-delà du plafond, ce sont les places les plus loin de la nouvelle qui tombent.
+    await ecrireOrdreTaches(ou === "tete" ? [id, ...retenus].slice(0, MAX_ORDRE) : [...retenus, id].slice(-MAX_ORDRE));
 
     // Notre identifiant est-il bien dans la liste ? Peu importe son rang exact :
     // si une création concurrente s'est glissée devant, les deux sont placées.
