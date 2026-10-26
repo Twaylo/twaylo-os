@@ -3,9 +3,11 @@ import { USER_ID, uid, supabaseAdmin } from "./supabase";
 import { localDateKey } from "./local-date";
 import { JOUR_SENTINELLE, lireSentinelle, majSentinelle } from "./sentinelle";
 import {
+  BLOCS,
   BLOC_PAR_DEFAUT,
   OBJECTIFS_P90,
   blocDe,
+  listeDe,
   encoderMeta,
   encoderOp,
   etapeVersDB,
@@ -106,6 +108,51 @@ async function semisInterdit(cle: string): Promise<boolean> {
   return true;
 }
 
+/*
+ * LA REMISE À ZÉRO DU DEEP WORK — demande de Twaylo, le 26 octobre :
+ * « reset toute la colonne deep work, pas la colonne annexe ».
+ *
+ * Écrite ici, côté serveur, parce que la session qui l'a faite n'avait pas
+ * accès à la base : elle part toute seule à la première lecture après la mise
+ * en ligne, sans qu'il ait un geste à faire. Trois garde-fous, parce qu'un
+ * effacement qui se rejouerait viderait à chaque lecture ce qu'il vient
+ * d'écrire :
+ *  · UNE fois : le drapeau est posé sur la sentinelle AVANT d'agir, et rien
+ *    ne part s'il n'a pas pu l'être ;
+ *  · seulement ce qui existait à la demande (créé avant l'heure butoir) — une
+ *    tâche reprise des Oubliés repart avec une date de création neuve ;
+ *  · seulement son compte, et seulement le Deep work (les urgences des blocs
+ *    qui le forment) : les Annexes n'y sont pas.
+ * Rien n'est détruit : tout passe aux Oubliés, d'où chaque tâche se reprend.
+ */
+const REMISE_DEEP = { drapeau: "remiseDeepWork20261026", avant: "2026-10-26T03:00:00Z" };
+let remiseDeepVerifiee = false;
+
+async function remettreDeepWorkAZero(): Promise<void> {
+  if (remiseDeepVerifiee) return;
+  const moi = await uid();
+  // Un autre compte ne compte pas : la mémoire de l'instance ne vaut que pour celui de Twaylo.
+  if (moi !== USER_ID) return;
+  if ((await lireSentinelle())[REMISE_DEEP.drapeau]) {
+    remiseDeepVerifiee = true;
+    return;
+  }
+  await majSentinelle({ [REMISE_DEEP.drapeau]: new Date().toISOString() });
+  // `majSentinelle` peut renoncer sans lever : on relit avant d'effacer quoi que ce soit.
+  if (!(await lireSentinelle())[REMISE_DEEP.drapeau]) return;
+  remiseDeepVerifiee = true;
+
+  const urgencesDeep = BLOCS.filter((b) => listeDe(b.id) === "deep").map((b) => b.urgence);
+  const { error } = await supabaseAdmin()
+    .from("tasks")
+    .update({ statut: "abandonnee" })
+    .eq("user_id", moi)
+    .neq("statut", "abandonnee")
+    .in("urgence", urgencesDeep)
+    .lt("created_at", REMISE_DEEP.avant);
+  if (error) throw error;
+}
+
 /**
  * La todo : tout ce qui n'est pas archivé.
  *
@@ -119,6 +166,12 @@ async function semisInterdit(cle: string): Promise<boolean> {
  */
 export async function lireTaches(): Promise<TacheDB[]> {
   const db = supabaseAdmin();
+
+  try {
+    await remettreDeepWorkAZero();
+  } catch (err) {
+    console.error("[taches] remise à zéro du Deep work impossible :", err);
+  }
 
   const { data, error } = await db
     .from("tasks")
