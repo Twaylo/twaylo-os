@@ -75,8 +75,8 @@ export function LoginForm() {
   }
 
   return (
-    <main className="panel relative z-10 w-full max-w-[380px] p-7">
-      <span className="panel-accent" style={{ background: "var(--grad)" }} aria-hidden />
+    // La même carte de verre que l'OS : la porte ressemble à ce qu'elle ouvre.
+    <main className="carte relative z-10 w-full max-w-[380px] p-7">
 
       <div className="flex items-center gap-[11px]">
         <div className="logo-mark relative h-[38px] w-[38px] overflow-hidden rounded-xl">
@@ -139,8 +139,8 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={pending || password.length === 0}
-          className="mt-4 w-full cursor-pointer rounded-[13px] border-none py-[12px] text-[14px] font-extrabold text-[#07121d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ background: "var(--grad)" }}
+          className="capsule capsule-pleine mt-4 w-full disabled:cursor-not-allowed"
+          style={{ minHeight: 44, fontSize: 15, fontWeight: 600 }}
         >
           {pending ? "Connexion…" : "Entrer"}
         </button>

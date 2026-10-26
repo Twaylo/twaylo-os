@@ -61,19 +61,29 @@ const CLE_ONGLET = "twaylo-p90-onglet";
  * n'était de toute façon pas visible.
  */
 function Glow() {
+  /*
+   * FIXE, et non plus posé sur la page : c'est le fond d'écran derrière le
+   * verre. Le contenu défile PAR-DESSUS, et le verre de chaque carte floute
+   * en continu une couleur qui ne bouge pas — l'effet même du verre d'Apple.
+   * Fixé et rogné à la fenêtre, il ne peut toujours pas agrandir la zone
+   * défilable.
+   *
+   * Trois nappes immenses et sourdes plutôt que trois halos vifs : un fond
+   * sombre de macOS, pas des projecteurs.
+   */
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+    <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
       <div
-        className="absolute -right-[100px] -top-[140px] h-[460px] w-[460px] rounded-full blur-[90px]"
-        style={{ background: "radial-gradient(circle, var(--halo-1), transparent 70%)" }}
+        className="absolute -left-[15%] -top-[25%] h-[75vh] w-[75vw] rounded-full blur-[120px]"
+        style={{ background: "radial-gradient(circle, var(--halo-1), transparent 68%)" }}
       />
       <div
-        className="absolute -bottom-[160px] -left-20 h-[440px] w-[440px] rounded-full blur-[90px]"
-        style={{ background: "radial-gradient(circle, var(--halo-2), transparent 70%)" }}
+        className="absolute -right-[20%] top-[5%] h-[70vh] w-[65vw] rounded-full blur-[120px]"
+        style={{ background: "radial-gradient(circle, var(--halo-2), transparent 68%)" }}
       />
       <div
-        className="absolute left-1/2 top-[38%] h-[380px] w-[380px] -translate-x-1/2 rounded-full blur-[90px]"
-        style={{ background: "radial-gradient(circle, var(--halo-3), transparent 70%)" }}
+        className="absolute -bottom-[30%] left-[20%] h-[75vh] w-[70vw] rounded-full blur-[120px]"
+        style={{ background: "radial-gradient(circle, var(--halo-3), transparent 68%)" }}
       />
     </div>
   );
@@ -231,8 +241,8 @@ function Comptes() {
   const r = compteARebours(aujourdhui);
 
   const lignes = [
-    { label: "MOMENTUM OUVRE", valeur: r.versOuverture, chaud: r.versOuverture <= 7 },
-    { label: "FIN DES 90 JOURS", valeur: r.versFin, chaud: false },
+    { label: "Momentum ouvre", valeur: r.versOuverture, chaud: r.versOuverture <= 7 },
+    { label: "Fin des 90 jours", valeur: r.versFin, chaud: false },
   ];
 
   return (
@@ -245,22 +255,22 @@ function Comptes() {
     <div className="flex items-center gap-[12px] lg:gap-[14px]">
       {lignes.map((l) => (
         <div key={l.label} className="leading-[1.15]">
-          <div className="hidden text-[10px] font-bold tracking-[0.08em] text-white/40 sm:block">{l.label}</div>
+          <div className="hidden text-[11px] font-medium text-white/45 sm:block">{l.label}</div>
           <div
-            className="nombres text-[16px] font-bold"
-            style={{ color: l.chaud ? "var(--color-amb)" : undefined }}
+            className="nombres text-[16px] font-semibold"
+            style={{ color: l.chaud ? "var(--color-cor-soft)" : undefined }}
           >
             {l.valeur < 0 ? `+${-l.valeur}` : `J-${l.valeur}`}
           </div>
         </div>
       ))}
       <div className="hidden leading-[1.15] lg:block">
-        <div className="text-[10px] font-bold tracking-[0.08em] text-white/40">AVANCEMENT</div>
+        <div className="text-[11px] font-medium text-white/45">Avancement</div>
         <div className="flex items-center gap-[6px]">
           <span className="bar-track block w-[60px]">
             <span
               className="block h-full rounded-full"
-              style={{ width: `${Math.max(0, Math.min(100, r.pctEcoule))}%`, background: "var(--grad)" }}
+              style={{ width: `${Math.max(0, Math.min(100, r.pctEcoule))}%`, background: "var(--color-ble)" }}
             />
           </span>
           <span className="nombres text-[12px] font-semibold text-white/50">
@@ -293,10 +303,10 @@ function Compte() {
         title="Mon compte"
         /* 44 px au doigt, 38 à la souris : la règle d'Apple ne vaut que là où
            l'on vise avec un pouce. */
-        className="block h-[44px] w-[44px] cursor-pointer rounded-full p-[2px] transition-all hover:brightness-125 lg:h-[38px] lg:w-[38px]"
-        style={{ background: "var(--grad)" }}
+        className="block h-[44px] w-[44px] cursor-pointer rounded-full p-[1px] transition-all hover:brightness-125 lg:h-[36px] lg:w-[36px]"
+        style={{ background: "linear-gradient(160deg, rgba(255,255,255,0.45), rgba(255,255,255,0.08))" }}
       >
-        <span className="flex h-full w-full items-center justify-center rounded-full bg-[#07121d] text-[15px] font-black">
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-[#1c1d24] text-[14px] font-semibold">
           T
         </span>
       </button>
@@ -414,9 +424,9 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
           className="rail-onglets order-3 flex w-full flex-nowrap items-center gap-[4px] overflow-x-auto overflow-y-hidden rounded-full p-[5px] lg:order-2 lg:w-auto lg:flex-wrap lg:overflow-visible"
           style={{
             // La capsule de verre des barres d'onglets d'Apple.
-            background: "linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))",
-            border: "1px solid rgba(255,255,255,0.16)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 30px -14px rgba(0,0,0,0.7)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035))",
+            border: "1px solid rgba(255,255,255,0.1)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 30px -16px rgba(0,0,0,0.7)",
           }}
           aria-label="Modules"
         >
@@ -429,20 +439,18 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
                 data-onglet={nom}
                 onClick={() => surChoix(nom)}
                 aria-current={choisi ? "page" : undefined}
-                className="flex min-h-[44px] flex-none cursor-pointer items-center rounded-full px-[16px] py-[8px] text-[14.5px] font-semibold transition-all hover:brightness-125 lg:min-h-[40px]"
+                className="flex min-h-[40px] flex-none cursor-pointer items-center rounded-full px-[15px] py-[6px] text-[14px] font-medium transition-all hover:text-white lg:min-h-[34px]"
                 style={
                   choisi
                     ? {
                         // L'onglet actif : une goutte de verre plus claire,
-                        // posée sur la capsule — et le dégradé signature en
-                        // reflet, pour que la couleur de l'OS reste là.
-                        color: "#fff",
-                        background:
-                          "linear-gradient(180deg, rgba(255,255,255,0.3), rgba(255,255,255,0.12)), linear-gradient(100deg, rgba(255,61,139,0.35), rgba(34,211,238,0.3))",
-                        border: "1px solid rgba(255,255,255,0.32)",
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5), 0 4px 14px -6px rgba(0,0,0,0.6)",
+                        // posée sur la capsule — neutre, comme chez Apple.
+                        color: "var(--color-fg)",
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1))",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 10px -4px rgba(0,0,0,0.5)",
                       }
-                    : { color: "rgba(255,255,255,0.62)", background: "transparent", border: "1px solid transparent" }
+                    : { color: "rgba(245,245,247,0.6)", background: "transparent", border: "1px solid transparent" }
                 }
               >
                 {nom}

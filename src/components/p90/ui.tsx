@@ -20,15 +20,20 @@ import type { CSSProperties, ReactNode, Ref } from "react";
  */
 
 /** Les sept accents de la maquette, et le gris. */
+/*
+ * Les tons d'une étiquette : un TEXTE coloré sur un fond à peine teinté, sans
+ * bordure — l'allure des étiquettes d'Apple. Les bordures de couleur à chaque
+ * pastille faisaient partie de ce qui donnait l'air « kitsch ».
+ */
 export const TONS = {
-  neutre: { vif: "rgba(255,255,255,0.55)", fond: "rgba(255,255,255,0.05)", bord: "rgba(255,255,255,0.09)" },
-  accent: { vif: "var(--color-cya)", fond: "rgba(34,211,238,0.13)", bord: "rgba(34,211,238,0.3)" },
-  bleu: { vif: "var(--color-ble)", fond: "rgba(79,156,255,0.13)", bord: "rgba(79,156,255,0.3)" },
-  violet: { vif: "var(--color-vio)", fond: "rgba(176,107,255,0.13)", bord: "rgba(176,107,255,0.3)" },
-  succes: { vif: "var(--color-ver)", fond: "rgba(61,220,132,0.13)", bord: "rgba(61,220,132,0.32)" },
-  alerte: { vif: "var(--color-amb)", fond: "rgba(255,198,61,0.13)", bord: "rgba(255,198,61,0.32)" },
-  corail: { vif: "var(--color-cor)", fond: "rgba(255,122,61,0.13)", bord: "rgba(255,122,61,0.3)" },
-  danger: { vif: "var(--color-mag)", fond: "rgba(255,61,139,0.13)", bord: "rgba(255,61,139,0.32)" },
+  neutre: { vif: "rgba(245,245,247,0.72)", fond: "rgba(255,255,255,0.08)", bord: "transparent" },
+  accent: { vif: "var(--color-ble-soft)", fond: "rgba(10,132,255,0.16)", bord: "transparent" },
+  bleu: { vif: "var(--color-ble-soft)", fond: "rgba(10,132,255,0.16)", bord: "transparent" },
+  violet: { vif: "var(--color-vio-soft)", fond: "rgba(191,90,242,0.16)", bord: "transparent" },
+  succes: { vif: "var(--color-ver-soft)", fond: "rgba(48,209,88,0.15)", bord: "transparent" },
+  alerte: { vif: "var(--color-cor-soft)", fond: "rgba(255,159,10,0.15)", bord: "transparent" },
+  corail: { vif: "var(--color-cor-soft)", fond: "rgba(255,159,10,0.15)", bord: "transparent" },
+  danger: { vif: "var(--color-mag-soft)", fond: "rgba(255,55,95,0.15)", bord: "transparent" },
 } as const;
 
 export type Ton = keyof typeof TONS;
@@ -73,11 +78,10 @@ export function Carte({
     <div
       ref={innerRef}
       data-zone={zone}
-      className={`carte ${survol ? "carte-hover" : ""} p-[18px] ${className}`}
+      className={`carte ${survol ? "carte-hover" : ""} p-[16px] ${className}`}
       style={style}
+      data-accent={accent}
     >
-      {/* `color` aussi : la lueur reprend la couleur par `currentColor`. */}
-      <span className="panel-accent" style={{ background: accent, color: accent }} aria-hidden />
       {children}
     </div>
   );
@@ -97,7 +101,8 @@ export function Surtitre({
   className?: string;
 }) {
   return (
-    <div className={`surtitre ${className}`} style={{ color: couleur }}>
+    // Le texte reste blanc : la couleur ne vit que dans la pastille.
+    <div className={`surtitre ${className}`} style={{ color: "var(--color-fg)" }}>
       <span className="pastille-titre" style={{ background: pastille ?? couleur }} aria-hidden />
       {children}
     </div>
@@ -137,16 +142,18 @@ export function Puce({
   const t = couleur
     ? {
         vif: couleur,
-        fond: `color-mix(in srgb, ${couleur} 13%, transparent)`,
-        bord: `color-mix(in srgb, ${couleur} 32%, transparent)`,
+        fond: `color-mix(in srgb, ${couleur} 15%, transparent)`,
+        bord: "transparent",
       }
     : TONS[ton];
 
+  // Allumée : la couleur pleine, texte sombre. Éteinte : du texte coloré sur
+  // un fond à peine teinté.
   const style: CSSProperties = actif
-    ? { color: "#07121d", background: t.vif, border: `1px solid ${t.vif}` }
+    ? { color: "#0a0b0f", background: t.vif, border: `1px solid ${t.vif}` }
     : { color: t.vif, background: t.fond, border: `1px solid ${t.bord}` };
 
-  const classes = `inline-flex items-center gap-[5px] rounded-full px-[11px] py-[4px] text-[12px] font-semibold leading-[17px] transition-all ${className}`;
+  const classes = `inline-flex items-center gap-[5px] rounded-full px-[9px] py-[3px] text-[12px] font-medium leading-[16px] transition-all ${className}`;
 
   if (!onClick) {
     return (
@@ -184,7 +191,7 @@ const COULEURS_ECLAT = [
  * navigateur, et React signalerait une divergence d'hydratation. Un éventail
  * régulier est de toute façon plus lisible qu'un vrai hasard.
  */
-export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
+export function Eclats({ nombre, portee, couleur }: { nombre: number; portee: number; couleur?: string }) {
   return (
     <>
       {Array.from({ length: nombre }, (_, i) => {
@@ -198,7 +205,10 @@ export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
             aria-hidden
             style={
               {
-                background: COULEURS_ECLAT[i % COULEURS_ECLAT.length],
+                // Une seule couleur, celle de la liste, en trois intensités :
+                // l'arc-en-ciel faisait confettis de kermesse.
+                background: couleur ?? COULEURS_ECLAT[i % COULEURS_ECLAT.length],
+                opacity: couleur ? [1, 0.7, 0.45][i % 3] : undefined,
                 "--dx": `${Math.cos(angle) * rayon}px`,
                 "--dy": `${Math.sin(angle) * rayon}px`,
                 "--rot": `${(i % 2 === 0 ? 1 : -1) * 220}deg`,
@@ -215,8 +225,8 @@ export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
 /** Une barre de progression. La valeur est bornée ici, pas chez l'appelant. */
 export function Barre({
   pct,
-  couleur = "var(--grad)",
-  hauteur = 8,
+  couleur = "var(--color-ble)",
+  hauteur = 6,
   etiquette,
 }: {
   pct: number;
@@ -247,8 +257,8 @@ export function Barre({
 export function Vide({ children, indice }: { children: ReactNode; indice?: string }) {
   return (
     <div className="py-[28px] text-center">
-      <div className="text-[15px] font-semibold text-white/45">{children}</div>
-      {indice && <div className="mt-[4px] text-[13px] text-white/30">{indice}</div>}
+      <div className="text-[14px] font-medium text-white/45">{children}</div>
+      {indice && <div className="mt-[4px] text-[12.5px] text-white/30">{indice}</div>}
     </div>
   );
 }
@@ -277,19 +287,14 @@ export function Bouton({
   className?: string;
 }) {
   /*
-   * Une capsule de verre (`.capsule` dans globals.css), teintée selon le ton.
-   * « plein » garde le dégradé signature : c'est l'action principale.
+   * Une capsule de verre (`.capsule` dans globals.css). « plein » est la
+   * capsule blanche de l'action principale — plus de dégradé arc-en-ciel.
    */
-  const styles: Record<string, CSSProperties> = {
-    plein: {
-      background: "var(--grad)",
-      color: "#07121d",
-      border: "1px solid rgba(255,255,255,0.35)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55), 0 6px 18px -8px rgba(255,61,139,0.6)",
-    },
-    fin: { color: "rgba(255,255,255,0.86)" },
-    succes: { background: TONS.succes.fond, color: TONS.succes.vif, borderColor: TONS.succes.bord },
-    danger: { background: TONS.danger.fond, color: TONS.danger.vif, borderColor: TONS.danger.bord },
+  const styles: Record<string, CSSProperties | undefined> = {
+    plein: undefined,
+    fin: undefined,
+    succes: { color: TONS.succes.vif, background: TONS.succes.fond },
+    danger: { color: TONS.danger.vif, background: TONS.danger.fond },
   };
   return (
     <button
@@ -297,7 +302,7 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`capsule cible-doigt ${className}`}
+      className={`capsule cible-doigt ${ton === "plein" ? "capsule-pleine" : ""} ${className}`}
       style={styles[ton]}
     >
       {children}

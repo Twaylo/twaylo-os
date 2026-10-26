@@ -149,7 +149,7 @@ export function LigneTache({
   return (
     <div
       ref={rowRef}
-      className={entree ? "tache-entree" : undefined}
+      className={`rangee ${entree ? "tache-entree" : ""}`}
       style={entree ? ({ "--retard": `${Math.min(rang, 10) * 35}ms` } as React.CSSProperties) : undefined}
     >
       <div
@@ -171,7 +171,7 @@ export function LigneTache({
             e.stopPropagation();
             surPointerDown(e, true);
           }}
-          className="poignee poignee-tache flex flex-none items-center justify-center text-[14px] leading-none text-white/25 transition-colors hover:text-white/60"
+          className="poignee poignee-tache flex flex-none items-center justify-center text-[13px] leading-none text-white/30 transition-colors hover:text-white/70"
           style={{ cursor: tire ? "grabbing" : "grab" }}
         >
           ⠿
@@ -183,12 +183,9 @@ export function LigneTache({
               type="button"
               onClick={clic}
               aria-pressed={tache.faite}
+              // Plus de boîte par ligne : une rangée de liste groupée, séparée
+              // de la précédente par un filet (voir `.rangee` dans globals.css).
               className={`check-row relative ${anime ? `ligne-validee niveau-${palier}` : ""}`}
-              style={{
-                background: tache.faite ? "rgba(255,255,255,0.035)" : "rgba(255,255,255,0.075)",
-                border: `1px solid ${tache.faite ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.12)"}`,
-                boxShadow: tache.faite ? "none" : "inset 0 1px 0 rgba(255,255,255,0.1)",
-              }}
             >
               {anime && (
                 <>
@@ -204,7 +201,8 @@ export function LigneTache({
                   {palier >= 1 && (
                     <Eclats
                       nombre={palier === 1 ? 6 : palier === 2 ? 12 : 20}
-                      portee={palier === 1 ? 34 : palier === 2 ? 58 : 88}
+                      portee={palier === 1 ? 30 : palier === 2 ? 50 : 76}
+                      couleur={couleur}
                     />
                   )}
                   {palier >= 2 && <span className="balayage-validation" aria-hidden />}
@@ -215,11 +213,7 @@ export function LigneTache({
                 className={`case-ronde ${anime ? "case-cochee" : ""}`}
                 style={
                   tache.faite
-                    ? {
-                        background: couleur,
-                        borderColor: couleur,
-                        boxShadow: `0 0 14px -2px ${couleur}, inset 0 1px 0 rgba(255,255,255,0.4)`,
-                      }
+                    ? { background: couleur, borderColor: couleur }
                     : undefined
                 }
               >
@@ -235,9 +229,9 @@ export function LigneTache({
               */}
               <span className="min-w-0 flex-1">
                 <span
-                  className="block text-[15px] font-semibold leading-[1.3]"
+                  className="block text-[14px] font-medium leading-[1.3]"
                   style={{
-                    color: tache.faite ? "rgba(255,255,255,0.4)" : "var(--color-fg)",
+                    color: tache.faite ? "rgba(255,255,255,0.38)" : "var(--color-fg)",
                     textDecoration: tache.faite ? "line-through" : "none",
                   }}
                 >
@@ -246,7 +240,7 @@ export function LigneTache({
                 </span>
                 {echeance && !tache.faite && (
                   <span
-                    className="nombres mt-[2px] block text-[12.5px] font-semibold leading-[1.2]"
+                    className="nombres mt-[1px] block text-[12px] font-medium leading-[1.2]"
                     style={{ color: echeance.couleur }}
                   >
                     {echeance.texte}
@@ -255,14 +249,7 @@ export function LigneTache({
               </span>
 
               {tache.gelee && (
-                <span
-                  title="Gelée : elle revient tous les jours"
-                  className="flex-none rounded-full px-[7px] py-[2px] text-[13px] leading-none"
-                  style={{
-                    background: "rgba(34,211,238,0.14)",
-                    border: "1px solid rgba(34,211,238,0.4)",
-                  }}
-                >
+                <span title="Gelée : elle revient tous les jours" className="flex-none text-[12px] leading-none">
                   ❄️
                 </span>
               )}
@@ -302,11 +289,7 @@ export function LigneTache({
               aria-expanded={ouvert}
               aria-label={`Actions sur ${tache.titre}`}
               title="Geler, échéance, changer de liste, renommer, supprimer"
-              className="bouton-ligne absolute right-[5px] top-1/2 flex -translate-y-1/2 items-center justify-center rounded-full text-[17px] font-black leading-none text-white/70 transition-all hover:text-white"
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.12)",
-              }}
+              className="bouton-ligne absolute right-[4px] top-1/2 flex -translate-y-1/2 items-center justify-center rounded-full text-[16px] font-bold leading-none text-white/70 transition-all hover:bg-white/10 hover:text-white"
             >
               ⋯
             </button>
@@ -325,12 +308,11 @@ export function LigneTache({
       */}
       {ouvert && !tire && (
         <div
-          className="sas-in mt-[7px] flex flex-wrap items-center gap-[8px] rounded-[20px] p-[10px]"
+          className="sas-in mb-[6px] ml-[22px] mt-[2px] flex flex-wrap items-center gap-[6px] rounded-[14px] p-[8px]"
           onPointerDown={(e) => e.stopPropagation()}
           style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
           }}
         >
           <button
@@ -339,7 +321,7 @@ export function LigneTache({
             className="capsule"
             style={
               tache.gelee
-                ? { color: "var(--color-cya)", background: "rgba(34,211,238,0.14)", borderColor: "rgba(34,211,238,0.45)" }
+                ? { color: "var(--color-cya-soft)", background: "rgba(100,210,255,0.14)", borderColor: "transparent" }
                 : undefined
             }
             title="Une tâche gelée revient chaque jour et survit à la clôture (raccourci : double-appui sur la ligne)"
@@ -354,7 +336,7 @@ export function LigneTache({
               value={tache.meta.echeance ?? ""}
               onChange={(e) => surModifier({ meta: { ...tache.meta, echeance: e.target.value || undefined } })}
               aria-label="Échéance"
-              className="cursor-pointer bg-transparent text-[14px] font-semibold outline-none"
+              className="cursor-pointer bg-transparent text-[13px] font-medium outline-none"
               style={{ colorScheme: "dark", color: tache.meta.echeance ? "var(--color-fg)" : "rgba(255,255,255,0.5)" }}
             />
             {tache.meta.echeance && (
@@ -403,7 +385,7 @@ export function LigneTache({
               surSupprimer();
             }}
             className="capsule"
-            style={{ color: "var(--color-mag-soft)", background: "rgba(255,61,139,0.12)", borderColor: "rgba(255,61,139,0.3)" }}
+            style={{ color: "var(--color-mag-soft)", background: "rgba(255,55,95,0.12)", borderColor: "transparent" }}
           >
             Supprimer
           </button>

@@ -301,10 +301,13 @@ export function useGlisser<Z extends string>({
       Object.assign(inner.style, {
         margin: "0",
         width: "100%",
-        borderRadius: "11px",
+        borderRadius: "12px",
+        // Une ombre neutre et un liseré clair : la carte soulevée d'Apple, pas
+        // un halo rose.
+        background: "rgba(40,42,52,0.92)",
         boxShadow: reduireRef.current
-          ? "0 0 0 1px var(--color-mag)"
-          : "0 18px 40px -12px rgba(255,61,139,0.45), 0 0 0 1px rgba(255,61,139,0.45)",
+          ? "0 0 0 1px rgba(255,255,255,0.3)"
+          : "0 22px 44px -14px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.18)",
         transform: "scale(1)",
         transition: reduireRef.current ? "none" : "transform 90ms ease-out",
       });

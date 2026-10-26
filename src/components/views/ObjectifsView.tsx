@@ -132,7 +132,7 @@ export function ObjectifsView() {
         tombait loin sous une colonne courte, après un grand vide.
       */}
       <div className="flex flex-wrap items-center gap-[9px] px-[2px]">
-        <span className="nombres text-[14px] font-semibold text-white/55">
+        <span className="nombres text-[13px] font-medium text-white/50">
           {actifs.length} objectif{actifs.length > 1 ? "s" : ""} à toi
           {moyenneGenerale !== null && ` · ${moyenneGenerale} % en moyenne`}
         </span>
@@ -352,7 +352,7 @@ function CarteP90({
           >
             {def.rang}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{def.nom}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{def.nom}</span>
           <span className="nombres flex-none text-[13px] font-semibold" style={{ color: couleur }}>
             {pct} %
           </span>
@@ -445,7 +445,7 @@ function CaseRonde({ fait, couleur, petite = false }: { fait: boolean; couleur: 
       className="case-ronde"
       aria-hidden
       style={{
-        ...(petite ? { width: 20, height: 20, fontSize: 11 } : {}),
+        ...(petite ? { width: 18, height: 18, fontSize: 10 } : {}),
         ...(fait ? { background: couleur, borderColor: couleur } : {}),
       }}
     >
@@ -522,7 +522,7 @@ function CarteBut({
       >
         <button type="button" onClick={surOuvrir} className="w-full cursor-pointer text-left">
           <div className="flex items-baseline justify-between gap-[8px]">
-            <span className="min-w-0 text-[15px] font-semibold leading-[1.3]">{but.titre}</span>
+            <span className="min-w-0 text-[14px] font-medium leading-[1.3]">{but.titre}</span>
             <span className="nombres flex-none text-[13px] font-semibold" style={{ color: atteint ? couleur : "rgba(255,255,255,0.6)" }}>
               {but.valeur || `${but.pct} %`}
             </span>

@@ -236,7 +236,7 @@ export function TodoView() {
     <div className="entree-vue space-y-[14px]">
       {/* ---------- La barre du haut : le compte, et la clôture ---------- */}
       <div className="flex flex-wrap items-center gap-[9px] px-[2px]">
-        <span className="nombres text-[14px] font-semibold text-white/55">
+        <span className="nombres text-[13px] font-medium text-white/50">
           {faites}/{vivantes.length} faites
         </span>
         <span className="flex-1" />
@@ -318,18 +318,18 @@ export function TodoView() {
               innerRef={setZoneRef(liste.id)}
               zone={liste.id}
               className={`zone-depot ${dragId && zoneCourante === liste.id ? "zone-visee" : ""}`}
-              style={{ minHeight: 180 }}
+              style={{ minHeight: 150 }}
             >
               <div className="flex items-baseline justify-between gap-2">
                 <div className="min-w-0">
                   <Surtitre couleur={liste.couleur}>{liste.nom}</Surtitre>
-                  <div className="mt-[4px] text-[13px] text-white/40">{liste.indice}</div>
+                  <div className="mt-[2px] text-[12.5px] text-white/40">{liste.indice}</div>
                 </div>
                 {items.length > 0 && (
                   <span
-                    className="nombres flex-none text-[14px] font-semibold"
+                    className="nombres flex-none text-[13px] font-medium"
                     style={{
-                      color: faitesListe === items.length ? "var(--color-ver)" : "rgba(255,255,255,0.5)",
+                      color: faitesListe === items.length ? "var(--color-ver-soft)" : "rgba(255,255,255,0.45)",
                     }}
                   >
                     {faitesListe}/{items.length}
@@ -340,7 +340,7 @@ export function TodoView() {
               {/* LE CHAMP D'AJOUT, EN HAUT : une tâche créée prend la tête de
                   la liste, juste sous l'endroit où on l'a tapée. */}
               <form
-                className="mt-[12px] flex items-center gap-[8px]"
+                className="mt-[10px] flex items-center gap-[7px]"
                 onSubmit={(e) => {
                   e.preventDefault();
                   ajouter(liste.id);
@@ -362,28 +362,22 @@ export function TodoView() {
                   className="flex-1"
                 />
                 {/* L'emoji que la tâche RECEVRA, pendant la frappe. */}
-                {texte.trim() && <span className="flex-none text-[18px]">{emojiVisible(texte)}</span>}
+                {texte.trim() && <span className="flex-none text-[16px]">{emojiVisible(texte)}</span>}
                 <button
                   type="submit"
                   disabled={!texte.trim()}
                   aria-label={`Ajouter dans ${liste.nom}`}
-                  className="capsule flex-none text-[22px] font-light"
-                  style={{
-                    width: 46,
-                    height: 46,
-                    padding: 0,
-                    color: texte.trim() ? "#07121d" : "rgba(255,255,255,0.6)",
-                    background: texte.trim() ? liste.couleur : undefined,
-                    borderColor: texte.trim() ? "rgba(255,255,255,0.4)" : undefined,
-                  }}
+                  className={`capsule flex-none text-[19px] font-normal ${texte.trim() ? "capsule-pleine" : ""}`}
+                  style={{ width: 38, height: 38, padding: 0 }}
                 >
                   +
                 </button>
               </form>
 
-              <div className="mt-[12px] space-y-[8px]">
+              {/* Une liste groupée : les rangées se suivent, séparées d'un filet. */}
+              <div className="mt-[8px]">
                 {items.length === 0 && (
-                  <div className="py-[14px] text-center text-[14px] text-white/35">Rien ici pour l&apos;instant</div>
+                  <div className="py-[14px] text-center text-[13px] text-white/35">Rien ici pour l&apos;instant</div>
                 )}
                 {items.map((t, i) => (
                   <LigneTache

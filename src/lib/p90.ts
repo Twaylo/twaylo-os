@@ -465,14 +465,16 @@ export const LISTES: { id: IdListe; nom: string; couleur: string; bloc: IdBloc; 
   {
     id: "deep",
     nom: "Deep work",
-    couleur: "var(--color-mag)",
+    // Le bleu et l'orange des listes des Rappels d'Apple : deux couleurs qui
+    // ne se confondent pas, et qui ne crient pas.
+    couleur: "var(--color-ble)",
     bloc: "momentum",
     indice: "Ce qui demande ta tête : écrire, monter, construire.",
   },
   {
     id: "annexes",
     nom: "Annexes",
-    couleur: "var(--color-cya)",
+    couleur: "var(--color-cor)",
     bloc: "operations",
     indice: "Le reste : appels, paiements, admin, courses.",
   },
