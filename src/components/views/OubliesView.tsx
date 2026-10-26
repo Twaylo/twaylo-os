@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { decoderMeta, nomObjectif } from "@/lib/p90";
 import { useCockpit } from "@/lib/p90-context";
-import { Bouton, Carte, Puce, Surtitre, Vide } from "@/components/p90/ui";
+import { Bouton, Carte, EnTeteVue, Puce, Vide } from "@/components/p90/ui";
 
 /**
  * LES OUBLIÉS — la sauvegarde.
@@ -71,15 +71,17 @@ export function OubliesView() {
   };
 
   return (
-    <div className="entree-vue space-y-[13px]">
-      <Carte accent="var(--color-mag)">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Surtitre couleur="var(--color-mag-soft)">Oubliés — la sauvegarde</Surtitre>
-          <span className="nombres text-[13px] text-white/40">{liste?.length ?? 0}</span>
-        </div>
-        <div className="mt-[3px] text-[13px] text-white/40">
-          Tout ce qui est supprimé de la todo arrive ici. Rien ne s&apos;y range tout seul.
-        </div>
+    <div className="entree-vue space-y-[14px]">
+      <EnTeteVue
+        titre="Oubliés"
+        sousTitre={
+          <>
+            <span className="nombres">{liste?.length ?? 0}</span> · tout ce qui est supprimé de la todo arrive ici,
+            rien ne s&apos;y range tout seul
+          </>
+        }
+      />
+      <Carte survol={false}>
 
         {liste === null && <Vide>Lecture…</Vide>}
         {liste?.length === 0 && <Vide indice="C'est bon signe.">Rien d&apos;oublié</Vide>}

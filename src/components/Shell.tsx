@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CockpitProvider, useCockpit } from "@/lib/p90-context";
 import { compteARebours } from "@/lib/p90";
 import { TodoView } from "@/components/views/TodoView";
@@ -62,30 +62,28 @@ const CLE_ONGLET = "twaylo-p90-onglet";
  */
 function Glow() {
   /*
-   * FIXE, et non plus posé sur la page : c'est le fond d'écran derrière le
-   * verre. Le contenu défile PAR-DESSUS, et le verre de chaque carte floute
-   * en continu une couleur qui ne bouge pas — l'effet même du verre d'Apple.
-   * Fixé et rogné à la fenêtre, il ne peut toujours pas agrandir la zone
-   * défilable.
+   * FIXE : c'est le fond d'écran derrière le verre. Le contenu défile
+   * par-dessus, et chaque carte floute en continu une couleur qui ne bouge
+   * pas — l'effet même du verre d'Apple.
    *
-   * Trois nappes immenses et sourdes plutôt que trois halos vifs : un fond
-   * sombre de macOS, pas des projecteurs.
+   * DES DÉGRADÉS, ET PLUS AUCUN FLOU. Les nappes étaient trois grands disques
+   * passés au filtre `blur(120px)` : le rendu le plus coûteux qui soit, sur
+   * les trois quarts de l'écran, et une part réelle du manque de fluidité au
+   * défilement sur iPhone. Un dégradé radial qui s'éteint en douceur donne
+   * la même nappe, pour presque rien.
    */
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
-      <div
-        className="absolute -left-[15%] -top-[25%] h-[75vh] w-[75vw] rounded-full blur-[120px]"
-        style={{ background: "radial-gradient(circle, var(--halo-1), transparent 68%)" }}
-      />
-      <div
-        className="absolute -right-[20%] top-[5%] h-[70vh] w-[65vw] rounded-full blur-[120px]"
-        style={{ background: "radial-gradient(circle, var(--halo-2), transparent 68%)" }}
-      />
-      <div
-        className="absolute -bottom-[30%] left-[20%] h-[75vh] w-[70vw] rounded-full blur-[120px]"
-        style={{ background: "radial-gradient(circle, var(--halo-3), transparent 68%)" }}
-      />
-    </div>
+    <div
+      className="pointer-events-none fixed inset-0"
+      aria-hidden
+      style={{
+        background: [
+          "radial-gradient(70vw 70vh at 8% -10%, var(--halo-1), transparent 70%)",
+          "radial-gradient(60vw 65vh at 100% 15%, var(--halo-2), transparent 70%)",
+          "radial-gradient(70vw 70vh at 45% 115%, var(--halo-3), transparent 70%)",
+        ].join(", "),
+      }}
+    />
   );
 }
 
@@ -119,33 +117,6 @@ function Logo({ surClic }: { surClic: () => void }) {
       <span className="logo-word inline-block text-[22px] font-black tracking-[-0.02em]">twaylo</span>
     </button>
   );
-}
-
-/**
- * L'horloge reste côté client : la rendre au serveur produirait une heure
- * serveur différente de l'heure du navigateur et casserait l'hydratation.
- */
-function useHorloge() {
-  const [maintenant, setMaintenant] = useState<Date | null>(null);
-
-  useEffect(() => {
-    /*
-     * La première lecture passe par `queueMicrotask`, et ce n'est pas un
-     * caprice de linter : poser l'état dans le corps de l'effet déclenche un
-     * second rendu synchrone avant la peinture, que le compilateur React
-     * refuse. La microtâche s'exécute elle aussi avant la peinture — l'heure
-     * est donc à l'écran du premier coup, sans l'aller-retour.
-     */
-    queueMicrotask(() => setMaintenant(new Date()));
-    const id = setInterval(() => setMaintenant(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!maintenant) return { date: "", heure: "" };
-  return {
-    date: maintenant.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }),
-    heure: maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-  };
 }
 
 /**
@@ -264,20 +235,6 @@ function Comptes() {
           </div>
         </div>
       ))}
-      <div className="hidden leading-[1.15] lg:block">
-        <div className="text-[11px] font-medium text-white/45">Avancement</div>
-        <div className="flex items-center gap-[6px]">
-          <span className="bar-track block w-[60px]">
-            <span
-              className="block h-full rounded-full"
-              style={{ width: `${Math.max(0, Math.min(100, r.pctEcoule))}%`, background: "var(--color-ble)" }}
-            />
-          </span>
-          <span className="nombres text-[12px] font-semibold text-white/50">
-            {r.ecoules}/{r.total}
-          </span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -351,131 +308,195 @@ function Compte() {
   );
 }
 
+/** Les icônes des onglets, dessinées au trait comme les symboles d'Apple. */
+function IconeOnglet({ nom }: { nom: Onglet }) {
+  const traits: Record<Onglet, React.ReactNode> = {
+    "To-do": (
+      <>
+        <path d="M4 6.8l1.7 1.7 3-3.1" />
+        <path d="M12 7h8" />
+        <path d="M4 12.8l1.7 1.7 3-3.1" />
+        <path d="M12 13h8" />
+        <path d="M5.2 19h2.6" />
+        <path d="M12 19h8" />
+      </>
+    ),
+    Sponsors: (
+      <>
+        <rect x="3" y="7" width="18" height="13" rx="2.6" />
+        <path d="M8.5 7V5.6A1.6 1.6 0 0 1 10.1 4h3.8a1.6 1.6 0 0 1 1.6 1.6V7" />
+        <path d="M3 12.6h18" />
+      </>
+    ),
+    Objectifs: (
+      <>
+        <circle cx="12" cy="12" r="8.6" />
+        <circle cx="12" cy="12" r="5" />
+        <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      </>
+    ),
+    Revue: (
+      <>
+        <path d="M7 3.6h7l4.6 4.6v11.4a1 1 0 0 1-1 1H7a1.6 1.6 0 0 1-1.6-1.6V5.2A1.6 1.6 0 0 1 7 3.6z" />
+        <path d="M14 3.6v4.6h4.6" />
+        <path d="M8.8 12.6h6.4M8.8 16.2h6.4" />
+      </>
+    ),
+    Oubliés: (
+      <>
+        <rect x="3.4" y="4" width="17.2" height="4.6" rx="1.3" />
+        <path d="M5 8.6v9.6a1.6 1.6 0 0 0 1.6 1.6h10.8a1.6 1.6 0 0 0 1.6-1.6V8.6" />
+        <path d="M10 12.6h4" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="flex-none lg:hidden"
+    >
+      {traits[nom]}
+    </svg>
+  );
+}
+
 function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => void }) {
-  const railRef = useRef<HTMLElement>(null);
-  const { date, heure } = useHorloge();
+  const navRef = useRef<HTMLElement>(null);
+  const pastilleRef = useRef<HTMLSpanElement>(null);
 
   /*
-   * L'onglet actif est ramené dans le cadre : sur téléphone, le rail défile.
+   * LA PASTILLE QUI GLISSE jusqu'à l'onglet choisi.
    *
-   * On déplace UNIQUEMENT le défilement du rail, jamais celui de la page.
-   * `scrollIntoView` aurait fait les deux — et un onglet qui recale la page
-   * verticalement à chaque clic, ça se ressent comme un défaut.
+   * Posée directement sur l'élément, sans passer par l'état de React : elle
+   * se déplace sans re-rendre la barre. La première pose se fait sans
+   * transition — sinon, à l'ouverture, on la verrait partir du bord gauche.
+   * Elle se recale quand la fenêtre change de taille.
    */
-  useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-    const bouton = rail.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!bouton) return;
-    const marge = 14;
-    const bordGauche = bouton.offsetLeft - marge;
-    const bordDroit = bouton.offsetLeft + bouton.offsetWidth + marge - rail.clientWidth;
-    if (rail.scrollLeft > bordGauche) rail.scrollTo({ left: bordGauche, behavior: "smooth" });
-    else if (rail.scrollLeft < bordDroit) rail.scrollTo({ left: bordDroit, behavior: "smooth" });
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const pastille = pastilleRef.current;
+    if (!nav || !pastille) return;
+    const poser = () => {
+      const bouton = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!bouton) return;
+      pastille.style.transform = `translateX(${bouton.offsetLeft}px)`;
+      pastille.style.width = `${bouton.offsetWidth}px`;
+      pastille.style.opacity = "1";
+    };
+    poser();
+    const raf = requestAnimationFrame(() => pastille.classList.add("anime"));
+    window.addEventListener("resize", poser);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", poser);
+    };
   }, [actif]);
 
+  /*
+   * LA PASTILLE PART À L'INSTANT DU TOUCHER — sans attendre la page.
+   *
+   * Elle suivait l'onglet actif, donc le rendu de la nouvelle page : sur la
+   * plus chargée, elle ne bougeait qu'au bout d'un dixième de seconde, et le
+   * geste paraissait mou. On la déplace dans le geste lui-même, et la lecture
+   * de `offsetWidth` force le navigateur à prendre la nouvelle position tout
+   * de suite : la transition démarre avant que React ne se mette au travail,
+   * et elle file sur le processeur graphique pendant qu'il dessine la page.
+   */
+  const glisserVers = (bouton: HTMLElement) => {
+    const pastille = pastilleRef.current;
+    if (!pastille) return;
+    pastille.style.transform = `translateX(${bouton.offsetLeft}px)`;
+    pastille.style.width = `${bouton.offsetWidth}px`;
+    void pastille.offsetWidth;
+  };
+
   return (
-    <header
-      className="sticky top-0 z-50 border-b"
-      style={{
-        /*
-         * Une barre de verre, comme celles d'Apple : ce qui défile dessous
-         * passe flouté et saturé, au lieu de disparaître sous un aplat.
-         */
-        background: "linear-gradient(180deg, rgba(7,18,29,0.72), rgba(7,18,29,0.42))",
-        WebkitBackdropFilter: "blur(26px) saturate(180%)",
-        backdropFilter: "blur(26px) saturate(180%)",
-        borderColor: "rgba(255,255,255,0.1)",
-        /*
-         * En mode application, il n'y a plus de barre Safari : la page démarre
-         * sous l'heure et la batterie. Sur le web normal, l'encart vaut 0.
-         */
-        paddingTop: "env(safe-area-inset-top, 0px)",
-      }}
-    >
-      {/*
-        Trois blocs, deux dispositions. Sur grand écran : logo à gauche, onglets
-        au centre, chiffres à droite, sur une ligne. Sur téléphone, les onglets
-        passent sur leur propre ligne en un rail qui défile — c'est `order` qui
-        fait la bascule.
-      */}
-      <div
-        className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-[9px] px-6 py-3"
+    <>
+      <header
+        className="sticky top-0 z-50 border-b"
         style={{
-          paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
-          paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
+          /*
+           * Une barre de verre, comme celles d'Apple : ce qui défile dessous
+           * passe flouté et saturé, au lieu de disparaître sous un aplat.
+           */
+          background: "linear-gradient(180deg, rgba(10,11,15,0.72), rgba(10,11,15,0.45))",
+          WebkitBackdropFilter: "blur(26px) saturate(170%)",
+          backdropFilter: "blur(26px) saturate(170%)",
+          borderColor: "rgba(255,255,255,0.07)",
+          /*
+           * En mode application, il n'y a plus de barre Safari : la page démarre
+           * sous l'heure et la batterie. Sur le web normal, l'encart vaut 0.
+           */
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
       >
-        <Logo
-          surClic={() => {
-            surChoix("To-do");
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-        />
-
-        <nav
-          ref={railRef}
-          /*
-           * `overflow-y-hidden` est obligatoire à côté de `overflow-x-auto` :
-           * un axe laissé en `visible` face à un axe défilant bascule en
-           * `auto`, et ce rail deviendrait une seconde zone défilante
-           * VERTICALE — le défilement qui bloque, par la porte de derrière.
-           */
-          className="rail-onglets order-3 flex w-full flex-nowrap items-center gap-[4px] overflow-x-auto overflow-y-hidden rounded-full p-[5px] lg:order-2 lg:w-auto lg:flex-wrap lg:overflow-visible"
-          style={{
-            // La capsule de verre des barres d'onglets d'Apple.
-            background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035))",
-            border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 30px -16px rgba(0,0,0,0.7)",
-          }}
-          aria-label="Modules"
-        >
-          {NOMS.map((nom) => {
-            const choisi = nom === actif;
-            return (
-              <button
-                key={nom}
-                type="button"
-                data-onglet={nom}
-                onClick={() => surChoix(nom)}
-                aria-current={choisi ? "page" : undefined}
-                className="flex min-h-[40px] flex-none cursor-pointer items-center rounded-full px-[15px] py-[6px] text-[14px] font-medium transition-all hover:text-white lg:min-h-[34px]"
-                style={
-                  choisi
-                    ? {
-                        // L'onglet actif : une goutte de verre plus claire,
-                        // posée sur la capsule — neutre, comme chez Apple.
-                        color: "var(--color-fg)",
-                        background: "linear-gradient(180deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1))",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 10px -4px rgba(0,0,0,0.5)",
-                      }
-                    : { color: "rgba(245,245,247,0.6)", background: "transparent", border: "1px solid transparent" }
-                }
-              >
-                {nom}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="order-2 flex items-center gap-[10px] lg:order-3">
-          <Comptes />
-          <Base />
-          {/*
-            La date et l'heure disparaissent sur téléphone, et ce n'est pas une
-            amputation : en mode application, la barre d'état d'iOS affiche
-            l'heure juste au-dessus.
-          */}
-          <div className="hidden text-right leading-[1.2] sm:block">
-            {/* Espace réservé pendant le premier rendu pour éviter un saut. */}
-            <div className="text-[14px] font-semibold capitalize">{date || " "}</div>
-            <div className="nombres text-[12.5px] text-white/50">{heure || " "}</div>
+        {/*
+          ÉPURÉ : le logo à gauche, les deux comptes à rebours et le compte à
+          droite. L'heure, la date et la barre d'avancement sont parties — la
+          date vit dans le grand titre de la todo, et l'heure est déjà dans la
+          barre de menus du Mac et la barre d'état de l'iPhone.
+        */}
+        <div className="gouttiere mx-auto flex h-[60px] max-w-[1500px] items-center justify-between gap-4">
+          <Logo
+            surClic={() => {
+              surChoix("To-do");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+          <div className="flex items-center gap-[12px]">
+            <Comptes />
+            <Base />
+            <Compte />
           </div>
-          <Compte />
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/*
+        LA BARRE D'ONGLETS, hors du bandeau (voir `.barre-onglets`) : une
+        capsule au centre du bandeau sur grand écran, une capsule flottante en
+        bas de l'écran au téléphone — la barre d'onglets d'iOS 26.
+      */}
+      <nav ref={navRef} className="barre-onglets" aria-label="Modules">
+        <span ref={pastilleRef} className="indicateur-onglet" style={{ opacity: 0 }} aria-hidden />
+        {NOMS.map((nom) => {
+          const choisi = nom === actif;
+          return (
+            <button
+              key={nom}
+              type="button"
+              data-onglet={nom}
+              onClick={(e) => {
+                glisserVers(e.currentTarget);
+                /*
+                 * La page attend UNE image. Mesuré : dessiner la nouvelle page
+                 * prend le fil principal 40 à 120 ms, et la pastille ne
+                 * démarrait qu'après — le geste paraissait accrocher. Ici
+                 * l'image suivante part d'abord, avec la pastille en route ;
+                 * le dessin de la page vient ensuite, pendant que la pastille
+                 * file sur le processeur graphique. 16 ms d'attente, qu'on ne
+                 * voit pas, contre un mouvement qui démarre sous le doigt.
+                 */
+                requestAnimationFrame(() => window.setTimeout(() => surChoix(nom), 0));
+              }}
+              aria-current={choisi ? "page" : undefined}
+              className="flex h-[50px] min-w-[62px] flex-none cursor-pointer flex-col items-center justify-center gap-[2px] rounded-full px-[8px] text-[10.5px] font-medium transition-colors lg:h-[34px] lg:min-w-0 lg:flex-row lg:px-[16px] lg:text-[14px]"
+              style={{ color: choisi ? "var(--color-fg)" : "rgba(245,245,247,0.58)" }}
+            >
+              <IconeOnglet nom={nom} />
+              <span>{nom}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }
 
@@ -501,7 +522,12 @@ function Cockpit() {
   }, []);
 
   const choisir = (o: Onglet) => {
-    setOnglet(o);
+    /*
+     * Dans une transition : la nouvelle page se prépare SANS bloquer l'écran.
+     * La pastille glisse déjà (voir `TopRail`), l'ancienne page reste vivante
+     * le temps que la nouvelle soit prête, et rien ne fige sous le doigt.
+     */
+    startTransition(() => setOnglet(o));
     try {
       window.localStorage.setItem(CLE_ONGLET, o);
     } catch {
@@ -521,19 +547,12 @@ function Cockpit() {
     <div className="cadre-appli relative">
       <Glow />
       <TopRail actif={onglet} surChoix={choisir} />
-      <main
-        className="relative z-[1] mx-auto max-w-[1500px] px-6 pb-[30px] pt-4"
-        style={{
-          /*
-           * En mode application, la barre de gestes d'iOS mange le bas de
-           * l'écran et l'encoche les côtés en paysage. Hors de ce mode, les
-           * `safe-area-inset-*` valent 0 : la mise en page ne change pas.
-           */
-          paddingBottom: "calc(30px + env(safe-area-inset-bottom, 0px))",
-          paddingLeft: "max(24px, env(safe-area-inset-left, 0px))",
-          paddingRight: "max(24px, env(safe-area-inset-right, 0px))",
-        }}
-      >
+      {/*
+        La gouttière suit l'écran (16 px au téléphone, 28 sur grand écran, et
+        jamais moins que l'encoche en paysage), et le bas de page laisse la
+        place à la barre d'onglets flottante (voir `.contenu-vues`).
+      */}
+      <main className="contenu-vues gouttiere relative z-[1] mx-auto max-w-[1500px] pt-[18px]">
         {/* La clé remet la vue à neuf d'un onglet à l'autre. */}
         <Vue key={onglet} />
       </main>

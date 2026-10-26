@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCockpit } from "@/lib/p90-context";
-import { Bouton, Carte, Surtitre, Vide } from "@/components/p90/ui";
+import { Bouton, Carte, EnTeteVue, Vide } from "@/components/p90/ui";
 
 /**
  * LA REVUE DE SEMAINE.
@@ -184,40 +184,40 @@ export function RevueView() {
   const remplis = CHAMPS.filter((c) => revue[c.cle].trim()).length;
 
   return (
-    <div className="entree-vue space-y-[13px]">
-      <Carte accent="var(--color-vio)">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <Surtitre couleur="var(--color-vio-soft)">Revue de la semaine {numero}</Surtitre>
-            <div className="text-[13px] text-white/40">
-              du {du} au {au}
-            </div>
-          </div>
-          <div className="flex items-center gap-[9px]">
-            {echecEcriture && (
-              <span className="text-[13px] font-semibold" style={{ color: "var(--color-amb)" }}>
-                Pas enregistré — réessaie
-              </span>
-            )}
-            <span className="nombres text-[13px] text-white/40">
-              {remplis}/{CHAMPS.length}
-            </span>
-            <Bouton
-              ton={revue.scelle ? "fin" : "plein"}
-              onClick={() => {
-                touche.current = true;
-                setRevue((p) => ({ ...p, scelle: !p.scelle }));
-              }}
-            >
-              {revue.scelle ? "Rouvrir" : "Sceller la semaine"}
-            </Bouton>
-          </div>
-        </div>
+    <div className="entree-vue space-y-[14px]">
+      <EnTeteVue
+        titre="Revue"
+        sousTitre={
+          <>
+            Semaine <span className="nombres">{numero}</span> · du {du} au {au} ·{" "}
+            <span className="nombres">
+              {remplis} sur {CHAMPS.length}
+            </span>{" "}
+            remplies
+          </>
+        }
+      >
+        {echecEcriture && (
+          <span className="text-[13px] font-semibold" style={{ color: "var(--color-cor-soft)" }}>
+            Pas enregistré — réessaie
+          </span>
+        )}
+        <Bouton
+          ton={revue.scelle ? "fin" : "plein"}
+          onClick={() => {
+            touche.current = true;
+            setRevue((p) => ({ ...p, scelle: !p.scelle }));
+          }}
+        >
+          {revue.scelle ? "Rouvrir" : "Sceller la semaine"}
+        </Bouton>
+      </EnTeteVue>
 
+      <Carte survol={false}>
         {!charge && <Vide>Lecture de la revue…</Vide>}
 
         {charge && (
-          <div className="mt-[11px] grid grid-cols-1 gap-[9px] lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-[10px] lg:grid-cols-2">
             {CHAMPS.map((c) => (
               <div key={c.cle} className="carte-haute p-[11px]">
                 <div className="flex items-baseline justify-between gap-2">

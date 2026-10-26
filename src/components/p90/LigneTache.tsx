@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { heureEnTete, joursRestants, type IdBloc, type MetaTache } from "@/lib/p90";
 import { emojiVisible, sansEmoji } from "@/lib/emoji-tache";
 import type { TacheVue } from "@/lib/p90-context";
-import { Champ, Eclats, formaterJour } from "@/components/p90/ui";
+import { Champ, Coche, Depliant, Eclats, formaterJour } from "@/components/p90/ui";
 
 /**
  * UNE LIGNE DE TODO — et c'est la ligne ENTIÈRE qui coche.
@@ -149,6 +149,8 @@ export function LigneTache({
   return (
     <div
       ref={rowRef}
+      // La clé que suit le glissement de la liste (voir `use-flip.ts`).
+      data-cle={tache.cle ?? tache.id}
       className={`rangee ${entree ? "tache-entree" : ""}`}
       style={entree ? ({ "--retard": `${Math.min(rang, 10) * 35}ms` } as React.CSSProperties) : undefined}
     >
@@ -198,14 +200,11 @@ export function LigneTache({
                       }px ${couleur}`,
                     }}
                   />
-                  {palier >= 1 && (
-                    <Eclats
-                      nombre={palier === 1 ? 6 : palier === 2 ? 12 : 20}
-                      portee={palier === 1 ? 30 : palier === 2 ? 50 : 76}
-                      couleur={couleur}
-                    />
+                  {/* Des éclats seulement quand la journée se plie, et sans
+                      le balayage blanc : la fête reste, la kermesse part. */}
+                  {palier >= 2 && (
+                    <Eclats nombre={palier === 2 ? 8 : 12} portee={palier === 2 ? 40 : 58} couleur={couleur} />
                   )}
-                  {palier >= 2 && <span className="balayage-validation" aria-hidden />}
                 </>
               )}
 
@@ -217,7 +216,7 @@ export function LigneTache({
                     : undefined
                 }
               >
-                {tache.faite && <span className={anime ? "case-marque" : ""}>✓</span>}
+                {tache.faite && <Coche trace={anime} taille={12} />}
               </span>
 
               {heure && <span className="bulle-heure">{heure}</span>}
@@ -306,7 +305,8 @@ export function LigneTache({
         qu'on fait vraiment. Les données des réglages retirés restent en base,
         intactes : rien n'est perdu, c'est l'écran qui s'allège.
       */}
-      {ouvert && !tire && (
+      {/* Il se DÉPLIE au lieu d'apparaître d'un coup (voir `Depliant`). */}
+      <Depliant ouvert={ouvert && !tire}>
         <div
           className="sas-in mb-[6px] ml-[22px] mt-[2px] flex flex-wrap items-center gap-[6px] rounded-[14px] p-[8px]"
           onPointerDown={(e) => e.stopPropagation()}
@@ -390,7 +390,7 @@ export function LigneTache({
             Supprimer
           </button>
         </div>
-      )}
+      </Depliant>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   CHAINES,
   ETAPES_OP,
@@ -19,7 +18,7 @@ import {
 } from "@/lib/p90";
 import { useCockpit } from "@/lib/p90-context";
 import { useGlisser } from "@/lib/use-glisser";
-import { Bouton, Carte, Champ, Euros, Puce, Surtitre, Vide, formaterEuros } from "@/components/p90/ui";
+import { Bouton, Carte, Champ, EnTeteVue, Euros, Feuille, Puce, Surtitre, Vide, formaterEuros } from "@/components/p90/ui";
 
 /**
  * LES SPONSORS — le pipeline des OP, une colonne par étape.
@@ -87,7 +86,16 @@ export function SponsorsView() {
 
   return (
     <div className="entree-vue space-y-[14px]">
-      {/* ---------- En tête : l'argent dehors, et l'ajout ---------- */}
+      <EnTeteVue
+        titre="Sponsors"
+        sousTitre={
+          <>
+            <span className="nombres">{ops.length}</span> OP · glisse une carte pour changer son étape
+          </>
+        }
+      />
+
+      {/* ---------- L'argent dehors, et l'ajout ---------- */}
       <Carte survol={false}>
         <div className="flex flex-wrap items-center gap-x-[22px] gap-y-[10px]">
           <div>
@@ -239,7 +247,8 @@ export function SponsorsView() {
  *
  * Une colonne de 220 px ne peut pas porter un éditeur : la fiche s'ouvre au
  * centre sur un grand écran, en bas de l'écran sur un téléphone — la feuille
- * des applications d'Apple. Échap, la croix ou un appui à côté la referment.
+ * des applications d'Apple (voir `Feuille`). Échap, la croix ou un appui à
+ * côté la referment, et elle repart par le chemin d'où elle est venue.
  */
 function FicheOp({
   op,
@@ -270,72 +279,29 @@ function FicheOp({
     setBrut(String(op.brut || ""));
   }
 
-  useEffect(() => {
-    const surTouche = (e: KeyboardEvent) => {
-      if (e.key === "Escape") surFermer();
-    };
-    window.addEventListener("keydown", surTouche);
-    return () => window.removeEventListener("keydown", surTouche);
-  }, [surFermer]);
-
   const alertes = alertesOp(op, aujourdhui);
   const commission = commissionOp(op);
 
-  /*
-   * DANS UN PORTAIL, directement sous `<body>` — et c'était un vrai défaut.
-   *
-   * Rendue à l'intérieur de la vue, la feuille héritait d'un ancêtre animé
-   * (l'entrée de la vue anime une transformation, et un élément ainsi animé
-   * devient le repère des éléments `fixed` qu'il contient). Elle se plaçait
-   * donc par rapport à la PAGE et non à l'écran : au téléphone elle flottait
-   * au milieu au lieu de se poser en bas, et sur une longue page elle pouvait
-   * s'ouvrir hors de vue.
-   */
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`OP ${op.marque}`}
+  return (
+    <Feuille
+      etiquette={`OP ${op.marque}`}
+      titre={op.marque}
+      sousTitre={
+        commission > 0 ? (
+          <>
+            <Euros valeur={op.brut} /> brut − {formaterEuros(commission)} Expandia ={" "}
+            <Euros valeur={netOp(op)} className="text-white/80" /> net
+          </>
+        ) : (
+          <>
+            <Euros valeur={netOp(op)} className="text-white/80" /> net
+          </>
+        )
+      }
+      surFermer={surFermer}
     >
-      <button
-        type="button"
-        aria-label="Fermer"
-        onClick={surFermer}
-        className="absolute inset-0 cursor-default"
-        style={{ background: "rgba(0,0,0,0.42)", WebkitBackdropFilter: "blur(6px)", backdropFilter: "blur(6px)" }}
-      />
-      <div
-        className="carte sas-in relative w-full space-y-[14px] rounded-b-none p-[18px] sm:max-w-[480px] sm:rounded-b-[22px]"
-        style={{ paddingBottom: "calc(18px + env(safe-area-inset-bottom, 0px))", background: "rgba(28,29,36,0.82)" }}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[18px] font-semibold leading-[1.25]">{op.marque}</div>
-            <div className="nombres mt-[2px] text-[13px] text-white/50">
-              {commission > 0 ? (
-                <>
-                  <Euros valeur={op.brut} /> brut − {formaterEuros(commission)} Expandia ={" "}
-                  <Euros valeur={netOp(op)} className="text-white/80" /> net
-                </>
-              ) : (
-                <>
-                  <Euros valeur={netOp(op)} className="text-white/80" /> net
-                </>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={surFermer}
-            aria-label="Fermer la fiche"
-            className="capsule flex-none"
-            style={{ width: 32, minHeight: 32, padding: 0 }}
-          >
-            ✕
-          </button>
-        </div>
-
+      {() => (
+        <>
         {alertes.length > 0 && (
           <div className="flex flex-wrap gap-[5px]">
             {alertes.map((a) => (
@@ -443,9 +409,9 @@ function FicheOp({
             </Bouton>
           )}
         </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      )}
+    </Feuille>
   );
 }
 

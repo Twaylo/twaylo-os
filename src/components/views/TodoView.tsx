@@ -5,8 +5,9 @@ import { LISTES, blocDeListe, listeDe, type IdListe } from "@/lib/p90";
 import { emojiVisible } from "@/lib/emoji-tache";
 import { useCockpit, type TacheVue } from "@/lib/p90-context";
 import { useGlisser } from "@/lib/use-glisser";
+import { useFlipListe } from "@/lib/use-flip";
 import { LigneTache } from "@/components/p90/LigneTache";
-import { Bouton, Carte, Champ, Surtitre, Vide } from "@/components/p90/ui";
+import { Bouton, Carte, Champ, EnTeteVue, Surtitre, Vide } from "@/components/p90/ui";
 
 /**
  * LA TODO — le module qui porte tout le reste.
@@ -189,6 +190,28 @@ export function TodoView() {
   /** La liste où une ligne s'affiche — celle que vise le doigt, pendant un glissement. */
   const listeAffichee = (t: TacheVue): IdListe => (t.id === dragId ? zoneCourante : listeDe(t.bloc));
 
+  /*
+   * LA LISTE QUI S'ÉCARTE (voir `use-flip.ts`) : une tâche qui arrive, qui
+   * part ou qui change de liste fait glisser ses voisines au lieu de les
+   * faire sauter. L'empreinte porte l'ordre ET la liste de chaque ligne.
+   */
+  useFlipListe(
+    grilleRef,
+    affichees.map((t) => `${t.cle ?? t.id}:${listeAffichee(t)}`).join("|"),
+    dragId === null,
+  );
+
+  /** « Lundi 26 octobre », pour le grand titre. */
+  const dateDuJour = (() => {
+    const d = new Date(`${aujourdhui}T12:00:00Z`).toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    });
+    return d.charAt(0).toUpperCase() + d.slice(1);
+  })();
+
   const faites = vivantes.filter((t) => t.faite).length;
 
   /*
@@ -234,12 +257,15 @@ export function TodoView() {
 
   return (
     <div className="entree-vue space-y-[14px]">
-      {/* ---------- La barre du haut : le compte, et la clôture ---------- */}
-      <div className="flex flex-wrap items-center gap-[9px] px-[2px]">
-        <span className="nombres text-[13px] font-medium text-white/50">
-          {faites}/{vivantes.length} faites
-        </span>
-        <span className="flex-1" />
+      {/* ---------- Le grand titre : le jour, le compte, et la clôture ---------- */}
+      <EnTeteVue
+        titre="To-do"
+        sousTitre={
+          <>
+            {dateDuJour} · <span className="nombres">{faites} sur {vivantes.length}</span> faites
+          </>
+        }
+      >
         {faites > 0 &&
           (confirmeCloture ? (
             <>
@@ -262,7 +288,7 @@ export function TodoView() {
               Clôturer la journée
             </Bouton>
           ))}
-      </div>
+      </EnTeteVue>
 
       {/* ---------- Les bandeaux : échec, et suppression en sursis ---------- */}
       {echec && (
@@ -381,7 +407,9 @@ export function TodoView() {
                 )}
                 {items.map((t, i) => (
                   <LigneTache
-                    key={t.id}
+                    // La clé d'affichage : stable quand une tâche tapée ici
+                    // reçoit son vrai identifiant (voir `TacheVue.cle`).
+                    key={t.cle ?? t.id}
                     rang={i}
                     intensite={intensite}
                     tache={t}

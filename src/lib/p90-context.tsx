@@ -82,6 +82,13 @@ export type TacheVue = TacheP90 & {
   gelee: boolean;
   creeLe?: string;
   faiteLe?: string;
+  /**
+   * La clé d'AFFICHAGE, stable : l'identifiant provisoire d'une tâche tapée
+   * ici, gardé après qu'elle a reçu son vrai identifiant. Sans elle, le
+   * changement d'identifiant démontait la ligne et la remontait — un second
+   * fondu d'entrée, un panneau ouvert qui se refermait.
+   */
+  cle?: string;
 };
 
 export type ObjectifVue = {
@@ -455,7 +462,14 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       writeJSON(CLE_CACHE, data);
 
       if (nouveau) {
-        if (data.taches) setTaches(data.taches.map(versTacheVue));
+        if (data.taches) {
+          const fraiches = data.taches.map(versTacheVue);
+          // Les clés d'affichage survivent à la relecture.
+          setTaches((prec) => {
+            const cles = new Map(prec.filter((t) => t.cle).map((t) => [t.id, t.cle]));
+            return cles.size === 0 ? fraiches : fraiches.map((t) => (cles.has(t.id) ? { ...t, cle: cles.get(t.id) } : t));
+          });
+        }
         if (data.ops) setOps(data.ops.map(versOp));
         if (data.objectifs) setObjectifs(data.objectifs.map(versObjectifVue));
         if (data.buts) setButs(data.buts.map(versButVue));
@@ -780,7 +794,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
        * l'écran, le temps que la relecture suivante les ramène.
        */
       setTaches((prec) =>
-        prec.map((t) => (t.id === cleTemp ? { ...t, id: vraie.id, creeLe: vraie.creeLe ?? t.creeLe } : t)),
+        prec.map((t) =>
+          t.id === cleTemp ? { ...t, id: vraie.id, cle: cleTemp, creeLe: vraie.creeLe ?? t.creeLe } : t,
+        ),
       );
       return true;
     },

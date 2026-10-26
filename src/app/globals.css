@@ -96,7 +96,24 @@
   --verre-bord: rgba(255, 255, 255, 0.08);
   --verre-reflet: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --verre-ombre: 0 24px 60px -28px rgba(0, 0, 0, 0.75);
-  --verre-flou: blur(40px) saturate(170%);
+  /*
+   * Un flou plus court qu'avant (40 → 22 px) : le fond est fait de nappes
+   * déjà douces, un grand rayon ne s'y voyait pas — et il coûtait cher à
+   * chaque image du défilement, surtout sur iPhone. C'était une part de ce
+   * qui manquait de fluidité.
+   */
+  --verre-flou: blur(22px) saturate(160%);
+
+  /*
+   * LES COURBES DU MOUVEMENT, celles d'Apple.
+   *
+   * `--ressort` est la courbe des feuilles et des transitions d'iOS : un
+   * départ franc, une arrivée qui se pose sans à-coup. `--sortie` accélère en
+   * partant — ce qui s'en va n'a pas à se faire attendre.
+   */
+  --ressort: cubic-bezier(0.32, 0.72, 0, 1);
+  --doux: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sortie: cubic-bezier(0.4, 0, 1, 1);
   /* Le verre « posé sur le verre » : lignes, champs, boutons. Sans flou — un
      second flou sur le premier coûte cher au téléphone et ne se voit pas. */
   --verre-doux: rgba(255, 255, 255, 0.06);
@@ -175,7 +192,21 @@ body {
 }
 
 ::selection {
-  background: rgba(63, 184, 207, 0.35);
+  background: rgba(10, 132, 255, 0.35);
+}
+
+/*
+ * CE QUI TRAHIT UNE PAGE WEB SUR IPHONE : le carré gris qui clignote sous le
+ * doigt à chaque appui. Une application native n'en a pas.
+ */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Le focus au clavier : l'anneau bleu d'Apple, jamais à la souris. */
+:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.9);
+  outline-offset: 2px;
 }
 
 /*
@@ -640,6 +671,256 @@ textarea::placeholder {
 }
 
 /* ------------------------------------------------------------------ */
+/* LA FLUIDITÉ                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * LE RETOUR SOUS LE DOIGT. Ce qu'on presse s'enfonce d'un rien, et revient
+ * en ressort : c'est la moitié de ce qu'on appelle « fluide » sur un iPhone.
+ */
+.check-row,
+.capsule,
+.carte-haute,
+.bouton-ligne {
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.22s var(--ressort);
+}
+.check-row:active {
+  transform: scale(0.988);
+  background: rgba(255, 255, 255, 0.07);
+}
+.capsule:active,
+.bouton-ligne:active {
+  transform: scale(0.94);
+}
+.carte-haute.cursor-grab:active {
+  transform: scale(0.985);
+}
+
+/*
+ * LA PASTILLE D'ONGLET QUI GLISSE — le contrôle segmenté d'iOS.
+ *
+ * Elle ne saute plus d'un onglet à l'autre : elle s'y déplace, et sa largeur
+ * suit celle du mot. La position est posée par le code ; la courbe, ici.
+ */
+.indicateur-onglet {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 2px 10px -4px rgba(0, 0, 0, 0.5);
+}
+.indicateur-onglet.anime {
+  transition:
+    transform 0.42s var(--ressort),
+    width 0.42s var(--ressort);
+}
+
+/*
+ * LA BARRE D'ONGLETS.
+ *
+ * Grand écran : une capsule au centre du bandeau. Téléphone : une capsule de
+ * verre FLOTTANTE en bas de l'écran, à portée de pouce — la barre d'onglets
+ * d'iOS 26. Elle vit hors du bandeau : un ancêtre flouté devient le repère
+ * des éléments `fixed`, et elle se serait collée au bandeau au lieu de
+ * l'écran.
+ */
+.barre-onglets {
+  position: fixed;
+  z-index: 55;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(40, 42, 52, 0.62), rgba(28, 29, 36, 0.62));
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 14px 40px -12px rgba(0, 0, 0, 0.7);
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.barre-onglets > button {
+  position: relative;
+  z-index: 1;
+}
+@media (min-width: 1024px) {
+  .barre-onglets {
+    bottom: auto;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035));
+  }
+}
+
+/* La gouttière : 16 px au téléphone, 28 px sur grand écran, jamais moins
+   que l'encoche d'un iPhone tenu en paysage. */
+.gouttiere {
+  --gouttiere: 16px;
+  padding-left: max(var(--gouttiere), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gouttiere), env(safe-area-inset-right, 0px));
+}
+@media (min-width: 1024px) {
+  .gouttiere {
+    --gouttiere: 28px;
+  }
+}
+
+/* Au téléphone, la page s'arrête AU-DESSUS de la barre flottante. */
+.contenu-vues {
+  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .contenu-vues {
+    padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/*
+ * LA FEUILLE — elle monte du bas au téléphone, elle éclot au centre sur grand
+ * écran ; et elle REPART par le même chemin au lieu de disparaître d'un coup.
+ */
+.voile {
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: voileEntree 0.3s ease both;
+}
+.voile.sortie {
+  animation: voileSortie 0.22s ease both;
+}
+@keyframes voileEntree {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes voileSortie {
+  to {
+    opacity: 0;
+  }
+}
+.feuille {
+  animation: feuilleMonte 0.46s var(--ressort) both;
+}
+.feuille.sortie {
+  animation: feuilleDescend 0.24s var(--sortie) both;
+}
+@keyframes feuilleMonte {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes feuilleDescend {
+  to {
+    transform: translateY(105%);
+  }
+}
+@media (min-width: 640px) {
+  .feuille {
+    animation-name: feuilleEclot;
+    animation-duration: 0.32s;
+  }
+  .feuille.sortie {
+    animation-name: feuilleSeFerme;
+    animation-duration: 0.18s;
+  }
+}
+@keyframes feuilleEclot {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+}
+@keyframes feuilleSeFerme {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* Les colonnes à l'horizontale ne tirent pas le « retour arrière » de Safari. */
+.colonnes-horizontales,
+.colonnes-etapes,
+.rangee-widgets {
+  overscroll-behavior-x: contain;
+}
+
+/*
+ * L'ANNEAU DE PROGRESSION — celui de l'app Forme d'Apple, à la place des
+ * barres. Une barre par objectif, dans une colonne de dix objectifs, faisait
+ * un empilement de pavés identiques : « ça fait très bloc ».
+ */
+.anneau {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.anneau circle.valeur {
+  transition: stroke-dashoffset 0.7s var(--ressort);
+}
+
+/*
+ * LES WIDGETS DU PROJET 90 : une rangée qui défile à l'horizontale au
+ * téléphone, cinq tuiles côte à côte sur grand écran.
+ */
+.rangee-widgets {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.rangee-widgets::-webkit-scrollbar {
+  display: none;
+}
+.rangee-widgets > * {
+  flex: 0 0 44%;
+  scroll-snap-align: start;
+}
+@media (min-width: 700px) {
+  .rangee-widgets > * {
+    flex-basis: 30%;
+  }
+}
+@media (min-width: 1100px) {
+  .rangee-widgets {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    overflow: visible;
+  }
+}
+
+/*
+ * UNE COLONNE LÉGÈRE : un verre plus discret que celui d'une carte. Les
+ * objectifs y sont des RANGÉES séparées par un filet, plus des cartes posées
+ * dans une carte.
+ */
+.colonne-legere {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+.colonne-legere::before {
+  opacity: 0.6;
+}
+.rangee-but + .rangee-but {
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* ------------------------------------------------------------------ */
 /* UNE LIGNE DE TODO                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -951,7 +1232,7 @@ textarea::placeholder {
 @keyframes fadeUp {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -1001,7 +1282,7 @@ textarea::placeholder {
   animation: logoSweep 2.6s 0.6s ease-in-out infinite;
 }
 .entree-vue {
-  animation: fadeUp 0.32s ease both;
+  animation: fadeUp 0.34s var(--ressort) both;
 }
 
 @keyframes entreeLigne {
@@ -1058,6 +1339,23 @@ textarea::placeholder {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* La coche se DESSINE, du coin bas jusqu'à la pointe — comme dans Rappels. */
+@keyframes traceCoche {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.coche-svg path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.coche-svg.trace path {
+  animation: traceCoche 0.28s 0.06s var(--doux) both;
 }
 
 @keyframes onde {
@@ -1225,8 +1523,19 @@ textarea::placeholder {
   .logo-mark,
   .logo-word,
   .logo-sweep,
-  .pulse-dot {
+  .pulse-dot,
+  .voile,
+  .feuille,
+  .coche-svg.trace path {
     animation: none;
+  }
+  .indicateur-onglet.anime,
+  .anneau circle.valeur,
+  .check-row,
+  .capsule,
+  .carte-haute,
+  .bouton-ligne {
+    transition: none;
   }
   /* La couleur suffit à dire l'arrivée : on garde le mot, on ôte le halo. */
   .sync-fraiche {

@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, Ref } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * LES BRIQUES DU COCKPIT, en verre — à la manière d'Apple.
@@ -411,4 +413,293 @@ export function formaterJour(jour: string | undefined): string {
   if (!jour || !/^\d{4}-\d{2}-\d{2}$/.test(jour)) return "—";
   const [, m, j] = jour.split("-");
   return `${Number(j)} ${MOIS[Number(m) - 1] ?? ""}`.trim();
+}
+
+/* ------------------------------------------------------------------ */
+/* Les pièces de la fluidité                                           */
+/* ------------------------------------------------------------------ */
+
+/** Le mouvement est-il coupé dans les réglages du système ? */
+function mouvementReduit(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * LA COCHE, dessinée — un trait qui part du coin bas et file vers la pointe,
+ * comme dans Rappels. `trace` la fait se dessiner ; sinon elle est là.
+ */
+export function Coche({ trace = false, taille = 12 }: { trace?: boolean; taille?: number }) {
+  return (
+    <svg
+      className={`coche-svg ${trace ? "trace" : ""}`}
+      width={taille}
+      height={taille}
+      viewBox="0 0 14 14"
+      aria-hidden
+    >
+      <path
+        d="M2.8 7.3 L5.7 10.1 L11.2 3.9"
+        pathLength={1}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * L'ANNEAU DE PROGRESSION — celui de l'app Forme.
+ *
+ * Plus parlant qu'une barre et beaucoup plus compact : une colonne de dix
+ * objectifs ne devient plus un empilement de dix pavés identiques.
+ */
+export function Anneau({
+  pct,
+  taille = 26,
+  epaisseur = 3.5,
+  couleur = "var(--color-ble)",
+  children,
+  etiquette,
+}: {
+  pct: number;
+  taille?: number;
+  epaisseur?: number;
+  couleur?: string;
+  children?: ReactNode;
+  etiquette?: string;
+}) {
+  const borne = Math.max(0, Math.min(100, Math.round(pct)));
+  const r = (taille - epaisseur) / 2;
+  const tour = 2 * Math.PI * r;
+  return (
+    <span
+      className="anneau"
+      style={{ width: taille, height: taille }}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={borne}
+      aria-label={etiquette}
+    >
+      <svg width={taille} height={taille} viewBox={`0 0 ${taille} ${taille}`} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={taille / 2} cy={taille / 2} r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={epaisseur} />
+        {borne > 0 && (
+          <circle
+            className="valeur"
+            cx={taille / 2}
+            cy={taille / 2}
+            r={r}
+            fill="none"
+            stroke={couleur}
+            strokeWidth={epaisseur}
+            strokeLinecap="round"
+            strokeDasharray={tour}
+            strokeDashoffset={tour * (1 - borne / 100)}
+          />
+        )}
+      </svg>
+      {children && <span className="absolute inset-0 flex items-center justify-center">{children}</span>}
+    </span>
+  );
+}
+
+/**
+ * LE DÉPLIANT : ce qui s'ouvre se DÉPLIE, ce qui se ferme se replie.
+ *
+ * Un panneau qui apparaît d'un coup pousse tout ce qui est dessous d'un seul
+ * cran — c'est ce saut qu'on ressent comme un manque de fluidité. Ici la
+ * hauteur passe de zéro à sa valeur réelle (et retour), avec la courbe des
+ * feuilles d'iOS, et le contenu reste dans la page le temps de se replier.
+ */
+export function Depliant({ ouvert, children }: { ouvert: boolean; children: ReactNode }) {
+  const [rendu, setRendu] = useState(ouvert);
+  const ref = useRef<HTMLDivElement>(null);
+  /** Le contenu est-il déplié à l'écran (et non replié ou en train de l'être) ? */
+  const deplie = useRef(ouvert);
+  const premier = useRef(true);
+
+  // Ouvert : le contenu est monté tout de suite, pendant le rendu — le motif
+  // que React recommande pour un état qui suit une propriété.
+  if (ouvert && !rendu) setRendu(true);
+
+  useLayoutEffect(() => {
+    // Rien à animer au premier affichage : déjà ouvert, il est simplement là.
+    if (premier.current) {
+      premier.current = false;
+      deplie.current = ouvert;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const reduit = mouvementReduit();
+    const enCours = el.getAnimations();
+    // D'où l'on part : zéro pour un contenu qui vient d'être monté, la hauteur
+    // à l'instant pour un geste qui en interrompt un autre (rouvrir pendant
+    // qu'il se replie ne doit pas sauter).
+    const depart = deplie.current || enCours.length > 0 ? el.getBoundingClientRect().height : 0;
+    enCours.forEach((a) => a.cancel());
+
+    if (ouvert) {
+      deplie.current = true;
+      el.animate(
+        [
+          { height: `${depart}px`, opacity: depart > 0 ? 1 : 0 },
+          { height: `${el.scrollHeight}px`, opacity: 1 },
+        ],
+        { duration: reduit ? 0 : 340, easing: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      );
+      return;
+    }
+
+    const anim = el.animate(
+      [
+        { height: `${depart}px`, opacity: 1 },
+        { height: "0px", opacity: 0 },
+      ],
+      { duration: reduit ? 0 : 220, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" },
+    );
+    anim.onfinish = () => {
+      deplie.current = false;
+      setRendu(false);
+    };
+  }, [ouvert]);
+
+  if (!rendu) return null;
+  return (
+    <div ref={ref} style={{ overflow: "hidden" }}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * LE GRAND TITRE DE PAGE, à la manière des applications d'Apple : un titre
+ * net en tête, une ligne de contexte dessous, les actions à droite.
+ */
+export function EnTeteVue({
+  titre,
+  sousTitre,
+  children,
+}: {
+  titre: string;
+  sousTitre?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 px-[2px] pt-[2px]">
+      <div className="min-w-0">
+        <h1 className="text-[30px] font-bold leading-[1.1] tracking-[-0.025em]">{titre}</h1>
+        {sousTitre && <div className="mt-[4px] text-[14px] text-white/50">{sousTitre}</div>}
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-[8px]">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * LA FEUILLE — par-dessus la page, dans un portail sous `<body>`.
+ *
+ * Elle monte du bas au téléphone et éclot au centre sur grand écran ; et elle
+ * REPART par le même chemin avant de disparaître. Rendue dans un portail : à
+ * l'intérieur d'une vue, elle prenait pour repère l'ancêtre animé par
+ * l'entrée de la vue et se plaçait par rapport à la page, pas à l'écran.
+ *
+ * `children` reçoit `fermer`, pour qu'un bouton du contenu referme la feuille
+ * avec son animation.
+ */
+export function Feuille({
+  titre,
+  sousTitre,
+  etiquette,
+  surFermer,
+  children,
+}: {
+  titre: ReactNode;
+  sousTitre?: ReactNode;
+  etiquette: string;
+  surFermer: () => void;
+  children: (fermer: () => void) => ReactNode;
+}) {
+  const [sortie, setSortie] = useState(false);
+  const fermer = useCallback(() => {
+    // Sans mouvement, pas d'animation de sortie à attendre.
+    if (mouvementReduit()) surFermer();
+    else setSortie(true);
+  }, [surFermer]);
+
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key === "Escape") fermer();
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [fermer]);
+
+  /*
+   * LE FILET DE LA SORTIE. La feuille se retire à la fin de son animation —
+   * mais une animation peut ne jamais finir : application passée en
+   * arrière-plan pendant la fermeture, onglet masqué. La feuille restait alors
+   * à l'écran, invisible et posée sur tout le reste, à intercepter chaque
+   * clic. Passé 400 ms, elle se retire de toute façon.
+   */
+  const surFermerRef = useRef(surFermer);
+  useEffect(() => {
+    surFermerRef.current = surFermer;
+  });
+  useEffect(() => {
+    if (!sortie) return;
+    const t = window.setTimeout(() => surFermerRef.current(), 400);
+    return () => window.clearTimeout(t);
+  }, [sortie]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={etiquette}
+    >
+      <button
+        type="button"
+        aria-label="Fermer"
+        onClick={fermer}
+        className={`voile absolute inset-0 cursor-default ${sortie ? "sortie" : ""}`}
+      />
+      <div
+        className={`feuille carte relative w-full space-y-[14px] rounded-b-none p-[18px] sm:max-w-[480px] sm:rounded-b-[22px] ${
+          sortie ? "sortie" : ""
+        }`}
+        style={{
+          paddingBottom: "calc(18px + env(safe-area-inset-bottom, 0px))",
+          background: "rgba(28,29,36,0.84)",
+          maxHeight: "92svh",
+          overflowY: "auto",
+        }}
+        onAnimationEnd={(e) => {
+          if (sortie && e.target === e.currentTarget) surFermer();
+        }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[19px] font-semibold leading-[1.25] tracking-[-0.01em]">{titre}</div>
+            {sousTitre && <div className="nombres mt-[2px] text-[13px] text-white/50">{sousTitre}</div>}
+          </div>
+          <button
+            type="button"
+            onClick={fermer}
+            aria-label="Fermer la fiche"
+            className="capsule flex-none"
+            style={{ width: 32, minHeight: 32, padding: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+        {children(fermer)}
+      </div>
+    </div>,
+    document.body,
+  );
 }
