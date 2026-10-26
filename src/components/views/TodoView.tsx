@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LISTES, blocDeListe, listeDe, type IdListe } from "@/lib/p90";
 import { emojiVisible } from "@/lib/emoji-tache";
 import { useCockpit, type TacheVue } from "@/lib/p90-context";
@@ -60,72 +60,21 @@ export function TodoView() {
   const [entree, setEntree] = useState(true);
   const [confirmeCloture, setConfirmeCloture] = useState(false);
 
-  /**
-   * LA SUPPRESSION EN SURSIS.
-   *
-   * La ligne quitte l'écran tout de suite — c'est ce qu'on attend d'une
-   * suppression — mais l'écriture ne part qu'au bout de six secondes. Annuler
-   * ne recrée rien : la tâche n'a jamais quitté la liste, elle reparaît à sa
-   * place.
-   */
-  const [aSupprimer, setASupprimer] = useState<{ id: string; titre: string } | null>(null);
-  const annuleRef = useRef(false);
-
-  /*
-   * La fonction de suppression, tenue en ref — et c'était un vrai défaut.
-   *
-   * Elle change d'identité à chaque modification de la liste. Placée dans les
-   * dépendances du compte à rebours, elle le faisait REPARTIR à chaque coche,
-   * à chaque relecture qui rapportait du neuf : le nettoyage envoyait la
-   * suppression sur-le-champ, puis un nouveau minuteur la renvoyait six
-   * secondes plus tard. Résultat : supprimer une tâche puis en cocher une
-   * autre rendait « Annuler » inopérant, et le second envoi affichait un faux
-   * échec.
-   */
-  const supprimerRef = useRef(supprimerTache);
-  useEffect(() => {
-    supprimerRef.current = supprimerTache;
-  });
-
   useEffect(() => {
     if (!entree || taches.length === 0) return;
     const t = setTimeout(() => setEntree(false), 700);
     return () => clearTimeout(t);
   }, [entree, taches.length]);
 
-  /*
-   * Le compte à rebours de la suppression. Son nettoyage couvre TOUS les
-   * départs — délai écoulé, seconde suppression qui prend la place, changement
-   * d'onglet : dans les trois cas l'effacement part. Seul « Annuler » lève le
-   * drapeau qui l'en empêche.
-   */
-  useEffect(() => {
-    if (!aSupprimer) return;
-    const { id } = aSupprimer;
-    let parti = false;
-    const partir = () => {
-      if (parti) return;
-      parti = true;
-      void supprimerRef.current(id);
-    };
-    const minuterie = setTimeout(() => {
-      partir();
-      setASupprimer((p) => (p?.id === id ? null : p));
-    }, 6000);
-    return () => {
-      clearTimeout(minuterie);
-      if (annuleRef.current) {
-        annuleRef.current = false;
-        return;
-      }
-      partir();
-    };
-  }, [aSupprimer]);
-
   /* ---------- Ce qui s'affiche ---------- */
 
-  const enSursis = aSupprimer?.id;
-  const vivantes = useMemo(() => taches.filter((t) => t.id !== enSursis), [taches, enSursis]);
+  /*
+   * Plus de suppression en sursis ni de bandeau « … part aux Oubliés » avec son
+   * compte à rebours — Twaylo : « tej le bandeau long quand je suppr qlq
+   * chose ». La tâche part tout de suite, aux Oubliés : c'est là qu'on la
+   * reprend si on s'est trompé.
+   */
+  const vivantes = taches;
   const ordreAffiche = useMemo(() => vivantes.map((t) => t.id), [vivantes]);
 
   /*
@@ -302,27 +251,6 @@ export function TodoView() {
         </div>
       )}
 
-      {aSupprimer && (
-        <div
-          role="status"
-          className="entree-ligne relative flex items-center gap-[10px] overflow-hidden rounded-[20px] px-[14px] py-[10px]"
-          style={{ background: "rgba(255,61,139,0.14)", border: "1px solid rgba(255,61,139,0.38)" }}
-        >
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
-            « {aSupprimer.titre} » part aux Oubliés
-          </span>
-          <Bouton
-            onClick={() => {
-              annuleRef.current = true;
-              setASupprimer(null);
-            }}
-          >
-            Annuler
-          </Bouton>
-          <span className="sablier" aria-hidden />
-        </div>
-      )}
-
       {!pret && taches.length === 0 && (
         <Carte>
           <Vide>Lecture des tâches…</Vide>
@@ -434,7 +362,7 @@ export function TodoView() {
                       void basculerFaite(t.id);
                     }}
                     surModifier={(patch) => void modifierTache(t.id, patch)}
-                    surSupprimer={() => setASupprimer({ id: t.id, titre: t.titre })}
+                    surSupprimer={() => void supprimerTache(t.id)}
                     surGel={() => void basculerGel(t.id)}
                     rowRef={setRowRef(t.id)}
                     surPointerDown={(e, poignee) => {

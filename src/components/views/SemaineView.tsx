@@ -19,6 +19,7 @@ import {
   composerTitre,
   decalerJour,
   disposerBlocs,
+  estPause,
   formaterHeure,
   jourAuProgramme,
   joursDeLaSemaine,
@@ -1047,7 +1048,7 @@ function BlocAgenda({
       aria-label={`${el.intitule}, ${plageEnClair(debut, el.fin)}${el.t.faite ? ", faite" : ""}`}
       className={`bloc-agenda ${el.t.faite ? "faite" : ""} ${tire ? "tire" : ""} ${court ? "court" : ""} ${
         etroit ? "etroit" : ""
-      }`}
+      } ${estPause(el.t.titre) ? "pause" : ""}`}
       style={
         {
           top: (debut / 60) * hauteur,
@@ -1110,7 +1111,7 @@ function PuceJournee({
       data-bloc="journee"
       data-cle={el.cle}
       aria-label={`${el.intitule}, toute la journée${el.t.faite ? ", faite" : ""}`}
-      className={`puce-journee ${el.t.faite ? "faite" : ""} ${tire ? "tire" : ""}`}
+      className={`puce-journee ${el.t.faite ? "faite" : ""} ${tire ? "tire" : ""} ${estPause(el.t.titre) ? "pause" : ""}`}
       style={{ "--c": el.couleur } as CSSProperties}
       onPointerDown={surPrendre}
       onClick={surOuvrir}

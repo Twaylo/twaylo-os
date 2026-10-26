@@ -311,13 +311,32 @@ export function estHorizon(v: unknown): v is Horizon {
  * plus.
  */
 function lireHeure(texte: string): { minutes: number; longueur: number } | null {
-  const m = texte.match(/^(\d{1,2})\s*([hH:])\s*(\d{2})?(?!\d)/);
+  const m = texte.match(/^(\d{1,2})\s*([hH:])\s*(\d{2})?(?![\d\p{L}])/u);
   if (!m) return null;
   const h = Number(m[1]);
   const min = m[3] === undefined ? null : Number(m[3]);
   if (min === null && m[2] === ":") return null;
   if (h > 23 || (min !== null && min > 59)) return null;
+  // « 2h de montage », « 1h30 d'appel » : une DURÉE, pas une heure.
+  if (/^\s+d(?:e\s|['’])/i.test(texte.slice(m[0].length))) return null;
   return { minutes: h * 60 + (min ?? 0), longueur: m[0].length };
+}
+
+/** Une heure, puis peut-être « - 16h » / « à 16h » : la plage qui commence à `i`. */
+function lirePlage(titre: string, i: number): { debut: number; fin: number | null; finTexte: number } | null {
+  const a = lireHeure(titre.slice(i));
+  if (!a) return null;
+  let finTexte = i + a.longueur;
+  let fin: number | null = null;
+  const sep = titre.slice(finTexte).match(/^\s*(?:-|–|—|à)\s*/);
+  if (sep) {
+    const b = lireHeure(titre.slice(finTexte + sep[0].length));
+    if (b && b.minutes > a.minutes) {
+      fin = b.minutes;
+      finTexte += sep[0].length + b.longueur;
+    }
+  }
+  return { debut: a.minutes, fin, finTexte };
 }
 
 /** 840 → « 14h », 870 → « 14h30 » : la forme unique de l'heure dans l'OS. */
@@ -343,20 +362,34 @@ export function formaterHeure(minutes: number): string {
  */
 export function plageEnTete(titre: string): { debut: number | null; fin: number | null; reste: string } {
   const marge = titre.length - titre.trimStart().length;
-  const a = lireHeure(titre.slice(marge));
-  if (!a) return { debut: null, fin: null, reste: titre };
-  let i = marge + a.longueur;
-  let fin: number | null = null;
-  const sep = titre.slice(i).match(/^\s*(?:-|–|—|à)\s*/);
-  if (sep) {
-    const b = lireHeure(titre.slice(i + sep[0].length));
-    if (b && b.minutes > a.minutes) {
-      fin = b.minutes;
-      i += sep[0].length + b.longueur;
-    }
+  const enTete = lirePlage(titre, marge);
+  if (enTete) {
+    const apres = titre.slice(enTete.finTexte).match(/^\s*(?:[:\-–—]\s*)?/)?.[0].length ?? 0;
+    return { debut: enTete.debut, fin: enTete.fin, reste: titre.slice(enTete.finTexte + apres).trim() };
   }
-  const apres = titre.slice(i).match(/^\s*(?:[:\-–—]\s*)?/)?.[0].length ?? 0;
-  return { debut: a.minutes, fin, reste: titre.slice(i + apres).trim() };
+
+  /*
+   * PLUS LOIN DANS LE TEXTE — Twaylo : « dès qu'il y a une heure je veux une
+   * bulle ». « réveil 11h », « RDV dentiste à 14h30 », « sport de 18h à
+   * 19h30 » : l'heure sort du texte pour aller dans la bulle, avec le petit
+   * mot qui l'amenait (« à », « vers », « de »…), et l'intitulé se referme
+   * sans elle. Une heure ne se lit qu'en début de mot (« x264h » n'en est
+   * pas une) ; une durée (« 2h de montage ») non plus.
+   */
+  // `matchAll` et non une boucle sur `exec` : le début du texte est une
+  // correspondance VIDE, sur laquelle `exec` repartait du même point sans fin.
+  for (const m of titre.matchAll(/(?:^|[\s(\[,;:/—–-])(?=\d)/g)) {
+    const i = (m.index ?? 0) + m[0].length;
+    const plage = lirePlage(titre, i);
+    if (!plage) continue;
+    const avant = titre.slice(0, i).replace(/(?:^|\s)(?:à|a|vers|dès|des|de|@)\s*$/i, "");
+    const reste = `${avant} ${titre.slice(plage.finTexte)}`
+      .replace(/\s+/g, " ")
+      .replace(/^[\s:\-–—,]+|[\s:\-–—,]+$/g, "")
+      .trim();
+    return { debut: plage.debut, fin: plage.fin, reste };
+  }
+  return { debut: null, fin: null, reste: titre };
 }
 
 /**
@@ -384,6 +417,28 @@ export function composerTitre(debut: number | null, fin: number | null, reste: s
   if (debut === null) return texte;
   const heure = fin !== null && fin > debut ? `${formaterHeure(debut)}-${formaterHeure(fin)}` : formaterHeure(debut);
   return texte ? `${heure} : ${texte}` : heure;
+}
+
+/**
+ * Une PAUSE — « pause », « dej », « repos »… — qui aère la journée.
+ *
+ * Demande de Twaylo : « quand j'écris pause, dej, repos ça met un motif sur
+ * toute la bande, ça permet de mieux aérer les journées ». Une tâche dont
+ * l'intitulé COMMENCE par un de ces mots, en quatre mots au plus (« Pause
+ * café », « Déj avec Tom ») ; pas « Mettre en pause l'abonnement ». L'emoji
+ * et l'heure ne comptent pas, ni les accents ni les majuscules.
+ */
+const MOTS_PAUSE = new Set(["pause", "dej", "dejeuner", "repas", "repos", "sieste", "break", "lunch"]);
+
+export function estPause(titre: string): boolean {
+  const sansEmoji = titre.replace(/^[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}]+/u, "");
+  const mots = plageEnTete(sansEmoji)
+    .reste.normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return mots.length > 0 && mots.length <= 4 && MOTS_PAUSE.has(mots[0]);
 }
 
 /* ------------------------------------------------------------------ */

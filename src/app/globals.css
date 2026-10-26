@@ -1081,6 +1081,32 @@ textarea::placeholder {
 }
 
 /*
+ * LES PAUSES — « pause », « dej », « repos » : des rayures sur toute la
+ * bande (voir `estPause`). Elles aèrent la journée : l'œil voit d'un coup où
+ * la liste respire, comme les plages « absent » d'un agenda.
+ */
+.ligne-pause {
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.07) 0 7px,
+    rgba(255, 255, 255, 0.015) 7px 14px
+  );
+}
+.ligne-pause .check-row {
+  color: rgba(245, 245, 247, 0.78);
+}
+.bloc-agenda.pause,
+.puce-journee.pause {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0 7px,
+    rgba(255, 255, 255, 0.035) 7px 14px
+  );
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.4);
+}
+
+/*
  * L'instant où elle gèle : un souffle froid qui traverse la ligne.
  *
  * Le double-appui coche puis décoche en une fraction de seconde — sans ce
@@ -1472,34 +1498,6 @@ textarea::placeholder {
   animation: balayage 0.7s ease-out forwards;
 }
 
-/* ------------------------------------------------------------------ */
-/* Le sursis de suppression                                            */
-/* ------------------------------------------------------------------ */
-
-/*
- * Le sablier de la suppression différée.
- *
- * Six secondes pour annuler, et il faut les VOIR passer : un bandeau qui
- * disparaît sans prévenir laisse croire qu'on a encore le temps.
- */
-@keyframes sablier {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
-}
-.sablier {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 2px;
-  width: 100%;
-  transform-origin: left;
-  background: var(--color-mag);
-  animation: sablier 6s linear both;
-}
 
 /* ------------------------------------------------------------------ */
 /* Le programme de la semaine                                          */
@@ -2091,8 +2089,5 @@ textarea::placeholder {
   .sync-fraiche {
     animation: none;
     border-color: color-mix(in srgb, var(--color-cya) 55%, transparent);
-  }
-  .sablier {
-    animation-duration: 6s;
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { heureEnTete, joursRestants, type IdBloc, type MetaTache } from "@/lib/p90";
+import { estPause, heureEnTete, joursRestants, type IdBloc, type MetaTache } from "@/lib/p90";
 import { emojiVisible, sansEmoji } from "@/lib/emoji-tache";
 import type { TacheVue } from "@/lib/p90-context";
 import { Champ, Coche, Depliant, Eclats, formaterJour } from "@/components/p90/ui";
@@ -156,6 +156,8 @@ export function LigneTache({
     >
       <div
         className={`group relative flex items-stretch gap-[4px] ${tache.gelee ? "tache-gelee" : ""} ${
+          estPause(tache.titre) ? "ligne-pause" : ""
+        } ${
           tire ? "opacity-0" : ""
         }`}
         onPointerDown={(e) => surPointerDown(e, false)}
