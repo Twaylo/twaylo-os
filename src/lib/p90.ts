@@ -305,31 +305,192 @@ export function estHorizon(v: unknown): v is Horizon {
 /* ------------------------------------------------------------------ */
 
 /**
+ * Une heure lue en tête d'un texte : « 14h », « 14h30 », « 14 h 30 »,
+ * « 14:30 ». Sans minutes, seul « h » fait une heure (« 14:lire » n'en est pas
+ * une) ; et une heure impossible (« 25h », « 14h75 ») n'en est pas une non
+ * plus.
+ */
+function lireHeure(texte: string): { minutes: number; longueur: number } | null {
+  const m = texte.match(/^(\d{1,2})\s*([hH:])\s*(\d{2})?(?!\d)/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = m[3] === undefined ? null : Number(m[3]);
+  if (min === null && m[2] === ":") return null;
+  if (h > 23 || (min !== null && min > 59)) return null;
+  return { minutes: h * 60 + (min ?? 0), longueur: m[0].length };
+}
+
+/** 840 → « 14h », 870 → « 14h30 » : la forme unique de l'heure dans l'OS. */
+export function formaterHeure(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const min = minutes % 60;
+  return min === 0 ? `${h}h` : `${h}h${String(min).padStart(2, "0")}`;
+}
+
+/**
+ * L'heure — ou la PLAGE — tapée en tête d'une tâche, en minutes depuis minuit.
+ *
+ * « 14h : lire » → début 14h, pas de fin, intitulé « lire ».
+ * « 14h-16h : tournage » → de 14h à 16h. Séparateurs de plage reconnus :
+ * « - », « – », « — » et « à » (« 9h à 11h »). Une fin qui ne vient pas après
+ * le début n'est pas une fin : « 14h - 3h de montage » garde « 3h de montage »
+ * pour intitulé.
+ *
+ * C'est le TITRE qui porte l'heure, et c'est délibéré : Twaylo l'écrit déjà
+ * ainsi dans sa todo, il la voit et la corrige là où il tape. Le programme de
+ * la semaine la lit d'ici, et la réécrit ici quand on y déplace un bloc —
+ * une seule vérité, visible partout.
+ */
+export function plageEnTete(titre: string): { debut: number | null; fin: number | null; reste: string } {
+  const marge = titre.length - titre.trimStart().length;
+  const a = lireHeure(titre.slice(marge));
+  if (!a) return { debut: null, fin: null, reste: titre };
+  let i = marge + a.longueur;
+  let fin: number | null = null;
+  const sep = titre.slice(i).match(/^\s*(?:-|–|—|à)\s*/);
+  if (sep) {
+    const b = lireHeure(titre.slice(i + sep[0].length));
+    if (b && b.minutes > a.minutes) {
+      fin = b.minutes;
+      i += sep[0].length + b.longueur;
+    }
+  }
+  const apres = titre.slice(i).match(/^\s*(?:[:\-–—]\s*)?/)?.[0].length ?? 0;
+  return { debut: a.minutes, fin, reste: titre.slice(i + apres).trim() };
+}
+
+/**
  * « 14h : lire » → l'heure « 14h » et l'intitulé « lire ».
  *
  * Twaylo note souvent ses tâches avec l'heure devant. L'écran la sort du
  * texte pour la poser dans une bulle : on lit l'heure d'un coup d'œil, et
- * l'intitulé commence enfin par ce qu'il y a à faire.
- *
- * Formes reconnues, en tête seulement : « 14h », « 14h30 », « 14 h 30 »,
- * « 14:30 », « 9h », suivies ou non d'un séparateur (« : », « - », « — »).
- * L'heure est rendue sous une seule forme, « 14h30 », quelle qu'ait été la
- * saisie. Rien n'est réécrit en base : le titre reste celui qui a été tapé,
- * c'est l'affichage seul qui le découpe.
- *
- * Une heure impossible (« 25h », « 14h75 ») n'est pas une heure : le texte
- * reste intact plutôt que de produire une bulle absurde.
+ * l'intitulé commence enfin par ce qu'il y a à faire. Une plage se lit
+ * « 14h–16h ». L'heure est rendue sous une seule forme, « 14h30 », quelle
+ * qu'ait été la saisie ; le titre, lui, n'est pas réécrit pour autant.
  */
 export function heureEnTete(titre: string): { heure: string | null; reste: string } {
-  const m = titre.match(/^\s*(\d{1,2})\s*(?:h|H|:)\s*(\d{2})?(?![\d])\s*(?:[:\-–—]\s*)?/);
-  if (!m) return { heure: null, reste: titre };
-  const h = Number(m[1]);
-  const min = m[2] === undefined ? null : Number(m[2]);
-  // « 14:lire » sans minutes n'est pas une heure : seul « h » s'en passe.
-  if (min === null && !/h/i.test(m[0])) return { heure: null, reste: titre };
-  if (h > 23 || (min !== null && min > 59)) return { heure: null, reste: titre };
-  const heure = min === null || min === 0 ? `${h}h` : `${h}h${String(min).padStart(2, "0")}`;
-  return { heure, reste: titre.slice(m[0].length).trim() };
+  const { debut, fin, reste } = plageEnTete(titre);
+  if (debut === null) return { heure: null, reste: titre };
+  const heure = fin === null ? formaterHeure(debut) : `${formaterHeure(debut)}–${formaterHeure(fin)}`;
+  return { heure, reste };
+}
+
+/**
+ * L'inverse : un intitulé avec son heure en tête, à la façon de Twaylo
+ * (« 14h : lire », « 14h-16h : tournage »). Sans heure, l'intitulé seul.
+ */
+export function composerTitre(debut: number | null, fin: number | null, reste: string): string {
+  const texte = reste.trim();
+  if (debut === null) return texte;
+  const heure = fin !== null && fin > debut ? `${formaterHeure(debut)}-${formaterHeure(fin)}` : formaterHeure(debut);
+  return texte ? `${heure} : ${texte}` : heure;
+}
+
+/* ------------------------------------------------------------------ */
+/* Le programme de la semaine                                          */
+/* ------------------------------------------------------------------ */
+
+/** Un bloc sans heure de fin dure une heure : c'est l'unité de l'agenda. */
+export const DUREE_PAR_DEFAUT = 60;
+
+/** Le jour `AAAA-MM-JJ` décalé de `n` jours (ancré à midi, voir `ecartJours`). */
+export function decalerJour(jour: string, n: number): string {
+  const d = new Date(`${jour}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Le lundi de la semaine d'un jour : la semaine de l'agenda va du lundi au dimanche. */
+export function lundiDe(jour: string): string {
+  const d = new Date(`${jour}T12:00:00Z`);
+  return decalerJour(jour, -((d.getUTCDay() + 6) % 7));
+}
+
+/** Les sept jours d'une semaine, du lundi au dimanche. */
+export function joursDeLaSemaine(lundi: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => decalerJour(lundi, i));
+}
+
+/**
+ * Le jour où une tâche se place dans le programme — ou `null` si elle attend
+ * qu'on lui en donne un.
+ *
+ * Une date posée l'emporte toujours. Sans date, une tâche qui porte une heure
+ * (« 9h30 - appel banque ») se lit « aujourd'hui à 9h30 » : c'est ainsi que
+ * Twaylo l'a écrite, dans une todo qui est celle du jour. Elle suit donc le
+ * jour tant qu'elle n'est pas faite — et une fois faite, elle reste au jour où
+ * elle l'a été. Sans date ni heure, elle attend dans « À planifier ».
+ */
+export function jourAuProgramme(
+  t: { echeance?: string; aUneHeure: boolean; faite: boolean; faiteLe?: string },
+  aujourdhui: string,
+): string | null {
+  if (t.echeance) return t.echeance;
+  if (!t.aUneHeure) return null;
+  return t.faite ? (t.faiteLe ?? aujourdhui) : aujourdhui;
+}
+
+/**
+ * Faut-il la montrer dans « À planifier », et sous quel titre ?
+ *
+ * Y vont les tâches ouvertes qui n'ont pas de jour, et celles dont le jour est
+ * passé SANS figurer dans la semaine affichée — un retard d'une semaine
+ * précédente ne doit disparaître nulle part. Une date égale au jour de
+ * création n'est pas un plan : c'est l'ancienne version qui datait d'office
+ * chaque tâche du jour où on la tapait (voir la todo, qui la tait aussi) ;
+ * passée, elle se range donc avec les tâches sans date, pas en retard.
+ */
+export function rangAPlanifier(
+  t: { echeance?: string; creeLe?: string; faite: boolean },
+  jour: string | null,
+  aujourdhui: string,
+  semaine: string[],
+): "retard" | "sansdate" | null {
+  if (t.faite) return null;
+  if (jour === null) return "sansdate";
+  if (semaine.includes(jour) || jour >= aujourdhui) return null;
+  return t.echeance && t.echeance !== t.creeLe ? "retard" : "sansdate";
+}
+
+/** Au quart d'heure le plus proche : la maille de l'agenda. */
+export function auQuart(minutes: number): number {
+  return Math.round(minutes / 15) * 15;
+}
+
+/**
+ * Les blocs qui se chevauchent, posés CÔTE À CÔTE, comme dans Google Agenda.
+ *
+ * Les blocs d'une même grappe (une suite de chevauchements de proche en
+ * proche) se partagent la largeur du jour : chacun prend la première colonne
+ * libre, et toute la grappe se divise par le nombre de colonnes qu'elle a dû
+ * ouvrir. Un bloc seul garde toute la largeur.
+ */
+export function disposerBlocs(
+  blocs: { id: string; debut: number; fin: number }[],
+): Map<string, { colonne: number; colonnes: number }> {
+  const tries = [...blocs].sort((a, b) => a.debut - b.debut || b.fin - a.fin);
+  const poses = new Map<string, { colonne: number; colonnes: number }>();
+  let grappe: string[] = [];
+  let finsColonnes: number[] = [];
+  let finGrappe = -1;
+  const clore = () => {
+    for (const id of grappe) poses.get(id)!.colonnes = finsColonnes.length;
+    grappe = [];
+    finsColonnes = [];
+  };
+  for (const b of tries) {
+    if (b.debut >= finGrappe) clore();
+    let colonne = finsColonnes.findIndex((f) => f <= b.debut);
+    if (colonne === -1) {
+      colonne = finsColonnes.length;
+      finsColonnes.push(b.fin);
+    } else finsColonnes[colonne] = b.fin;
+    poses.set(b.id, { colonne, colonnes: 1 });
+    grappe.push(b.id);
+    finGrappe = Math.max(finGrappe, b.fin);
+  }
+  clore();
+  return poses;
 }
 
 /* ------------------------------------------------------------------ */

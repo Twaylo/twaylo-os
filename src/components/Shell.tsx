@@ -4,6 +4,7 @@ import { startTransition, useEffect, useLayoutEffect, useRef, useState } from "r
 import { CockpitProvider, useCockpit } from "@/lib/p90-context";
 import { compteARebours } from "@/lib/p90";
 import { TodoView } from "@/components/views/TodoView";
+import { SemaineView } from "@/components/views/SemaineView";
 import { SponsorsView } from "@/components/views/SponsorsView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { RevueView } from "@/components/views/RevueView";
@@ -12,10 +13,11 @@ import { OubliesView } from "@/components/views/OubliesView";
 /**
  * LE COCKPIT.
  *
- * Cinq onglets, et la todo en premier parce que c'est 90 % de l'usage réel.
- * Trois modules portent le PROJECT 90 — todo, sponsors, objectifs — et deux
- * restent en appui : la revue de semaine, et les Oubliés qui servent de
- * sauvegarde à ce qu'on supprime.
+ * Six onglets, et la todo en premier parce que c'est 90 % de l'usage réel.
+ * Juste après, la Semaine : la même todo posée sur un agenda de sept jours
+ * (« comme un google agenda mais avec mes taches persos »). Puis les sponsors
+ * et les objectifs ; et deux onglets d'appui : la revue de semaine, et les
+ * Oubliés qui servent de sauvegarde à ce qu'on supprime.
  *
  * Le Kanban est parti, à la demande de Twaylo (« inutilisable », puis « tu
  * peux tej la kanban ») : il montrait les mêmes tâches que la todo, dans une
@@ -35,6 +37,7 @@ import { OubliesView } from "@/components/views/OubliesView";
 
 const ONGLETS = {
   "To-do": TodoView,
+  Semaine: SemaineView,
   Sponsors: SponsorsView,
   Objectifs: ObjectifsView,
   Revue: RevueView,
@@ -226,7 +229,10 @@ function Comptes() {
     <div className="flex items-center gap-[12px] lg:gap-[14px]">
       {lignes.map((l) => (
         <div key={l.label} className="leading-[1.15]">
-          <div className="hidden text-[11px] font-medium text-white/45 sm:block">{l.label}</div>
+          {/* Entre 1024 et 1360 px, la barre d'onglets occupe le centre : les libellés lui cèdent la place. */}
+          <div className="hidden text-[11px] font-medium text-white/45 sm:block lg:hidden min-[1360px]:block">
+            {l.label}
+          </div>
           <div
             className="nombres text-[16px] font-semibold"
             style={{ color: l.chaud ? "var(--color-cor-soft)" : undefined }}
@@ -319,6 +325,14 @@ function IconeOnglet({ nom }: { nom: Onglet }) {
         <path d="M12 13h8" />
         <path d="M5.2 19h2.6" />
         <path d="M12 19h8" />
+      </>
+    ),
+    Semaine: (
+      <>
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2.8" />
+        <path d="M3.5 9.8h17" />
+        <path d="M8 3.2v3.4M16 3.2v3.4" />
+        <path d="M7.8 13.6h.01M12 13.6h.01M16.2 13.6h.01M7.8 17h.01M12 17h.01" strokeWidth="2.2" />
       </>
     ),
     Sponsors: (
@@ -487,7 +501,7 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
                 requestAnimationFrame(() => window.setTimeout(() => surChoix(nom), 0));
               }}
               aria-current={choisi ? "page" : undefined}
-              className="flex h-[50px] min-w-[62px] flex-none cursor-pointer flex-col items-center justify-center gap-[2px] rounded-full px-[8px] text-[10.5px] font-medium transition-colors lg:h-[34px] lg:min-w-0 lg:flex-row lg:px-[16px] lg:text-[14px]"
+              className="flex h-[50px] min-w-[54px] flex-none cursor-pointer flex-col items-center justify-center gap-[2px] rounded-full px-[4px] text-[10px] font-medium transition-colors lg:h-[34px] lg:min-w-0 lg:flex-row lg:px-[12px] lg:text-[14px] min-[1360px]:px-[16px]"
               style={{ color: choisi ? "var(--color-fg)" : "rgba(245,245,247,0.58)" }}
             >
               <IconeOnglet nom={nom} />
