@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
+  lireButs,
   lireDealsP90,
   lireObjectifsP90,
   lireOrdreTaches,
@@ -36,12 +37,13 @@ export async function GET(requete: Request) {
   }
 
   try {
-    const [taches, ops, objectifs, ordre, gelees] = await Promise.all([
+    const [taches, ops, objectifs, ordre, gelees, buts] = await Promise.all([
       lireTaches(),
       lireDealsP90(),
       lireObjectifsP90(),
       lireOrdreTaches(),
       lireTachesGelees(),
+      lireButs(),
     ]);
 
     const charge = {
@@ -54,6 +56,10 @@ export async function GET(requete: Request) {
       })),
       ops,
       objectifs,
+      // Les objectifs de Twaylo, par horizon : dans la même lecture, donc dans
+      // la même relecture vivante — un objectif coché sur le Mac se coche sur
+      // le téléphone comme une tâche.
+      buts,
     };
 
     /*

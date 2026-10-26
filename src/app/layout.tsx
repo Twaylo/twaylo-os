@@ -1,35 +1,19 @@
 import type { Metadata, Viewport } from "next";
 
 import { SITE } from "@/lib/site";
-import { Nunito, JetBrains_Mono } from "next/font/google";
 import { ServiceWorkerLoader } from "@/components/ServiceWorkerLoader";
 import "./globals.css";
 
 /*
- * Nunito pour le texte, JetBrains Mono pour les chiffres.
+ * AUCUNE POLICE TÉLÉCHARGÉE : c'est celle du système, SF Pro sur le Mac et
+ * l'iPhone de Twaylo (voir `globals.css`).
  *
- * Deux polices et non une : les montants, les compteurs à rebours et les
- * colonnes de dates se lisent en chasse fixe, et le contraste entre la ronde
- * du texte et la mécanique des chiffres fait la moitié de l'identité de l'OS.
- *
- * Les graisses sont énumérées, et c'est mesuré, pas supposé : les versions
- * variables (une seule ressource couvrant tout l'axe au lieu de cinq fichiers)
- * coûtaient PLUS au chargement à froid — 77,8 Ko contre 68,8 — parce que
- * l'interface n'utilise que cinq graisses discrètes du sous-ensemble latin, là
- * où l'axe continu embarque tout. `display: swap` est déjà le défaut de
- * next/font. La note reste pour qu'on ne refasse pas l'essai.
+ * Il y en avait deux, Nunito pour le texte et JetBrains Mono pour les
+ * chiffres. Twaylo a demandé le style d'Apple, et c'est d'abord une police ;
+ * la police des chiffres avait en plus un zéro pointé qui se lisait comme un
+ * 8. Bénéfice au passage : 70 Ko de moins à charger à froid, et plus d'éclair
+ * de texte qui change de forme une fois la police arrivée.
  */
-const nunito = Nunito({
-  variable: "--font-nunito",
-  subsets: ["latin"],
-  weight: ["400", "600", "700", "800", "900"],
-});
-
-const jetbrains = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-});
 
 export const metadata: Metadata = {
   /*
@@ -42,7 +26,7 @@ export const metadata: Metadata = {
    */
   metadataBase: new URL(SITE),
   title: "PROJECT 90 — le cockpit",
-  description: "Les 90 jours : la todo, le Kanban, les sponsors et les objectifs.",
+  description: "Les 90 jours : la todo, les sponsors et les objectifs.",
   applicationName: "Twaylo OS",
   /*
    * Rien n'est indexé PAR DÉFAUT, et c'est délibéré.
@@ -130,7 +114,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${nunito.variable} ${jetbrains.variable} h-full antialiased`}
+      className="h-full antialiased"
       /*
        * Le fond en style en ligne, et pas seulement dans la feuille de style.
        *

@@ -41,11 +41,15 @@ export function OubliesView() {
   const reprendre = async (id: string) => {
     setListe((p) => (p ?? []).filter((o) => o.id !== id));
     try {
-      await fetch("/api/oublies", {
+      const res = await fetch("/api/oublies", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      // Une réponse d'erreur n'est pas une exception pour `fetch` : sans ce
+      // contrôle, une reprise ratée faisait disparaître la ligne d'ici sans
+      // qu'elle reparaisse dans la todo — jusqu'à la visite suivante.
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // La todo doit la revoir : on relit, plutôt que de deviner sa place.
       await recharger();
     } catch (err) {
@@ -58,7 +62,8 @@ export function OubliesView() {
     setConfirme(null);
     setListe((p) => (p ?? []).filter((o) => o.id !== id));
     try {
-      await fetch(`/api/oublies?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/oublies?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       console.error("[oublies] suppression impossible :", err);
       await charger();
@@ -70,9 +75,9 @@ export function OubliesView() {
       <Carte accent="var(--color-mag)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Surtitre couleur="var(--color-mag-soft)">Oubliés — la sauvegarde</Surtitre>
-          <span className="nombres text-[11px] text-white/40">{liste?.length ?? 0}</span>
+          <span className="nombres text-[13px] text-white/40">{liste?.length ?? 0}</span>
         </div>
-        <div className="mt-[3px] text-[11px] text-white/40">
+        <div className="mt-[3px] text-[13px] text-white/40">
           Tout ce qui est supprimé de la todo arrive ici. Rien ne s&apos;y range tout seul.
         </div>
 
@@ -84,7 +89,7 @@ export function OubliesView() {
             const meta = decoderMeta(o.categorie);
             return (
               <div key={o.id} className="carte-haute flex flex-wrap items-center gap-[7px] p-[9px]">
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{o.titre}</span>
+                <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{o.titre}</span>
                 {meta.objectif && <Puce>{nomObjectif(meta.objectif)}</Puce>}
                 {meta.responsables.map((r) => (
                   <Puce key={r}>{r}</Puce>

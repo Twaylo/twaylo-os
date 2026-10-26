@@ -50,7 +50,7 @@ export function SponsorsView() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Surtitre couleur="var(--color-ver-soft)">À encaisser</Surtitre>
           <div className="flex items-baseline gap-[11px]">
-            <span className="text-[11px] text-white/40">
+            <span className="text-[13px] text-white/40">
               {bilan.lignes.length} OP · net
             </span>
             <Euros valeur={bilan.total} className="text-[22px] font-semibold" />
@@ -60,7 +60,7 @@ export function SponsorsView() {
         {bilan.enRetard > 0 && (
           <div
             role="alert"
-            className="mt-[9px] rounded-[8px] px-[9px] py-[7px] text-[12px] font-medium"
+            className="mt-[9px] rounded-[8px] px-[9px] py-[7px] text-[13.5px] font-medium"
             style={{ background: "rgba(255,61,139,0.12)", border: "1px solid rgba(255,61,139,0.35)" }}
           >
             <Euros valeur={bilan.enRetard} /> en retard de plus de {SEUIL_RETARD} jours.
@@ -74,9 +74,10 @@ export function SponsorsView() {
             {bilan.lignes.map((op) => {
               const retard = joursDeRetard(op, aujourdhui);
               return (
-                <div key={op.id} className="flex flex-wrap items-center gap-[7px] py-[3px]">
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{op.marque}</span>
-                  <Puce>{nomChaine(op.meta.chaine)}</Puce>
+                <div key={op.id} className="flex flex-wrap items-center gap-[8px] py-[5px]">
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{op.marque}</span>
+                  {/* Sans chaîne renseignée, rien : une puce « — » ne dit rien. */}
+                  {op.meta.chaine && <Puce>{nomChaine(op.meta.chaine)}</Puce>}
                   {op.meta.expandia && <Puce titre="Commission Expandia 30 %">via Expandia</Puce>}
                   {paiementAInscrire(op) ? (
                     <Puce ton="alerte" titre="Sans cette date, aucun retard ne peut être compté">
@@ -88,7 +89,7 @@ export function SponsorsView() {
                     </Puce>
                   )}
                   {op.meta.litige && <Puce ton="danger">litige</Puce>}
-                  <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
+                  <Euros valeur={netOp(op)} className="w-[96px] flex-none text-right text-[15px] font-semibold" />
                 </div>
               );
             })}
@@ -100,7 +101,7 @@ export function SponsorsView() {
       <Carte accent="var(--color-cor)">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Surtitre couleur="var(--color-cor-soft)">Pipeline des OP</Surtitre>
-          <span className="text-[11px] text-white/40">
+          <span className="text-[13px] text-white/40">
             {ops.length} OP · {formaterEuros(total)} net au total
           </span>
         </div>
@@ -162,22 +163,46 @@ function LigneOp({
   surSupprimer: () => void;
 }) {
   const [brut, setBrut] = useState(String(op.brut || ""));
+  const [enSaisie, setEnSaisie] = useState(false);
+  const [confirme, setConfirme] = useState(false);
+
+  /*
+   * Le montant suit la base TANT QU'ON N'EST PAS EN TRAIN DE LE TAPER.
+   *
+   * Il était lu une seule fois, à l'ouverture. Changé ensuite sur l'autre
+   * appareil (ou rétabli après un échec), le champ gardait l'ancien chiffre —
+   * et le réécrivait en base au premier passage dans le champ, effaçant la
+   * correction faite ailleurs. Recalé pendant le rendu, comme le recommande
+   * React, plutôt que dans un effet qui peindrait d'abord l'ancien chiffre.
+   */
+  const [brutConnu, setBrutConnu] = useState(op.brut);
+  if (op.brut !== brutConnu && !enSaisie) {
+    setBrutConnu(op.brut);
+    setBrut(String(op.brut || ""));
+  }
+
   const alertes = alertesOp(op, aujourdhui);
   const commission = commissionOp(op);
 
   return (
     <div className="carte-haute p-[11px]">
-      <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer flex-wrap items-center gap-[7px] text-left">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{op.marque}</span>
+      <button type="button" onClick={surOuvrir} className="flex w-full cursor-pointer flex-wrap items-center gap-[8px] text-left">
+        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{op.marque}</span>
         <Puce couleur={ETAPES_OP.find((e) => e.id === op.etape)?.couleur}>
           {ETAPES_OP.find((e) => e.id === op.etape)?.nom}
         </Puce>
-        <Puce>{nomChaine(op.meta.chaine)}</Puce>
-        <span className="nombres w-[150px] flex-none text-right text-[12px]">
-          <Euros valeur={op.brut} className="text-white/40" />
-          {commission > 0 && <span className="text-white/40"> − {formaterEuros(commission)}</span>}
-        </span>
-        <Euros valeur={netOp(op)} className="w-[90px] flex-none text-right text-[13px] font-semibold" />
+        {op.meta.chaine && <Puce>{nomChaine(op.meta.chaine)}</Puce>}
+        {/*
+          Le brut seulement quand il diffère du net. Sans commission les deux
+          sont égaux, et deux fois le même montant côte à côte faisaient
+          chercher une différence qui n'existe pas.
+        */}
+        {commission > 0 && (
+          <span className="nombres flex-none text-right text-[15px] text-white/45">
+            <Euros valeur={op.brut} /> − {formaterEuros(commission)}
+          </span>
+        )}
+        <Euros valeur={netOp(op)} className="w-[96px] flex-none text-right text-[15px] font-semibold" />
       </button>
 
       {alertes.length > 0 && (
@@ -193,7 +218,7 @@ function LigneOp({
       {ouverte && (
         <div className="entree-ligne mt-[9px] space-y-[9px] border-t pt-[9px]" style={{ borderColor: "var(--p90-bord)" }}>
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
+            <span className="w-[74px] flex-none text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Étape
             </span>
             {ETAPES_OP.map((e) => (
@@ -209,7 +234,7 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[5px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
+            <span className="w-[74px] flex-none text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Chaîne
             </span>
             {CHAINES.map((c) => (
@@ -239,28 +264,31 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
+            <span className="w-[74px] flex-none text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Brut
             </span>
-            <Champ
-              type="number"
-              valeur={brut}
-              onChange={setBrut}
-              aria="Montant brut"
-              className="w-[110px]"
-              onBlur={() => {
-                const v = Number(brut);
-                if (Number.isFinite(v) && v !== op.brut) surModifier({ brut: Math.max(0, v) });
-              }}
-            />
-            <span className="text-[11px] text-white/40">
+            <div onFocus={() => setEnSaisie(true)}>
+              <Champ
+                type="number"
+                valeur={brut}
+                onChange={setBrut}
+                aria="Montant brut"
+                className="w-[130px]"
+                onBlur={() => {
+                  setEnSaisie(false);
+                  const v = Number(brut);
+                  if (Number.isFinite(v) && v !== op.brut) surModifier({ brut: Math.max(0, v) });
+                }}
+              />
+            </div>
+            <span className="text-[13px] text-white/40">
               net <Euros valeur={netOp(op)} />
               {commission > 0 && ` (commission ${formaterEuros(commission)})`}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-[7px]">
-            <span className="w-[74px] flex-none text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
+            <span className="w-[74px] flex-none text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Diffusion
             </span>
             <Champ
@@ -270,7 +298,7 @@ function LigneOp({
               aria="Date de diffusion"
               className="w-[150px]"
             />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40">
+            <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-white/40">
               Paiement attendu
             </span>
             <Champ
@@ -283,13 +311,26 @@ function LigneOp({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-[7px] pt-[3px]">
-            <span className="text-[10px] text-white/40 opacity-70">
-              Alerte si l&apos;OP est sous {SEUIL_MONTANT_TEXTE} une fois engagée, ou payée avec plus de{" "}
-              {SEUIL_RETARD} jours de retard.
+            <span className="text-[13.5px] text-white/40">
+              Alerte si l&apos;OP est sous {SEUIL_MONTANT_TEXTE} une fois engagée, ou si son paiement a plus
+              de {SEUIL_RETARD} jours de retard.
             </span>
-            <Bouton ton="danger" onClick={surSupprimer}>
-              Supprimer
-            </Bouton>
+            {/*
+              En deux temps : c'est un effacement DÉFINITIF — montants, dates,
+              notes. Un appui de travers ne doit pas suffire.
+            */}
+            {confirme ? (
+              <span className="flex gap-[6px]">
+                <Bouton ton="danger" onClick={surSupprimer}>
+                  Confirmer la suppression
+                </Bouton>
+                <Bouton onClick={() => setConfirme(false)}>Annuler</Bouton>
+              </span>
+            ) : (
+              <Bouton ton="danger" onClick={() => setConfirme(true)}>
+                Supprimer
+              </Bouton>
+            )}
           </div>
         </div>
       )}

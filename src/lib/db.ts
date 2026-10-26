@@ -761,6 +761,69 @@ export async function supprimerObjectif(id: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Les objectifs de Twaylo, par horizon                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Un objectif écrit par Twaylo, tel que le navigateur le reçoit.
+ *
+ * La progression, sa valeur affichée et les étapes viennent du JSON de la
+ * colonne `cible`, déjà décodé : le navigateur n'a pas à connaître ce
+ * compromis de stockage.
+ */
+export type But = {
+  id: string;
+  titre: string;
+  horizon: string;
+  statut: string;
+  pct: number;
+  valeur: string;
+  etapes: { texte: string; fait: boolean }[];
+};
+
+/**
+ * Les objectifs de Twaylo, dans l'ordre où il les a rangés.
+ *
+ * La MÊME table que les cinq objectifs du Projet 90 : ceux-là se reconnaissent
+ * à leur préfixe dans `categorie` et sont écartés ici — ils ont leur propre
+ * lecture, et leur propre carte. Tout le reste, y compris ce qui avait été
+ * écrit avant le Projet 90, revient à l'écran : l'onglet d'avant rangeait ses
+ * objectifs dans cette table, et l'ordre qu'il gardait sur la sentinelle
+ * (`ordreObjectifs`) est relu tel quel.
+ */
+export async function lireButs(): Promise<But[]> {
+  const [lignes, ordre] = await Promise.all([lireObjectifs(), lireOrdreObjectifs()]);
+  const rang = new Map(ordre.map((id, i) => [id, i]));
+  return lignes
+    .filter((l) => !(l.categorie ?? "").startsWith(PREFIXE_P90))
+    .map((l) => {
+      const cible = lireCible(l.cible);
+      return {
+        id: l.id,
+        titre: l.objectif,
+        horizon: l.portee,
+        statut: l.statut,
+        pct: cible.pct,
+        valeur: cible.valeur,
+        etapes: cible.etapes,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+}
+
+export async function lireOrdreObjectifs(): Promise<string[]> {
+  const brut = (await lireSentinelle()).ordreObjectifs;
+  return Array.isArray(brut) ? brut.filter((x): x is string => typeof x === "string") : [];
+}
+
+export async function ecrireOrdreObjectifs(ordreObjectifs: string[]): Promise<void> {
+  await majSentinelle({ ordreObjectifs: ordreObjectifs.slice(0, 200) });
+}
+
+/* ------------------------------------------------------------------ */
 /* Les cinq objectifs du PROJECT 90, repérés par leur clé             */
 /* ------------------------------------------------------------------ */
 

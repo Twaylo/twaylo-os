@@ -1,7 +1,20 @@
 @import "tailwindcss";
 
 /**
- * LE THÈME DE TWAYLO OS : fond encre, et sept couleurs.
+ * LE THÈME DE TWAYLO OS : du verre sur de l'encre, et sept couleurs.
+ *
+ * DU VERRE, à la manière d'Apple (« Liquid Glass ») — demande de Twaylo : « fais
+ * plus style Apple liquid glass, cases plus grandes, plus user friendly ».
+ * Les surfaces sont translucides, floutent et saturent ce qui passe dessous,
+ * et portent un liseré clair en haut comme un reflet. C'est pour ça que le
+ * fond garde ses halos de couleur : un verre posé sur du noir ne se voit pas,
+ * posé sur de la couleur il prend vie.
+ *
+ * LA POLICE D'APPLE, celle du système (SF Pro sur le Mac et l'iPhone de
+ * Twaylo). C'est le trait qui fait le plus « Apple », et il règle au passage un
+ * vrai défaut : dans l'ancienne police des chiffres, à petite taille, le zéro
+ * pointé se lisait comme un 8 — « BLOQUÉ 8 » sur une colonne vide, « 88:23 »
+ * pour minuit vingt-trois, « 8 / 588 888 abonnés ».
  *
  * C'est la palette d'origine, celle de la maquette — reprise telle quelle
  * après l'essai d'un noir à pointe de lime. Le noir était plus sobre sur une
@@ -34,8 +47,9 @@
   --color-ble-soft: #8bb4ee;
   --color-vio-soft: #b48cf0;
 
-  --font-sans: var(--font-nunito), system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue",
+    "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 :root {
@@ -45,10 +59,32 @@
   /* Dégradé signature — repris du triangle play du logo. */
   --grad: linear-gradient(100deg, #ff3d8b, #ffc63d 38%, #3ddc84 68%, #22d3ee);
 
-  /* Les trois halos du fond. */
-  --halo-1: rgba(255, 61, 139, 0.13);
-  --halo-2: rgba(34, 211, 238, 0.11);
-  --halo-3: rgba(255, 198, 61, 0.07);
+  /*
+   * Les trois halos du fond — plus vifs qu'avant, et c'est voulu : ce sont
+   * eux que le verre floute et sature. Sans couleur dessous, il n'y a rien à
+   * voir à travers.
+   */
+  --halo-1: rgba(255, 61, 139, 0.3);
+  --halo-2: rgba(34, 211, 238, 0.24);
+  --halo-3: rgba(255, 198, 61, 0.14);
+
+  /*
+   * LA MATIÈRE DE VERRE.
+   *
+   * Un fond à peine blanc qui s'éclaircit vers le haut, un flou qui SATURE
+   * (c'est la saturation qui donne au verre d'Apple son côté vivant), un bord
+   * fin, et deux reflets : un trait de lumière sur l'arête du haut, une ombre
+   * douce dessous pour décoller la surface du fond.
+   */
+  --verre-fond: linear-gradient(180deg, rgba(255, 255, 255, 0.115), rgba(255, 255, 255, 0.045));
+  --verre-bord: rgba(255, 255, 255, 0.15);
+  --verre-reflet: inset 0 1px 0 rgba(255, 255, 255, 0.26), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  --verre-ombre: 0 18px 44px -18px rgba(0, 0, 0, 0.65);
+  --verre-flou: blur(30px) saturate(185%);
+  /* Le verre « posé sur le verre » : lignes, champs, boutons. Sans flou — un
+     second flou sur le premier coûte cher au téléphone et ne se voit pas. */
+  --verre-doux: rgba(255, 255, 255, 0.075);
+  --verre-doux-bord: rgba(255, 255, 255, 0.12);
 
   /*
    * Les noms que le cockpit emploie, branchés sur la palette ci-dessus.
@@ -71,7 +107,7 @@
   --p90-alerte: #ffc63d;
   --p90-danger: #ff3d8b;
 
-  --p90-rayon: 16px;
+  --p90-rayon: 26px;
   --p90-vitesse: 180ms;
   --p90-ombre: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
 
@@ -133,7 +169,11 @@ body {
  * d'à côté, et une colonne de montants doit s'aligner sur l'unité.
  */
 .nombres {
-  font-family: var(--font-mono);
+  /*
+   * La police du texte, avec ses chiffres en chasse fixe. Plus de police à
+   * chasse fixe ici : son zéro pointé se lisait comme un 8 (voir l'en-tête).
+   */
+  font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
@@ -263,31 +303,35 @@ textarea::placeholder {
 /* Les surfaces                                                        */
 /* ------------------------------------------------------------------ */
 
-/* Carte en verre, avec son filet d'accent en haut (voir `.panel-accent`). */
+/* Carte en verre : la matière de `:root`, grands arrondis, reflet en haut. */
 @utility carte {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  background: var(--verre-fond);
+  -webkit-backdrop-filter: var(--verre-flou);
+  backdrop-filter: var(--verre-flou);
+  border: 1px solid var(--verre-bord);
+  box-shadow: var(--verre-reflet), var(--verre-ombre);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
     border-color 0.18s ease;
 }
 
-/* Sous-carte : posée à l'intérieur d'une carte, donc un ton plus clair. */
+/* Sous-carte : du verre posé sur le verre — sans second flou. */
 @utility carte-haute {
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 13px;
+  background: var(--verre-doux);
+  border: 1px solid var(--verre-doux-bord);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
 }
 
 /* Le lift au survol, à part pour que les cartes décoratives s'en passent. */
 .carte-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
-  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: var(--verre-reflet), 0 24px 50px -20px rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 @media (prefers-reduced-motion: reduce) {
   .carte-hover:hover {
@@ -295,12 +339,20 @@ textarea::placeholder {
   }
 }
 
-/* La barre fine d'accent en haut de chaque carte. */
+/*
+ * La lueur d'accent en haut de chaque carte.
+ *
+ * Un filet net de deux pixels faisait « tableau de bord » ; sur du verre, la
+ * couleur se pose plutôt comme une lumière qui affleure sous l'arête du haut.
+ */
 .panel-accent {
   position: absolute;
-  inset: 0 0 auto 0;
+  inset: 0 18% auto 18%;
   height: 2px;
+  border-radius: 0 0 3px 3px;
   pointer-events: none;
+  filter: blur(0.3px);
+  box-shadow: 0 0 18px 2px currentColor;
 }
 
 /* Le petit libellé capitalisé en tête de chaque carte. */
@@ -322,10 +374,184 @@ textarea::placeholder {
 }
 
 @utility bar-track {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.07);
+  height: 8px;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
   border-radius: 999px;
   overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les pièces de verre                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * LE CHAMP DE SAISIE.
+ *
+ * En classe et non en style en ligne, pour une raison qu'on a vue : un style
+ * posé dans l'attribut `style` l'emporte sur toutes les classes, y compris
+ * `focus:` — la bordure de focus ne s'affichait donc jamais, et rien ne disait
+ * où l'on était en train de taper.
+ *
+ * 16 px de texte au minimum : en dessous, iOS zoome sur le champ à chaque
+ * appui et la page saute.
+ */
+.champ {
+  min-height: 46px;
+  padding: 11px 15px;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 15px;
+  color: var(--color-fg);
+  background: var(--verre-doux);
+  border: 1px solid var(--verre-doux-bord);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.champ:focus {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.champ[type="date"] {
+  color-scheme: dark;
+}
+
+/*
+ * LA BULLE D'HEURE — « 14h : lire » s'affiche [14h] lire.
+ *
+ * Une capsule de verre clair : l'heure se lit d'un coup d'œil en descendant la
+ * liste, et l'intitulé commence par ce qu'il y a à faire.
+ */
+.bulle-heure {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.1));
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 4px 12px -4px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+}
+
+/*
+ * LA CASE À COCHER, ronde et grande — celle des Rappels d'Apple.
+ *
+ * 26 px au lieu de 18 : c'est la demande « cases plus grandes », et c'est
+ * aussi la taille à laquelle l'œil la trouve sans la chercher.
+ */
+.case-ronde {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+.check-row:hover .case-ronde {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* Un bouton en capsule de verre : la forme de tous les boutons d'Apple. */
+.capsule {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  background: var(--verre-doux);
+  border: 1px solid var(--verre-doux-bord);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease,
+    filter 0.15s ease;
+}
+.capsule:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.capsule:active {
+  transform: scale(0.97);
+}
+.capsule:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+/*
+ * LES COLONNES À L'HORIZONTALE — les objectifs par horizon.
+ *
+ * Sur grand écran, quatre colonnes côte à côte. Sur téléphone, elles restent
+ * côte à côte et l'on passe de l'une à l'autre d'un glissement du doigt, comme
+ * entre les pages de l'écran d'accueil : c'est ce que « horizontal » veut dire
+ * sur 390 px, plutôt que quatre colonnes empilées qu'on descend sans fin.
+ */
+.colonnes-horizontales {
+  display: flex;
+  gap: 14px;
+  /* Chaque colonne à SA hauteur : étirées à celle de la plus longue (le
+     trimestre et ses cinq objectifs), les autres montraient un grand vide. */
+  align-items: flex-start;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* La colonne suivante dépasse à droite : on devine qu'il y a une suite. */
+  padding-bottom: 4px;
+}
+.colonnes-horizontales::-webkit-scrollbar {
+  display: none;
+}
+.colonnes-horizontales > * {
+  flex: 0 0 86%;
+  scroll-snap-align: start;
+}
+@media (min-width: 700px) {
+  .colonnes-horizontales > * {
+    flex-basis: 46%;
+  }
+}
+@media (min-width: 1100px) {
+  .colonnes-horizontales {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    overflow: visible;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -344,10 +570,13 @@ textarea::placeholder {
 @utility check-row {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   cursor: pointer;
-  border-radius: 11px;
-  padding: 8px 10px;
+  /* Plus grande, à la demande : 52 px de haut au minimum, la hauteur d'une
+     ligne de Rappels sur iPhone. */
+  min-height: 52px;
+  border-radius: 17px;
+  padding: 10px 12px;
   transition: all 0.2s;
   text-align: left;
   width: 100%;
@@ -360,11 +589,11 @@ textarea::placeholder {
  * affichée à droite passait dessous et se lisait de travers.
  */
 .ligne-tache .check-row {
-  padding-right: 38px;
+  padding-right: 50px;
 }
 @media (hover: none) {
   .ligne-tache .check-row {
-    padding-right: 48px;
+    padding-right: 54px;
   }
 
   /*
@@ -402,7 +631,7 @@ textarea::placeholder {
  * 40 px au doigt, 22 px à la souris, où l'on vise au pixel près.
  */
 .poignee-tache {
-  width: 22px;
+  width: 24px;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
@@ -410,7 +639,7 @@ textarea::placeholder {
 }
 @media (hover: none) {
   .poignee-tache {
-    width: 40px;
+    width: 34px;
     font-size: 16px;
     /* Sans survol, il n'y a pas d'autre moment pour se signaler. */
     color: rgba(255, 255, 255, 0.45);
@@ -425,9 +654,11 @@ textarea::placeholder {
  * « supprimer » relevait de la chance.
  */
 .bouton-ligne {
-  width: 30px;
-  height: 30px;
-  opacity: 0;
+  width: 38px;
+  height: 38px;
+  /* Visible d'office, simplement discret : un bouton qui n'apparaît qu'au
+     survol est un bouton qu'on ne trouve pas. */
+  opacity: 0.55;
   transition: opacity 0.15s ease;
 }
 .group:hover .bouton-ligne,
@@ -438,8 +669,8 @@ textarea::placeholder {
 @media (hover: none) {
   /* Sans survol, il n'y a pas d'autre moment pour le montrer. */
   .bouton-ligne {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     opacity: 1;
   }
 }
@@ -456,8 +687,9 @@ textarea::placeholder {
  * qu'elle doit dire.
  */
 .tache-gelee .ligne-tache .check-row {
-  border-left: 3px solid var(--color-cya) !important;
-  background: linear-gradient(90deg, rgba(34, 211, 238, 0.09), rgba(255, 255, 255, 0.045) 42%) !important;
+  border-color: rgba(34, 211, 238, 0.45) !important;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.16), rgba(255, 255, 255, 0.06) 46%) !important;
+  box-shadow: inset 3px 0 0 var(--color-cya), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   animation: gelSouffle 0.5s ease-out;
 }
 
@@ -548,14 +780,18 @@ textarea::placeholder {
  * Sans ce repère, on découvrait où la tâche avait atterri après coup, et un
  * dépôt dans la mauvaise colonne passait pour un bug du glissement.
  */
+/*
+ * Un contour, et non une bordure : la bordure appartient au verre de la carte,
+ * et une règle hors couche l'écrasait — les listes n'avaient plus de bord.
+ */
 .zone-depot {
-  border: 1px dashed transparent;
-  border-radius: var(--p90-rayon);
-  transition: border-color var(--p90-vitesse) ease, background var(--p90-vitesse) ease;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  transition: outline-color var(--p90-vitesse) ease, background var(--p90-vitesse) ease;
 }
 .zone-visee {
-  border-color: var(--color-cya);
-  background: rgba(34, 211, 238, 0.06);
+  outline-color: var(--color-cya);
+  background: rgba(34, 211, 238, 0.08);
 }
 
 /* ------------------------------------------------------------------ */
@@ -764,7 +1000,7 @@ textarea::placeholder {
 .onde-validation {
   position: absolute;
   inset: -2px;
-  border-radius: 11px;
+  border-radius: 18px;
   pointer-events: none;
   animation: onde 0.55s ease-out forwards;
 }
@@ -793,7 +1029,8 @@ textarea::placeholder {
 }
 .eclat {
   position: absolute;
-  left: 14px;
+  /* Le centre de la case ronde : 12 px de marge + la moitié de 26 px. */
+  left: 25px;
   top: 50%;
   width: 7px;
   height: 7px;
@@ -819,7 +1056,7 @@ textarea::placeholder {
 .balayage-validation {
   position: absolute;
   inset: 0;
-  border-radius: 11px;
+  border-radius: 17px;
   overflow: hidden;
   pointer-events: none;
 }

@@ -277,6 +277,62 @@ export function progression(valeur: number, objectif: ObjectifP90): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* Les horizons des objectifs de Twaylo                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les quatre horizons d'un objectif écrit par Twaylo.
+ *
+ * Les valeurs sont imposées par la contrainte `check` de la table `goals`
+ * (sans accent : `annee`). Le trimestre est aussi l'horizon des cinq
+ * objectifs du Projet 90 — 90 jours, c'est un trimestre.
+ */
+export type Horizon = "semaine" | "mois" | "trimestre" | "annee";
+
+export const HORIZONS: { id: Horizon; nom: string; couleur: string }[] = [
+  { id: "semaine", nom: "Semaine", couleur: "var(--color-amb)" },
+  { id: "mois", nom: "Mois", couleur: "var(--color-ver)" },
+  { id: "trimestre", nom: "Trimestre", couleur: "var(--color-cya)" },
+  { id: "annee", nom: "Année", couleur: "var(--color-mag)" },
+];
+
+export function estHorizon(v: unknown): v is Horizon {
+  return v === "semaine" || v === "mois" || v === "trimestre" || v === "annee";
+}
+
+/* ------------------------------------------------------------------ */
+/* L'heure tapée en tête d'une tâche                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * « 14h : lire » → l'heure « 14h » et l'intitulé « lire ».
+ *
+ * Twaylo note souvent ses tâches avec l'heure devant. L'écran la sort du
+ * texte pour la poser dans une bulle : on lit l'heure d'un coup d'œil, et
+ * l'intitulé commence enfin par ce qu'il y a à faire.
+ *
+ * Formes reconnues, en tête seulement : « 14h », « 14h30 », « 14 h 30 »,
+ * « 14:30 », « 9h », suivies ou non d'un séparateur (« : », « - », « — »).
+ * L'heure est rendue sous une seule forme, « 14h30 », quelle qu'ait été la
+ * saisie. Rien n'est réécrit en base : le titre reste celui qui a été tapé,
+ * c'est l'affichage seul qui le découpe.
+ *
+ * Une heure impossible (« 25h », « 14h75 ») n'est pas une heure : le texte
+ * reste intact plutôt que de produire une bulle absurde.
+ */
+export function heureEnTete(titre: string): { heure: string | null; reste: string } {
+  const m = titre.match(/^\s*(\d{1,2})\s*(?:h|H|:)\s*(\d{2})?(?![\d])\s*(?:[:\-–—]\s*)?/);
+  if (!m) return { heure: null, reste: titre };
+  const h = Number(m[1]);
+  const min = m[2] === undefined ? null : Number(m[2]);
+  // « 14:lire » sans minutes n'est pas une heure : seul « h » s'en passe.
+  if (min === null && !/h/i.test(m[0])) return { heure: null, reste: titre };
+  if (h > 23 || (min !== null && min > 59)) return { heure: null, reste: titre };
+  const heure = min === null || min === 0 ? `${h}h` : `${h}h${String(min).padStart(2, "0")}`;
+  return { heure, reste: titre.slice(m[0].length).trim() };
+}
+
+/* ------------------------------------------------------------------ */
 /* Les responsables                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -382,6 +438,54 @@ export function blocSuggere(objectif: string | undefined): IdBloc {
 /** Le bloc en cours à une heure donnée (minutes depuis minuit), ou rien. */
 export function blocAHeure(minutes: number): Bloc | null {
   return BLOCS.find((b) => minutes >= b.debut && minutes < b.fin) ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les deux listes de la todo : Deep work et Annexes                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * DEUX LISTES, côte à côte — la demande de Twaylo, mot pour mot : « faire deux
+ * to do : DEEP WORK et ANNEXES ».
+ *
+ * Elles remplacent les quatre blocs horaires, qui découpaient la journée en
+ * créneaux que la vraie journée ne respectait jamais. La vraie question d'une
+ * tâche n'est pas « à quelle heure » mais « est-ce que ça demande ma tête » :
+ * le travail de fond d'un côté, tout le reste de l'autre.
+ *
+ * Aucune migration : la liste se lit dans la colonne `urgence`, celle qui
+ * portait déjà le bloc. L'ancien bloc Opérations (`un_jour`) — l'admin, les
+ * paiements, les relances — devient les Annexes ; les trois autres (Momentum,
+ * Création, Tournages) sont du travail de fond. Une tâche mal rangée se
+ * corrige d'un glisser.
+ */
+export type IdListe = "deep" | "annexes";
+
+export const LISTES: { id: IdListe; nom: string; couleur: string; bloc: IdBloc; indice: string }[] = [
+  {
+    id: "deep",
+    nom: "Deep work",
+    couleur: "var(--color-mag)",
+    bloc: "momentum",
+    indice: "Ce qui demande ta tête : écrire, monter, construire.",
+  },
+  {
+    id: "annexes",
+    nom: "Annexes",
+    couleur: "var(--color-cya)",
+    bloc: "operations",
+    indice: "Le reste : appels, paiements, admin, courses.",
+  },
+];
+
+/** La liste d'une tâche, d'après son bloc. */
+export function listeDe(bloc: IdBloc): IdListe {
+  return bloc === "operations" ? "annexes" : "deep";
+}
+
+/** Le bloc à écrire pour poser une tâche dans une liste. */
+export function blocDeListe(liste: IdListe): IdBloc {
+  return liste === "annexes" ? "operations" : "momentum";
 }
 
 /* ------------------------------------------------------------------ */

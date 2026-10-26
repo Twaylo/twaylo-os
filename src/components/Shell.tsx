@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { CockpitProvider, useCockpit } from "@/lib/p90-context";
 import { compteARebours } from "@/lib/p90";
 import { TodoView } from "@/components/views/TodoView";
-import { KanbanView } from "@/components/views/KanbanView";
 import { SponsorsView } from "@/components/views/SponsorsView";
 import { ObjectifsView } from "@/components/views/ObjectifsView";
 import { RevueView } from "@/components/views/RevueView";
@@ -13,10 +12,15 @@ import { OubliesView } from "@/components/views/OubliesView";
 /**
  * LE COCKPIT.
  *
- * Six onglets, et la todo en premier parce que c'est 90 % de l'usage réel.
- * Quatre modules portent le PROJECT 90 — todo, Kanban, sponsors, objectifs —
- * et deux restent en appui : la revue de semaine, et les Oubliés qui servent
- * de sauvegarde à ce qu'on supprime.
+ * Cinq onglets, et la todo en premier parce que c'est 90 % de l'usage réel.
+ * Trois modules portent le PROJECT 90 — todo, sponsors, objectifs — et deux
+ * restent en appui : la revue de semaine, et les Oubliés qui servent de
+ * sauvegarde à ce qu'on supprime.
+ *
+ * Le Kanban est parti, à la demande de Twaylo (« inutilisable », puis « tu
+ * peux tej la kanban ») : il montrait les mêmes tâches que la todo, dans une
+ * forme qu'il n'ouvrait pas. Le seul geste qu'il portait seul — passer une
+ * tâche « en cours » — vit maintenant dans le panneau ⋯ de la ligne.
  *
  * Il y en avait treize. Les sept autres (Brain, Bilan, Journée type, Contacts,
  * Contenu, Revenus, Journal, Habitudes, Skill) ne servaient plus : les garder
@@ -31,7 +35,6 @@ import { OubliesView } from "@/components/views/OubliesView";
 
 const ONGLETS = {
   "To-do": TodoView,
-  Kanban: KanbanView,
   Sponsors: SponsorsView,
   Objectifs: ObjectifsView,
   Revue: RevueView,
@@ -209,7 +212,7 @@ function Base() {
         className={`h-[6px] w-[6px] rounded-full ${etatReseau === "inconnu" ? "pulse-dot" : ""}`}
         style={{ background: vu.couleur }}
       />
-      <span className="text-[8.5px] font-black tracking-[0.1em]" style={{ color: vu.couleur }}>
+      <span className="text-[10.5px] font-bold tracking-[0.08em]" style={{ color: vu.couleur }}>
         {vu.texte}
       </span>
     </div>
@@ -242,9 +245,9 @@ function Comptes() {
     <div className="flex items-center gap-[12px] lg:gap-[14px]">
       {lignes.map((l) => (
         <div key={l.label} className="leading-[1.15]">
-          <div className="hidden text-[8px] font-black tracking-[0.1em] text-white/30 sm:block">{l.label}</div>
+          <div className="hidden text-[10px] font-bold tracking-[0.08em] text-white/40 sm:block">{l.label}</div>
           <div
-            className="nombres text-[13px] font-extrabold"
+            className="nombres text-[16px] font-bold"
             style={{ color: l.chaud ? "var(--color-amb)" : undefined }}
           >
             {l.valeur < 0 ? `+${-l.valeur}` : `J-${l.valeur}`}
@@ -252,7 +255,7 @@ function Comptes() {
         </div>
       ))}
       <div className="hidden leading-[1.15] lg:block">
-        <div className="text-[8px] font-black tracking-[0.1em] text-white/30">AVANCEMENT</div>
+        <div className="text-[10px] font-bold tracking-[0.08em] text-white/40">AVANCEMENT</div>
         <div className="flex items-center gap-[6px]">
           <span className="bar-track block w-[60px]">
             <span
@@ -260,7 +263,7 @@ function Comptes() {
               style={{ width: `${Math.max(0, Math.min(100, r.pctEcoule))}%`, background: "var(--grad)" }}
             />
           </span>
-          <span className="nombres text-[10px] font-bold text-white/40">
+          <span className="nombres text-[12px] font-semibold text-white/50">
             {r.ecoules}/{r.total}
           </span>
         </div>
@@ -363,10 +366,16 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
 
   return (
     <header
-      className="sticky top-0 z-50 border-b backdrop-blur-[18px]"
+      className="sticky top-0 z-50 border-b"
       style={{
-        background: "linear-gradient(180deg, rgba(7,18,29,0.92), rgba(7,18,29,0.6))",
-        borderColor: "rgba(255,255,255,0.06)",
+        /*
+         * Une barre de verre, comme celles d'Apple : ce qui défile dessous
+         * passe flouté et saturé, au lieu de disparaître sous un aplat.
+         */
+        background: "linear-gradient(180deg, rgba(7,18,29,0.72), rgba(7,18,29,0.42))",
+        WebkitBackdropFilter: "blur(26px) saturate(180%)",
+        backdropFilter: "blur(26px) saturate(180%)",
+        borderColor: "rgba(255,255,255,0.1)",
         /*
          * En mode application, il n'y a plus de barre Safari : la page démarre
          * sous l'heure et la batterie. Sur le web normal, l'encart vaut 0.
@@ -402,8 +411,13 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
            * `auto`, et ce rail deviendrait une seconde zone défilante
            * VERTICALE — le défilement qui bloque, par la porte de derrière.
            */
-          className="rail-onglets order-3 flex w-full flex-nowrap items-center gap-[3px] overflow-x-auto overflow-y-hidden rounded-full p-1 lg:order-2 lg:w-auto lg:flex-wrap lg:overflow-visible"
-          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+          className="rail-onglets order-3 flex w-full flex-nowrap items-center gap-[4px] overflow-x-auto overflow-y-hidden rounded-full p-[5px] lg:order-2 lg:w-auto lg:flex-wrap lg:overflow-visible"
+          style={{
+            // La capsule de verre des barres d'onglets d'Apple.
+            background: "linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))",
+            border: "1px solid rgba(255,255,255,0.16)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 30px -14px rgba(0,0,0,0.7)",
+          }}
           aria-label="Modules"
         >
           {NOMS.map((nom) => {
@@ -415,11 +429,20 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
                 data-onglet={nom}
                 onClick={() => surChoix(nom)}
                 aria-current={choisi ? "page" : undefined}
-                className="flex min-h-[44px] flex-none cursor-pointer items-center rounded-full px-[13px] py-[7px] text-[13px] font-extrabold transition-all hover:brightness-125 lg:min-h-0"
+                className="flex min-h-[44px] flex-none cursor-pointer items-center rounded-full px-[16px] py-[8px] text-[14.5px] font-semibold transition-all hover:brightness-125 lg:min-h-[40px]"
                 style={
                   choisi
-                    ? { color: "#07121d", background: "var(--grad)" }
-                    : { color: "rgba(255,255,255,0.5)", background: "transparent" }
+                    ? {
+                        // L'onglet actif : une goutte de verre plus claire,
+                        // posée sur la capsule — et le dégradé signature en
+                        // reflet, pour que la couleur de l'OS reste là.
+                        color: "#fff",
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.3), rgba(255,255,255,0.12)), linear-gradient(100deg, rgba(255,61,139,0.35), rgba(34,211,238,0.3))",
+                        border: "1px solid rgba(255,255,255,0.32)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5), 0 4px 14px -6px rgba(0,0,0,0.6)",
+                      }
+                    : { color: "rgba(255,255,255,0.62)", background: "transparent", border: "1px solid transparent" }
                 }
               >
                 {nom}
@@ -438,8 +461,8 @@ function TopRail({ actif, surChoix }: { actif: Onglet; surChoix: (o: Onglet) => 
           */}
           <div className="hidden text-right leading-[1.2] sm:block">
             {/* Espace réservé pendant le premier rendu pour éviter un saut. */}
-            <div className="text-[12.5px] font-extrabold capitalize">{date || " "}</div>
-            <div className="nombres text-[11px] text-white/40">{heure || " "}</div>
+            <div className="text-[14px] font-semibold capitalize">{date || " "}</div>
+            <div className="nombres text-[12.5px] text-white/50">{heure || " "}</div>
           </div>
           <Compte />
         </div>

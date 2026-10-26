@@ -17,11 +17,11 @@ import {
   decoderOp,
   encoderMeta,
   encoderOp,
+  estHorizon,
   etapeDepuisDB,
   blocDepuisUrgence,
-  patchColonne,
-  type ColonneKanban,
   type EtapeOp,
+  type Horizon,
   type IdBloc,
   type IdObjectif,
   type MetaOp,
@@ -106,12 +106,54 @@ type TacheReseau = {
 type OpReseau = { id: string; nom: string; etape: string; montant: number | null; note: string | null };
 type ObjectifReseau = { cle: string; valeur: string; jalons: { texte: string; fait: boolean }[] };
 
+/**
+ * Un objectif de Twaylo, à un horizon — semaine, mois, trimestre ou année.
+ *
+ * À ne pas confondre avec les cinq objectifs du Projet 90, constantes du code
+ * dont la base ne garde que la valeur et les jalons. Ceux-ci, c'est Twaylo
+ * qui les écrit, les fait avancer et les archive.
+ */
+export type ButVue = {
+  id: string;
+  titre: string;
+  horizon: Horizon;
+  statut: "en_cours" | "atteint" | "abandonne";
+  /** 0 à 100. Dès qu'il y a des étapes, ce sont elles qui le calculent. */
+  pct: number;
+  /** Le chiffre affiché à côté de la barre : « 2/5 », « 40 % »… */
+  valeur: string;
+  etapes: { texte: string; fait: boolean }[];
+};
+
+type ButReseau = {
+  id: string;
+  titre: string;
+  horizon: string;
+  statut: string;
+  pct: number;
+  valeur: string;
+  etapes: { texte: string; fait: boolean }[];
+};
+
 type EtatReseau = {
   connecte: boolean;
   taches?: TacheReseau[];
   ops?: OpReseau[];
   objectifs?: ObjectifReseau[];
+  buts?: ButReseau[];
 };
+
+function versButVue(b: ButReseau): ButVue {
+  return {
+    id: b.id,
+    titre: b.titre,
+    horizon: estHorizon(b.horizon) ? b.horizon : "mois",
+    statut: b.statut === "atteint" || b.statut === "abandonne" ? b.statut : "en_cours",
+    pct: typeof b.pct === "number" ? Math.max(0, Math.min(100, b.pct)) : 0,
+    valeur: typeof b.valeur === "string" ? b.valeur : "",
+    etapes: Array.isArray(b.etapes) ? b.etapes : [],
+  };
+}
 
 function versTacheVue(t: TacheReseau): TacheVue {
   return {
@@ -162,8 +204,7 @@ type Cockpit = {
     patch: { titre?: string; meta?: MetaTache; bloc?: IdBloc; statut?: string },
   ) => Promise<boolean>;
   basculerFaite: (id: string) => Promise<boolean>;
-  deplacerColonne: (id: string, colonne: ColonneKanban) => Promise<boolean>;
-  reordonner: (ordre: string[], bloc?: { id: string; bloc: IdBloc }) => Promise<boolean>;
+  reordonner: (ordre: string[], changement?: { id: string; bloc: IdBloc }) => Promise<boolean>;
   supprimerTache: (id: string) => Promise<boolean>;
   basculerGel: (id: string) => Promise<boolean>;
   cloturer: () => Promise<boolean>;
@@ -176,6 +217,16 @@ type Cockpit = {
   supprimerOp: (id: string) => Promise<boolean>;
 
   modifierObjectif: (cle: IdObjectif, patch: { valeur?: string; jalons?: ObjectifVue["jalons"] }) => Promise<boolean>;
+
+  /** Les objectifs de Twaylo, par horizon, dans l'ordre où il les a rangés. */
+  buts: ButVue[];
+  ajouterBut: (titre: string, horizon: Horizon) => Promise<boolean>;
+  modifierBut: (
+    id: string,
+    patch: Partial<Pick<ButVue, "titre" | "horizon" | "statut" | "pct" | "valeur" | "etapes">>,
+  ) => Promise<boolean>;
+  deposerBut: (ordre: string[], changement: { id: string; horizon: Horizon } | null) => Promise<boolean>;
+  supprimerBut: (id: string) => Promise<boolean>;
 
   /** Relit tout depuis la base — après une reprise d'oublié, par exemple. */
   recharger: () => Promise<void>;
@@ -209,6 +260,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
   const [taches, setTaches] = useState<TacheVue[]>([]);
   const [ops, setOps] = useState<Op[]>([]);
   const [objectifs, setObjectifs] = useState<ObjectifVue[]>([]);
+  const [buts, setButs] = useState<ButVue[]>([]);
   const [pret, setPret] = useState(false);
   const [echec, setEchec] = useState<string | null>(null);
   const [etatReseau, setEtatReseau] = useState<"inconnu" | "connecte" | "hors_ligne">("inconnu");
@@ -314,6 +366,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       if (cache.taches) setTaches(cache.taches.map(versTacheVue));
       if (cache.ops) setOps(cache.ops.map(versOp));
       if (cache.objectifs) setObjectifs(cache.objectifs.map(versObjectifVue));
+      if (cache.buts) setButs(cache.buts.map(versButVue));
     });
     return () => {
       annule = true;
@@ -405,6 +458,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
         if (data.taches) setTaches(data.taches.map(versTacheVue));
         if (data.ops) setOps(data.ops.map(versOp));
         if (data.objectifs) setObjectifs(data.objectifs.map(versObjectifVue));
+        if (data.buts) setButs(data.buts.map(versButVue));
       }
       setDerniereLecture(Date.now());
       // `pret` passe à vrai même sans changement : la base a répondu, les
@@ -541,11 +595,54 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
   }, [charger]);
 
   /* ------------------------------------------------------------------ */
-  /* L'écriture : optimiste, et jamais muette                            */
+  /* L'écriture : optimiste, jamais muette, et DANS L'ORDRE              */
   /* ------------------------------------------------------------------ */
 
+  /*
+   * LES FILES D'ATTENTE, une par chose touchée.
+   *
+   * Chaque geste part en requête indépendante, et deux requêtes parties dans
+   * l'ordre n'arrivent pas forcément dans l'ordre : chacune réveille sa propre
+   * fonction serverless, et la première peut tomber sur une fonction froide
+   * pendant que la seconde est servie à chaud. Le double-appui qui gèle en
+   * était la victime type — il coche puis décoche aussitôt : si « décochée »
+   * arrivait en base avant « cochée », la tâche finissait COCHÉE, et la
+   * relecture vivante la faisait se cocher toute seule quelques secondes plus
+   * tard. Deux rangements rapides avaient le même défaut : le premier ordre
+   * pouvait gagner, et la liste revenait en arrière.
+   *
+   * Une file par objet — une tâche, l'ordre de la liste, les gelées, une OP —
+   * et chaque écriture attend la précédente SUR LE MÊME OBJET. Ce qui ne se
+   * touche pas part toujours en parallèle : cocher deux tâches différentes ne
+   * fait pas la queue.
+   */
+  const files = useRef(new Map<string, Promise<unknown>>());
+
+  /*
+   * Les créations : identifiant provisoire → vrai identifiant.
+   *
+   * Une tâche tapée s'affiche tout de suite avec un identifiant provisoire. La
+   * cocher dans la demi-seconde suivante envoyait cet identifiant au serveur,
+   * qui le refusait — et le bandeau annonçait un échec pour un geste
+   * parfaitement normal. Une écriture sur une ligne provisoire attend donc sa
+   * création, dans sa file, et part avec le vrai identifiant.
+   */
+  const tempVersVrai = useRef(new Map<string, string>());
+
+  /** Le vrai identifiant, ou `null` si la création a échoué entre-temps. */
+  const idReel = useCallback((id: string): string | null => {
+    if (!id.startsWith("temp-")) return id;
+    return tempVersVrai.current.get(id) ?? null;
+  }, []);
+
   /**
-   * Envoie une écriture et dit si elle a tenu.
+   * Envoie une écriture, dans les files nommées, et dit si elle a tenu.
+   *
+   * `preparer` est appelé AU DÉPART de la requête, pas au moment du geste :
+   * une écriture en attente derrière une création part ainsi avec le vrai
+   * identifiant. S'il renvoie `null`, il n'y a plus rien à envoyer — la ligne
+   * visée a disparu avec son propre message — et l'écriture compte comme
+   * tenue, pour ne pas annoncer un second échec.
    *
    * Le `persiste: false` du serveur (base non configurée) compte comme un
    * échec : l'écran ne doit pas montrer comme enregistré ce qui n'existe que
@@ -553,34 +650,62 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
    */
   const envoyer = useCallback(
     async (
-      chemin: string,
-      methode: "POST" | "PATCH" | "DELETE",
-      corps?: unknown,
+      cles: string[],
+      preparer: () => { chemin: string; methode: "POST" | "PATCH" | "DELETE"; corps?: unknown } | null,
+      /**
+       * Appelé avec la réponse, DANS la file — avant que l'écriture suivante
+       * ne parte. C'est là qu'une création inscrit son vrai identifiant :
+       * fait après coup, dans l'appelant, la promesse résolue laissait partir
+       * l'écriture en attente AVANT l'inscription, qui ne trouvait alors pas
+       * l'identifiant et ne partait jamais.
+       */
+      apres?: (data: Record<string, unknown>) => void,
     ): Promise<Record<string, unknown> | null> => {
       /*
        * L'écriture se signale, avant et après.
        *
        * C'est ce qui protège le geste de la relecture automatique : toute
-       * réponse de lecture partie avant cet instant sera écartée.
+       * réponse de lecture partie avant cet instant sera écartée. Le compte
+       * commence dès la mise en file, pas au départ réel : une écriture qui
+       * attend son tour est déjà un geste que la base ne connaît pas.
        */
       enVol.current += 1;
       dernierEcrit.current = Date.now();
       ecritDepuisLecture.current = true;
+
+      const partir = async (): Promise<Record<string, unknown> | null> => {
+        const envoi = preparer();
+        if (!envoi) return {};
+        const { chemin, methode, corps } = envoi;
+        try {
+          const res = await fetch(chemin, {
+            method: methode,
+            ...(corps === undefined
+              ? {}
+              : { headers: { "content-type": "application/json" }, body: JSON.stringify(corps) }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = (await res.json()) as Record<string, unknown>;
+          if (data.persiste === false) throw new Error("non persisté");
+          setEtatReseau("connecte");
+          apres?.(data);
+          return data;
+        } catch (err) {
+          console.error(`[p90] ${methode} ${chemin} impossible :`, err);
+          return null;
+        }
+      };
+
+      // `partir` ne lève jamais : une écriture ratée ne bloque pas la file.
+      const devant = cles.map((c) => files.current.get(c)).filter(Boolean);
+      const tache = Promise.allSettled(devant).then(partir);
+      for (const c of cles) files.current.set(c, tache);
+      void tache.finally(() => {
+        for (const c of cles) if (files.current.get(c) === tache) files.current.delete(c);
+      });
+
       try {
-        const res = await fetch(chemin, {
-          method: methode,
-          ...(corps === undefined
-            ? {}
-            : { headers: { "content-type": "application/json" }, body: JSON.stringify(corps) }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as Record<string, unknown>;
-        if (data.persiste === false) throw new Error("non persisté");
-        setEtatReseau("connecte");
-        return data;
-      } catch (err) {
-        console.error(`[p90] ${methode} ${chemin} impossible :`, err);
-        return null;
+        return await tache;
       } finally {
         enVol.current -= 1;
         dernierEcrit.current = Date.now();
@@ -588,6 +713,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  /** Toutes les files ouvertes à cet instant : de quoi passer après tout le monde. */
+  const toutesLesFiles = () => [...files.current.keys()];
 
   const ajouterTache = useCallback(
     async (titre: string, meta?: Partial<MetaTache>, bloc?: IdBloc) => {
@@ -603,9 +731,9 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
 
       /*
        * Une ligne provisoire s'affiche tout de suite, avec un identifiant
-       * temporaire reconnaissable. Elle est remplacée par la vraie dès la
-       * réponse — et RETIRÉE avec un message si l'écriture échoue, au lieu de
-       * rester là à faire croire qu'elle est enregistrée.
+       * temporaire reconnaissable. Elle reçoit son vrai identifiant dès la
+       * réponse — et elle est RETIRÉE avec un message si l'écriture échoue, au
+       * lieu de rester là à faire croire qu'elle est enregistrée.
        */
       const cleTemp = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const provisoire: TacheVue = {
@@ -621,20 +749,39 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       };
       setTaches((prec) => [provisoire, ...prec]);
 
-      const data = await envoyer("/api/p90/taches", "POST", {
-        titre: propre,
-        meta: encoderMeta(complete),
-        bloc: bloc,
-      });
+      // Dans la file de l'ORDRE (le serveur la place en tête de liste), et dans
+      // la file de la tâche elle-même : ce qu'on lui fait avant la réponse
+      // attend la création.
+      const data = await envoyer(
+        ["ordre", `tache:${cleTemp}`],
+        () => ({
+          chemin: "/api/p90/taches",
+          methode: "POST",
+          corps: { titre: propre, meta: encoderMeta(complete), bloc },
+        }),
+        (reponse) => {
+          const id = (reponse.tache as { id?: unknown } | undefined)?.id;
+          if (typeof id === "string") tempVersVrai.current.set(cleTemp, id);
+        },
+      );
 
       if (!data?.tache) {
         setTaches((prec) => prec.filter((t) => t.id !== cleTemp));
-        setEchec(`« ${propre} » n'a pas pu être enregistrée. Le texte est conservé, réessaie.`);
+        setEchec(`« ${propre} » n'a pas pu être enregistrée. Réessaie.`);
         return false;
       }
 
       const vraie = versTacheVue(data.tache as TacheReseau);
-      setTaches((prec) => prec.map((t) => (t.id === cleTemp ? vraie : t)));
+      /*
+       * On ne prend du serveur QUE l'identifiant et la date de création.
+       *
+       * La ligne a pu être cochée, gelée, renommée pendant l'aller-retour :
+       * la remplacer par la version du serveur effacerait ces gestes à
+       * l'écran, le temps que la relecture suivante les ramène.
+       */
+      setTaches((prec) =>
+        prec.map((t) => (t.id === cleTemp ? { ...t, id: vraie.id, creeLe: vraie.creeLe ?? t.creeLe } : t)),
+      );
       return true;
     },
     [envoyer],
@@ -645,7 +792,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       id: string,
       patch: { titre?: string; meta?: MetaTache; bloc?: IdBloc; statut?: string },
     ) => {
-      const avant = taches;
+      const ancienne = taches.find((t) => t.id === id);
       setTaches((prec) =>
         prec.map((t) =>
           t.id !== id
@@ -667,22 +814,37 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
         ),
       );
 
-      const data = await envoyer("/api/p90/taches", "PATCH", {
-        id,
-        ...(patch.titre !== undefined ? { titre: patch.titre } : {}),
-        ...(patch.meta !== undefined ? { meta: encoderMeta(patch.meta) } : {}),
-        ...(patch.bloc !== undefined ? { bloc: patch.bloc } : {}),
-        ...(patch.statut !== undefined ? { statut: patch.statut } : {}),
+      const data = await envoyer([`tache:${id}`], () => {
+        const vrai = idReel(id);
+        if (!vrai) return null;
+        return {
+          chemin: "/api/p90/taches",
+          methode: "PATCH",
+          corps: {
+            id: vrai,
+            ...(patch.titre !== undefined ? { titre: patch.titre } : {}),
+            ...(patch.meta !== undefined ? { meta: encoderMeta(patch.meta) } : {}),
+            ...(patch.bloc !== undefined ? { bloc: patch.bloc } : {}),
+            ...(patch.statut !== undefined ? { statut: patch.statut } : {}),
+          },
+        };
       });
 
       if (!data) {
-        setTaches(avant);
+        /*
+         * Le retour arrière ne touche QUE cette ligne.
+         *
+         * Revenir à une photo de toute la liste défaisait aussi les gestes
+         * faits entre-temps sur d'autres lignes — cocher trois tâches de suite,
+         * et le premier échec décochait les trois.
+         */
+        if (ancienne) setTaches((prec) => prec.map((t) => (t.id === id ? ancienne : t)));
         setEchec("La modification n'a pas pu être enregistrée. Rien n'a changé en base.");
         return false;
       }
       return true;
     },
-    [envoyer, taches],
+    [envoyer, idReel, taches],
   );
 
   const basculerFaite = useCallback(
@@ -695,61 +857,58 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Déplacer une carte du Kanban : UNE écriture pour deux champs.
+   * Un dépôt de glisser-déposer : l'ordre complet, et la liste si elle a
+   * changé (une tâche passée des Annexes au Deep work).
    *
-   * La colonne « Bloqué » n'est pas un statut (la contrainte de la table n'en
-   * accepte que quatre, tous pris) mais un drapeau dans la meta. Passer une
-   * carte de « Bloqué » à « En cours » change donc les deux — et en deux appels
-   * séparés, le second pouvait échouer en laissant la carte dans un état qui
-   * n'existe nulle part.
-   */
-  const deplacerColonne = useCallback(
-    async (id: string, colonne: ColonneKanban) => {
-      const t = taches.find((x) => x.id === id);
-      if (!t) return false;
-      const { statut, bloque } = patchColonne(colonne);
-      if (t.statut === statut && t.meta.bloque === bloque) return true;
-      return modifierTache(id, { statut, meta: { ...t.meta, bloque } });
-    },
-    [modifierTache, taches],
-  );
-
-  /**
-   * Un dépôt de glisser-déposer : l'ordre complet, et le bloc s'il a changé.
-   *
-   * Les deux partent dans la même séquence et l'état local est posé une seule
-   * fois : sinon la ligne sautait de place pendant la fraction de seconde où
-   * l'ordre était écrit mais pas encore le bloc.
+   * L'état local est posé UNE fois pour les deux : sinon la ligne sautait de
+   * place pendant la fraction de seconde où l'ordre était écrit mais pas
+   * encore la liste. L'ordre part dans sa file — deux rangements rapides
+   * arrivent en base dans l'ordre où ils ont été faits, et un rangement fait
+   * juste après une création attend que la tâche ait son vrai identifiant.
    */
   const reordonner = useCallback(
-    async (ordre: string[], bloc?: { id: string; bloc: IdBloc }) => {
+    async (ordre: string[], changement?: { id: string; bloc: IdBloc }) => {
       const avant = taches;
-
       const rang = new Map(ordre.map((x, i) => [x, i]));
-      setTaches((prec) => {
-        const suivantes = prec.map((t) =>
-          bloc && t.id === bloc.id ? { ...t, bloc: bloc.bloc } : t,
-        );
-        return [...suivantes].sort(
-          (a, b) =>
-            (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
-        );
-      });
+      setTaches((prec) =>
+        [...prec]
+          .map((t) => (changement && t.id === changement.id ? { ...t, bloc: changement.bloc } : t))
+          .sort(
+            (a, b) =>
+              (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+          ),
+      );
 
-      const ecritures: Promise<unknown>[] = [envoyer("/api/p90/taches", "PATCH", { ordre })];
-      if (bloc) {
-        ecritures.push(envoyer("/api/p90/taches", "PATCH", { id: bloc.id, bloc: bloc.bloc }));
+      const ecritures = [
+        envoyer(["ordre"], () => ({
+          chemin: "/api/p90/taches",
+          methode: "PATCH",
+          corps: { ordre: ordre.map((x) => idReel(x)).filter((x): x is string => Boolean(x)) },
+        })),
+      ];
+      if (changement) {
+        ecritures.push(
+          envoyer([`tache:${changement.id}`], () => {
+            const vrai = idReel(changement.id);
+            if (!vrai) return null;
+            return {
+              chemin: "/api/p90/taches",
+              methode: "PATCH",
+              corps: { id: vrai, bloc: changement.bloc },
+            };
+          }),
+        );
       }
       const resultats = await Promise.all(ecritures);
 
       if (resultats.some((r) => r === null)) {
         setTaches(avant);
-        setEchec("Le déplacement n'a pas pu être enregistré. La liste revient comme elle était.");
+        setEchec("Le rangement n'a pas pu être enregistré. La liste revient comme elle était.");
         return false;
       }
       return true;
     },
-    [envoyer, taches],
+    [envoyer, idReel, taches],
   );
 
   /**
@@ -760,36 +919,61 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
    */
   const supprimerTache = useCallback(
     async (id: string) => {
-      const avant = taches;
+      const rangAvant = taches.findIndex((t) => t.id === id);
+      const ancienne = rangAvant >= 0 ? taches[rangAvant] : undefined;
       setTaches((prec) => prec.filter((t) => t.id !== id));
 
-      const data = await envoyer(`/api/p90/taches?id=${encodeURIComponent(id)}`, "DELETE");
+      const data = await envoyer([`tache:${id}`], () => {
+        const vrai = idReel(id);
+        if (!vrai) return null;
+        return { chemin: `/api/p90/taches?id=${encodeURIComponent(vrai)}`, methode: "DELETE" };
+      });
       if (!data) {
-        setTaches(avant);
+        // Elle revient à SA place, sans déranger le reste.
+        if (ancienne) {
+          setTaches((prec) =>
+            prec.some((t) => t.id === id)
+              ? prec
+              : [...prec.slice(0, rangAvant), ancienne, ...prec.slice(rangAvant)],
+          );
+        }
         setEchec("La suppression n'a pas pu être enregistrée. La tâche est toujours là.");
         return false;
       }
       return true;
     },
-    [envoyer, taches],
+    [envoyer, idReel, taches],
   );
 
   const basculerGel = useCallback(
     async (id: string) => {
-      const avant = taches;
       const t = taches.find((x) => x.id === id);
       if (!t) return false;
-      setTaches((prec) => prec.map((x) => (x.id === id ? { ...x, gelee: !x.gelee } : x)));
+      const gelee = !t.gelee;
+      setTaches((prec) => prec.map((x) => (x.id === id ? { ...x, gelee } : x)));
 
-      const data = await envoyer("/api/p90/taches", "PATCH", { id, gelee: !t.gelee });
+      /*
+       * Dans la file des GELÉES, toutes tâches confondues.
+       *
+       * La liste des gelées est un seul tableau sur la sentinelle, que le
+       * serveur relit, modifie et réécrit. Deux gels lancés coup sur coup
+       * partaient en parallèle, chacun calculé sur la même lecture : le second
+       * écrasait le premier, et une des deux tâches se dégelait toute seule à
+       * la relecture suivante.
+       */
+      const data = await envoyer(["gelees", `tache:${id}`], () => {
+        const vrai = idReel(id);
+        if (!vrai) return null;
+        return { chemin: "/api/p90/taches", methode: "PATCH", corps: { id: vrai, gelee } };
+      });
       if (!data) {
-        setTaches(avant);
+        setTaches((prec) => prec.map((x) => (x.id === id ? { ...x, gelee: t.gelee } : x)));
         setEchec("Le gel n'a pas pu être enregistré.");
         return false;
       }
       return true;
     },
-    [envoyer, taches],
+    [envoyer, idReel, taches],
   );
 
   /**
@@ -824,7 +1008,11 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       );
 
       for (const t of aDegeler) {
-        const data = await envoyer("/api/p90/taches", "PATCH", { id: t.id, statut: "ouverte" });
+        const data = await envoyer([`tache:${t.id}`], () => {
+          const vrai = idReel(t.id);
+          if (!vrai) return null;
+          return { chemin: "/api/p90/taches", methode: "PATCH", corps: { id: vrai, statut: "ouverte" } };
+        });
         if (!data) {
           setTaches(avant);
           setEchec("Le dégel n'a pas pu être enregistré : rien n'a été supprimé.");
@@ -833,7 +1021,17 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       }
 
       if (partantes.length > 0) {
-        const data = await envoyer("/api/p90/taches?faites=1", "DELETE");
+        /*
+         * Derrière TOUTES les écritures en cours, pas seulement les siennes.
+         *
+         * L'effacement vise « tout ce qui est coché en base ». Une case cochée
+         * juste avant de clôturer, dont l'écriture n'est pas encore arrivée,
+         * échapperait sinon au ménage et resterait cochée le lendemain.
+         */
+        const data = await envoyer([...toutesLesFiles(), "cloture"], () => ({
+          chemin: "/api/p90/taches?faites=1",
+          methode: "DELETE",
+        }));
         if (!data) {
           setTaches(avant);
           setEchec("La clôture n'a pas pu être enregistrée.");
@@ -844,7 +1042,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     } finally {
       verrous.current.delete("cloture");
     }
-  }, [envoyer, taches]);
+  }, [envoyer, idReel, taches]);
 
   /* ---------- Les OP ---------- */
 
@@ -852,7 +1050,11 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     async (nom: string) => {
       const propre = nom.trim();
       if (!propre) return false;
-      const data = await envoyer("/api/p90/ops", "POST", { nom: propre });
+      const data = await envoyer(["ops"], () => ({
+        chemin: "/api/p90/ops",
+        methode: "POST",
+        corps: { nom: propre },
+      }));
       if (!data?.op) {
         setEchec(`L'OP « ${propre} » n'a pas pu être créée.`);
         return false;
@@ -865,7 +1067,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
 
   const modifierOp = useCallback(
     async (id: string, patch: { nom?: string; brut?: number; etape?: EtapeOp; meta?: MetaOp }) => {
-      const avant = ops;
+      const ancienne = ops.find((o) => o.id === id);
       setOps((prec) =>
         prec.map((o) =>
           o.id !== id
@@ -889,19 +1091,26 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
        */
       const metaFinale =
         patch.etape !== undefined
-          ? { ...(patch.meta ?? ops.find((o) => o.id === id)?.meta ?? { facture: false, expandia: false, litige: false }), facture: patch.etape === "facture" || patch.etape === "paye" }
+          ? {
+              ...(patch.meta ?? ancienne?.meta ?? { facture: false, expandia: false, litige: false }),
+              facture: patch.etape === "facture" || patch.etape === "paye",
+            }
           : patch.meta;
 
-      const data = await envoyer("/api/p90/ops", "PATCH", {
-        id,
-        ...(patch.nom !== undefined ? { nom: patch.nom } : {}),
-        ...(patch.brut !== undefined ? { montant: patch.brut } : {}),
-        ...(patch.etape !== undefined ? { etape: patch.etape } : {}),
-        ...(metaFinale !== undefined ? { note: encoderOp(metaFinale) } : {}),
-      });
+      const data = await envoyer([`op:${id}`], () => ({
+        chemin: "/api/p90/ops",
+        methode: "PATCH",
+        corps: {
+          id,
+          ...(patch.nom !== undefined ? { nom: patch.nom } : {}),
+          ...(patch.brut !== undefined ? { montant: patch.brut } : {}),
+          ...(patch.etape !== undefined ? { etape: patch.etape } : {}),
+          ...(metaFinale !== undefined ? { note: encoderOp(metaFinale) } : {}),
+        },
+      }));
 
       if (!data) {
-        setOps(avant);
+        if (ancienne) setOps((prec) => prec.map((o) => (o.id === id ? ancienne : o)));
         setEchec("L'OP n'a pas pu être modifiée.");
         return false;
       }
@@ -917,7 +1126,10 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       const avant = ops;
       setOps((prec) => prec.filter((o) => o.id !== id));
-      const data = await envoyer(`/api/p90/ops?id=${encodeURIComponent(id)}`, "DELETE");
+      const data = await envoyer([`op:${id}`], () => ({
+        chemin: `/api/p90/ops?id=${encodeURIComponent(id)}`,
+        methode: "DELETE",
+      }));
       if (!data) {
         setOps(avant);
         setEchec("L'OP n'a pas pu être supprimée.");
@@ -928,11 +1140,11 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     [envoyer, ops],
   );
 
-  /* ---------- Les objectifs ---------- */
+  /* ---------- Les cinq objectifs du Projet 90 ---------- */
 
   const modifierObjectif = useCallback(
     async (cle: IdObjectif, patch: { valeur?: string; jalons?: ObjectifVue["jalons"] }) => {
-      const avant = objectifs;
+      const ancien = objectifs.find((o) => o.cle === cle);
       setObjectifs((prec) =>
         prec.map((o) =>
           o.cle !== cle
@@ -944,15 +1156,168 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
               },
         ),
       );
-      const data = await envoyer("/api/p90/objectifs", "PATCH", { cle, ...patch });
+      const data = await envoyer([`objectif:${cle}`], () => ({
+        chemin: "/api/p90/objectifs",
+        methode: "PATCH",
+        corps: { cle, ...patch },
+      }));
       if (!data) {
-        setObjectifs(avant);
+        if (ancien) setObjectifs((prec) => prec.map((o) => (o.cle === cle ? ancien : o)));
         setEchec("L'objectif n'a pas pu être modifié.");
         return false;
       }
       return true;
     },
     [envoyer, objectifs],
+  );
+
+  /* ---------- Les objectifs de Twaylo, par horizon ---------- */
+
+  const ajouterBut = useCallback(
+    async (titre: string, horizon: Horizon) => {
+      const propre = titre.trim();
+      if (!propre) return false;
+      const cleTemp = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const provisoire: ButVue = {
+        id: cleTemp,
+        titre: propre,
+        horizon,
+        statut: "en_cours",
+        pct: 0,
+        valeur: "",
+        etapes: [],
+      };
+      setButs((prec) => [...prec, provisoire]);
+
+      const data = await envoyer(
+        ["ordreButs", `but:${cleTemp}`],
+        () => ({
+          chemin: "/api/p90/buts",
+          methode: "POST",
+          corps: { titre: propre, horizon },
+        }),
+        (reponse) => {
+          const id = (reponse.but as { id?: unknown } | undefined)?.id;
+          if (typeof id === "string") tempVersVrai.current.set(cleTemp, id);
+        },
+      );
+      if (!data?.but) {
+        setButs((prec) => prec.filter((b) => b.id !== cleTemp));
+        setEchec(`L'objectif « ${propre} » n'a pas pu être enregistré. Réessaie.`);
+        return false;
+      }
+      const vrai = versButVue(data.but as ButReseau);
+      setButs((prec) => prec.map((b) => (b.id === cleTemp ? { ...b, id: vrai.id } : b)));
+      return true;
+    },
+    [envoyer],
+  );
+
+  const modifierBut = useCallback(
+    async (
+      id: string,
+      patch: Partial<Pick<ButVue, "titre" | "horizon" | "statut" | "pct" | "valeur" | "etapes">>,
+    ) => {
+      const ancien = buts.find((b) => b.id === id);
+      if (!ancien) return false;
+      const suivant = { ...ancien, ...patch };
+      setButs((prec) => prec.map((b) => (b.id === id ? suivant : b)));
+
+      const data = await envoyer([`but:${id}`], () => {
+        const vrai = idReel(id);
+        if (!vrai) return null;
+        return {
+          chemin: "/api/p90/buts",
+          methode: "PATCH",
+          corps: {
+            id: vrai,
+            ...(patch.titre !== undefined ? { titre: patch.titre } : {}),
+            ...(patch.horizon !== undefined ? { horizon: patch.horizon } : {}),
+            ...(patch.statut !== undefined ? { statut: patch.statut } : {}),
+            // La progression, sa valeur affichée et les étapes vivent dans le
+            // même JSON : elles partent toujours ensemble, sinon une écriture
+            // effacerait ce que la précédente venait de poser.
+            ...(patch.pct !== undefined || patch.valeur !== undefined || patch.etapes !== undefined
+              ? { cible: { pct: suivant.pct, valeur: suivant.valeur, etapes: suivant.etapes } }
+              : {}),
+          },
+        };
+      });
+      if (!data) {
+        setButs((prec) => prec.map((b) => (b.id === id ? ancien : b)));
+        setEchec("L'objectif n'a pas pu être modifié.");
+        return false;
+      }
+      return true;
+    },
+    [buts, envoyer, idReel],
+  );
+
+  /**
+   * Un dépôt de glisser-déposer dans les objectifs : l'ordre, et l'horizon
+   * s'il a changé — un objectif qui glisse de la semaine au mois.
+   */
+  const deposerBut = useCallback(
+    async (ordre: string[], changement: { id: string; horizon: Horizon } | null) => {
+      const avant = buts;
+      const rang = new Map(ordre.map((x, i) => [x, i]));
+      setButs((prec) =>
+        [...prec]
+          .map((b) => (changement && b.id === changement.id ? { ...b, horizon: changement.horizon } : b))
+          .sort(
+            (a, b) =>
+              (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+          ),
+      );
+
+      const ecritures = [
+        envoyer(["ordreButs"], () => ({
+          chemin: "/api/p90/buts",
+          methode: "PATCH",
+          corps: { ordre: ordre.map((x) => idReel(x)).filter((x): x is string => Boolean(x)) },
+        })),
+      ];
+      if (changement) {
+        ecritures.push(
+          envoyer([`but:${changement.id}`], () => {
+            const vrai = idReel(changement.id);
+            if (!vrai) return null;
+            return {
+              chemin: "/api/p90/buts",
+              methode: "PATCH",
+              corps: { id: vrai, horizon: changement.horizon },
+            };
+          }),
+        );
+      }
+      const resultats = await Promise.all(ecritures);
+      if (resultats.some((r) => r === null)) {
+        setButs(avant);
+        setEchec("Le déplacement n'a pas pu être enregistré.");
+        return false;
+      }
+      return true;
+    },
+    [buts, envoyer, idReel],
+  );
+
+  const supprimerBut = useCallback(
+    async (id: string) => {
+      const avant = buts;
+      setButs((prec) => prec.filter((b) => b.id !== id));
+      const data = await envoyer([`but:${id}`], () => {
+        const vrai = idReel(id);
+        if (!vrai) return null;
+        return { chemin: `/api/p90/buts?id=${encodeURIComponent(vrai)}`, methode: "DELETE" };
+      });
+      if (!data) {
+        setButs(avant);
+        setEchec("L'objectif n'a pas pu être supprimé.");
+        return false;
+      }
+      return true;
+    },
+    [buts, envoyer, idReel],
   );
 
   const valeur = useMemo<Cockpit>(
@@ -968,7 +1333,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       modifierTache,
       basculerFaite,
-      deplacerColonne,
       reordonner,
       supprimerTache,
       basculerGel,
@@ -977,6 +1341,11 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       modifierOp,
       supprimerOp,
       modifierObjectif,
+      buts,
+      ajouterBut,
+      modifierBut,
+      deposerBut,
+      supprimerBut,
       recharger,
       derniereLecture,
       sursauts,
@@ -994,7 +1363,6 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       ajouterTache,
       modifierTache,
       basculerFaite,
-      deplacerColonne,
       reordonner,
       supprimerTache,
       basculerGel,
@@ -1003,6 +1371,11 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
       modifierOp,
       supprimerOp,
       modifierObjectif,
+      buts,
+      ajouterBut,
+      modifierBut,
+      deposerBut,
+      supprimerBut,
       recharger,
       derniereLecture,
       sursauts,

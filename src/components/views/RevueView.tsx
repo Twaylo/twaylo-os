@@ -121,22 +121,60 @@ export function RevueView() {
    * sans le drapeau « touché », le simple affichage réécrivait en base ce
    * qu'on venait d'en lire.
    */
-  const enregistrer = useCallback(
-    (suivante: Revue) => {
-      void fetch("/api/revue", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ lundi, revue: suivante }),
-      }).catch((err) => console.error("[revue] écriture impossible :", err));
-    },
-    [lundi],
-  );
+  const [echecEcriture, setEchecEcriture] = useState(false);
+  /** Ce qui attend la fin du délai — à envoyer quoi qu'il arrive. */
+  const enAttente = useRef<{ lundi: string; revue: Revue } | null>(null);
+
+  const enregistrer = useCallback((semaine: string, suivante: Revue) => {
+    enAttente.current = null;
+    void fetch("/api/revue", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lundi: semaine, revue: suivante }),
+      // L'envoi survit à la fermeture de la page : c'est tout l'objet du
+      // vidage ci-dessous.
+      keepalive: true,
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setEchecEcriture(false);
+      })
+      .catch((err) => {
+        console.error("[revue] écriture impossible :", err);
+        setEchecEcriture(true);
+      });
+  }, []);
 
   useEffect(() => {
     if (!charge || !touche.current) return;
-    const t = setTimeout(() => enregistrer(revue), 1000);
+    enAttente.current = { lundi, revue };
+    const t = setTimeout(() => enregistrer(lundi, revue), 1000);
     return () => clearTimeout(t);
-  }, [revue, charge, enregistrer]);
+  }, [revue, charge, lundi, enregistrer]);
+
+  /*
+   * LE VIDAGE, et c'était une vraie perte de données.
+   *
+   * Changer d'onglet dans la seconde qui suivait la dernière frappe démontait
+   * la vue, et son nettoyage annulait le minuteur : la fin de la phrase ne
+   * partait jamais. Même chose en quittant l'application sur l'iPhone. Ce qui
+   * attend est donc envoyé au démontage, et dès que la page passe en
+   * arrière-plan.
+   */
+  useEffect(() => {
+    const vider = () => {
+      const a = enAttente.current;
+      if (a) enregistrer(a.lundi, a.revue);
+    };
+    const surVisibilite = () => {
+      if (document.visibilityState === "hidden") vider();
+    };
+    document.addEventListener("visibilitychange", surVisibilite);
+    return () => {
+      document.removeEventListener("visibilitychange", surVisibilite);
+      vider();
+    };
+  }, [enregistrer]);
 
   const modifier = (cle: keyof Omit<Revue, "scelle">, v: string) => {
     touche.current = true;
@@ -151,12 +189,17 @@ export function RevueView() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <Surtitre couleur="var(--color-vio-soft)">Revue de la semaine {numero}</Surtitre>
-            <div className="text-[11px] text-white/40">
+            <div className="text-[13px] text-white/40">
               du {du} au {au}
             </div>
           </div>
           <div className="flex items-center gap-[9px]">
-            <span className="nombres text-[11px] text-white/40">
+            {echecEcriture && (
+              <span className="text-[13px] font-semibold" style={{ color: "var(--color-amb)" }}>
+                Pas enregistré — réessaie
+              </span>
+            )}
+            <span className="nombres text-[13px] text-white/40">
               {remplis}/{CHAMPS.length}
             </span>
             <Bouton
@@ -178,21 +221,17 @@ export function RevueView() {
             {CHAMPS.map((c) => (
               <div key={c.cle} className="carte-haute p-[11px]">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[11px] font-semibold">{c.titre}</span>
-                  <span className="text-[10px] text-white/40 opacity-70">{c.aide}</span>
+                  <span className="text-[13px] font-semibold">{c.titre}</span>
+                  <span className="text-[11.5px] text-white/40 opacity-70">{c.aide}</span>
                 </div>
                 <textarea
                   value={revue[c.cle]}
                   readOnly={revue.scelle}
                   onChange={(e) => modifier(c.cle, e.target.value)}
-                  className="mt-[7px] w-full resize-y rounded-[8px] px-[9px] py-[7px] text-[13px] leading-[1.5] outline-none transition-colors read-only:opacity-60 focus:border-[var(--p90-accent)]"
-                  style={{
-                    minHeight: 76,
-                    background: "var(--p90-fond)",
-                    border: "1px solid var(--p90-bord)",
-                    color: "var(--p90-texte)",
-                    transitionDuration: "var(--p90-vitesse)",
-                  }}
+                  // Le style du champ de verre, en classe : en ligne, il écrasait
+                  // la bordure de focus.
+                  className="champ mt-[8px] w-full resize-y leading-[1.5] read-only:opacity-60"
+                  style={{ minHeight: 90 }}
                 />
               </div>
             ))}

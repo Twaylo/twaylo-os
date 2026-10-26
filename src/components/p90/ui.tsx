@@ -3,13 +3,16 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 
 /**
- * LES BRIQUES DU COCKPIT, au langage visuel d'origine.
+ * LES BRIQUES DU COCKPIT, en verre — à la manière d'Apple.
  *
- * Verre dépoli sur fond encre, un filet de couleur en tête de chaque carte,
- * des pastilles rondes et des boutons teintés dans la couleur de ce qu'ils
- * font. C'est la maquette de Twaylo OS, reprise après l'essai d'un noir
- * uniforme : sept modules peints de la même couleur se ressemblent tous, et
- * c'est la couleur qui permet de retrouver « la carte verte » sans lire.
+ * Des surfaces translucides qui floutent la couleur du fond, de grands
+ * arrondis, des boutons en capsule, et une lueur de couleur sous l'arête de
+ * chaque carte. Tout est un cran plus grand qu'avant : c'était la demande
+ * (« cases plus grandes, plus user friendly »), et c'est aussi la taille à
+ * laquelle on vise du pouce sans regarder.
+ *
+ * La couleur reste ce qui distingue un module d'un autre : on retrouve « la
+ * carte verte » sans lire.
  *
  * Aucune carte ne choisit sa teinte ici : elle la reçoit. Les couleurs vivent
  * dans `globals.css` et dans `p90.ts`, pour qu'un changement de palette reste
@@ -61,7 +64,7 @@ export function Carte({
 }) {
   if (haute) {
     return (
-      <div ref={innerRef} data-zone={zone} className={`carte-haute p-[14px] ${className}`} style={style}>
+      <div ref={innerRef} data-zone={zone} className={`carte-haute p-[16px] ${className}`} style={style}>
         {children}
       </div>
     );
@@ -70,10 +73,11 @@ export function Carte({
     <div
       ref={innerRef}
       data-zone={zone}
-      className={`carte ${survol ? "carte-hover" : ""} p-[16px] ${className}`}
+      className={`carte ${survol ? "carte-hover" : ""} p-[18px] ${className}`}
       style={style}
     >
-      <span className="panel-accent" style={{ background: accent }} aria-hidden />
+      {/* `color` aussi : la lueur reprend la couleur par `currentColor`. */}
+      <span className="panel-accent" style={{ background: accent, color: accent }} aria-hidden />
       {children}
     </div>
   );
@@ -142,7 +146,7 @@ export function Puce({
     ? { color: "#07121d", background: t.vif, border: `1px solid ${t.vif}` }
     : { color: t.vif, background: t.fond, border: `1px solid ${t.bord}` };
 
-  const classes = `inline-flex items-center gap-[4px] rounded-full px-[9px] py-[3px] text-[10.5px] font-extrabold leading-[15px] transition-all ${className}`;
+  const classes = `inline-flex items-center gap-[5px] rounded-full px-[11px] py-[4px] text-[12px] font-semibold leading-[17px] transition-all ${className}`;
 
   if (!onClick) {
     return (
@@ -212,7 +216,7 @@ export function Eclats({ nombre, portee }: { nombre: number; portee: number }) {
 export function Barre({
   pct,
   couleur = "var(--grad)",
-  hauteur = 6,
+  hauteur = 8,
   etiquette,
 }: {
   pct: number;
@@ -242,9 +246,9 @@ export function Barre({
 /** Ce qu'on affiche quand il n'y a rien — avec ce qu'il faut faire pour qu'il y ait. */
 export function Vide({ children, indice }: { children: ReactNode; indice?: string }) {
   return (
-    <div className="py-[26px] text-center">
-      <div className="text-[12.5px] font-extrabold text-white/40">{children}</div>
-      {indice && <div className="mt-[3px] text-[11px] text-white/25">{indice}</div>}
+    <div className="py-[28px] text-center">
+      <div className="text-[15px] font-semibold text-white/45">{children}</div>
+      {indice && <div className="mt-[4px] text-[13px] text-white/30">{indice}</div>}
     </div>
   );
 }
@@ -272,15 +276,20 @@ export function Bouton({
   titre?: string;
   className?: string;
 }) {
+  /*
+   * Une capsule de verre (`.capsule` dans globals.css), teintée selon le ton.
+   * « plein » garde le dégradé signature : c'est l'action principale.
+   */
   const styles: Record<string, CSSProperties> = {
-    plein: { background: "var(--grad)", color: "#07121d", border: "1px solid transparent" },
-    fin: {
-      background: "rgba(255,255,255,0.05)",
-      color: "rgba(255,255,255,0.72)",
-      border: "1px solid rgba(255,255,255,0.09)",
+    plein: {
+      background: "var(--grad)",
+      color: "#07121d",
+      border: "1px solid rgba(255,255,255,0.35)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55), 0 6px 18px -8px rgba(255,61,139,0.6)",
     },
-    succes: { background: TONS.succes.fond, color: TONS.succes.vif, border: `1px solid ${TONS.succes.bord}` },
-    danger: { background: TONS.danger.fond, color: TONS.danger.vif, border: `1px solid ${TONS.danger.bord}` },
+    fin: { color: "rgba(255,255,255,0.86)" },
+    succes: { background: TONS.succes.fond, color: TONS.succes.vif, borderColor: TONS.succes.bord },
+    danger: { background: TONS.danger.fond, color: TONS.danger.vif, borderColor: TONS.danger.bord },
   };
   return (
     <button
@@ -288,7 +297,7 @@ export function Bouton({
       onClick={onClick}
       disabled={disabled}
       title={titre}
-      className={`cible-doigt inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-[11px] px-[12px] py-[7px] text-[11.5px] font-extrabold transition-all hover:brightness-125 disabled:cursor-default disabled:opacity-40 ${className}`}
+      className={`capsule cible-doigt ${className}`}
       style={styles[ton]}
     >
       {children}
@@ -304,6 +313,7 @@ export function Champ({
   type = "text",
   onBlur,
   onKeyDown,
+  onPaste,
   autoFocus = false,
   className = "",
   aria,
@@ -314,6 +324,15 @@ export function Champ({
   type?: "text" | "date" | "number";
   onBlur?: () => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  /**
+   * Le collage, AVANT que le navigateur ne le range dans le champ.
+   *
+   * Un champ d'une ligne retire les retours à la ligne de ce qu'on y colle :
+   * une liste de trois tâches copiée d'une note arrivait soudée en une seule
+   * (« Appeler le fixeurRelancer ExpandiaPoster »). Le seul moment où les
+   * lignes existent encore, c'est ici.
+   */
+  onPaste?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
   autoFocus?: boolean;
   className?: string;
   aria?: string;
@@ -325,15 +344,14 @@ export function Champ({
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
       autoFocus={autoFocus}
       placeholder={placeholder}
       aria-label={aria}
-      className={`min-w-0 rounded-[11px] px-[11px] py-[8px] text-[13px] font-semibold outline-none transition-all focus:border-[var(--color-cya)] ${className}`}
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        color: "var(--color-fg)",
-      }}
+      enterKeyHint={type === "text" ? "done" : undefined}
+      // Le style vit dans la classe `.champ` : en ligne, il écrasait la
+      // bordure de focus, et rien ne montrait où l'on tapait.
+      className={`champ min-w-0 ${className}`}
     />
   );
 }
